@@ -1,0 +1,36 @@
+name: CI
+
+env:
+  ZIG_VERSION: "0.16.0"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test actions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Zig
+        uses: ./.github/actions/setup-zig
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Test nightly decision helper
+        run: zig test .github/actions/nightly-decide/nightly_decide.zig
+
+      - name: Test artifact package helper
+        run: zig test .github/actions/package-artifact/package_artifact.zig
+

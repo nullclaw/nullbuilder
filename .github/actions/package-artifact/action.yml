@@ -1,0 +1,49 @@
+name: Package Zig Artifact
+description: Write SHA-256 and JSON manifest files for a built Zig binary.
+
+inputs:
+  binary:
+    description: Path to the copied binary inside the artifact directory.
+    required: true
+  target:
+    description: Nullbuilder target label.
+    required: true
+  zig_target:
+    description: Zig target triple.
+    required: true
+  version:
+    description: Version embedded in the binary.
+    required: true
+  repository:
+    description: GitHub repository name.
+    required: true
+  commit:
+    description: Commit SHA.
+    required: true
+  run_id:
+    description: GitHub Actions run id.
+    required: true
+  server_url:
+    description: GitHub server URL.
+    required: true
+  built_at:
+    description: UTC build timestamp.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Package artifact metadata
+      shell: bash
+      run: |
+        zig run "$GITHUB_ACTION_PATH/package_artifact.zig" -- \
+          --binary "${{ inputs.binary }}" \
+          --target "${{ inputs.target }}" \
+          --zig-target "${{ inputs.zig_target }}" \
+          --version "${{ inputs.version }}" \
+          --repository "${{ inputs.repository }}" \
+          --commit "${{ inputs.commit }}" \
+          --run-id "${{ inputs.run_id }}" \
+          --server-url "${{ inputs.server_url }}" \
+          --built-at "${{ inputs.built_at }}"
+

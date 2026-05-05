@@ -1,0 +1,74 @@
+name: Nightly Decide
+description: Decide whether a scheduled nightly should build this commit.
+
+inputs:
+  runs_json:
+    description: Path to a GitHub Actions workflow-runs JSON payload.
+    required: true
+  current_run_id:
+    description: Current GitHub Actions run id.
+    required: true
+  head_sha:
+    description: Commit SHA being considered for nightly build.
+    required: true
+  force:
+    description: Force a rebuild even if an earlier successful nightly exists.
+    required: false
+    default: "false"
+  workflow_name:
+    description: Workflow name to match when deduplicating.
+    required: false
+    default: "Nightly"
+
+outputs:
+  should_build:
+    description: Whether the build job should run.
+    value: ${{ steps.decide.outputs.should_build }}
+  reason:
+    description: Decision reason.
+    value: ${{ steps.decide.outputs.reason }}
+  matched_run_id:
+    description: Existing successful run id, when skipped.
+    value: ${{ steps.decide.outputs.matched_run_id }}
+  matched_run_url:
+    description: Existing successful run URL, when skipped.
+    value: ${{ steps.decide.outputs.matched_run_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Decide
+      id: decide
+      shell: bash
+      env:
+        FORCE_NIGHTLY: ${{ inputs.force }}
+      run: |
+        force_args=()
+        if [ "${FORCE_NIGHTLY}" = "true" ]; then
+          force_args+=(--force)
+        fi
+
+        zig run "$GITHUB_ACTION_PATH/nightly_decide.zig" -- \
+          --runs-json "${{ inputs.runs_json }}" \
+          --current-run-id "${{ inputs.current_run_id }}" \
+          --head-sha "${{ inputs.head_sha }}" \
+          --workflow-name "${{ inputs.workflow_name }}" \
+          "${force_args[@]}" > nightly-decision.env
+
+        cat nightly-decision.env
+        cat nightly-decision.env >> "$GITHUB_OUTPUT"
+
+        reason="$(grep '^reason=' nightly-decision.env | cut -d= -f2-)"
+        should_build="$(grep '^should_build=' nightly-decision.env | cut -d= -f2-)"
+        matched_url="$(grep '^matched_run_url=' nightly-decision.env | cut -d= -f2- || true)"
+        {
+          echo "## Nightly preflight"
+          echo ""
+          echo "- Commit: \`${{ inputs.head_sha }}\`"
+          echo "- Decision: \`${should_build}\`"
+          echo "- Reason: \`${reason}\`"
+          if [ -n "${matched_url}" ]; then
+            echo "- Existing run: ${matched_url}"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+

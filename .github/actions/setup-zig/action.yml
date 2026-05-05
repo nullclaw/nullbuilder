@@ -1,0 +1,16 @@
+name: Setup Zig
+description: Install a pinned Zig version on GitHub-hosted runners.
+
+inputs:
+  version:
+    description: Zig version to install.
+    required: false
+    default: "0.16.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Zig
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/install-zig.sh" "${{ inputs.version }}"
+
