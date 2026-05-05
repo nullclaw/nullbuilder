@@ -1,0 +1,142 @@
+name: Zig CI
+
+on:
+  workflow_call:
+    inputs:
+      binary_name:
+        description: Binary name produced under zig-out/bin.
+        required: true
+        type: string
+      artifact_prefix:
+        description: Prefix for uploaded CI artifacts.
+        required: false
+        type: string
+        default: ""
+      zig_version:
+        description: Zig version to install.
+        required: false
+        type: string
+        default: "0.16.0"
+      test_command:
+        description: Command used to run tests.
+        required: false
+        type: string
+        default: "zig build test --summary all"
+      build_args:
+        description: Extra arguments appended to ReleaseSmall zig build.
+        required: false
+        type: string
+        default: ""
+      upload_artifacts:
+        description: Upload host binaries as CI artifacts.
+        required: false
+        type: boolean
+        default: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+            zig_target: x86_64-linux-musl
+          - os: macos-latest
+            target: macos-aarch64
+            zig_target: aarch64-macos
+          - os: windows-latest
+            target: windows-x86_64
+            zig_target: x86_64-windows
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Zig
+        uses: nullclaw/nullbuilder/.github/actions/setup-zig@v1
+        with:
+          version: ${{ inputs.zig_version }}
+
+      - name: Resolve artifact prefix
+        id: artifact
+        run: |
+          artifact_prefix="${{ inputs.artifact_prefix }}"
+          if [ -z "${artifact_prefix}" ]; then
+            artifact_prefix="${{ inputs.binary_name }}"
+          fi
+          echo "prefix=${artifact_prefix}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Zig build outputs
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-${{ matrix.target }}-${{ hashFiles('src/**/*.zig', 'build.zig', 'build.zig.zon', 'vendor/**') }}
+          restore-keys: zig-${{ matrix.target }}-
+
+      - name: Run tests
+        env:
+          TEST_COMMAND: ${{ inputs.test_command }}
+        run: ${TEST_COMMAND} 2>&1 | tee test-output.txt
+
+      - name: Build ReleaseSmall
+        env:
+          EXTRA_BUILD_ARGS: ${{ inputs.build_args }}
+        run: |
+          zig_args=(
+            -Dtarget=${{ matrix.zig_target }}
+            -Doptimize=ReleaseSmall
+          )
+          if [ -n "${EXTRA_BUILD_ARGS}" ]; then
+            read -r -a extra_args <<< "${EXTRA_BUILD_ARGS}"
+            zig_args+=("${extra_args[@]}")
+          fi
+          zig build "${zig_args[@]}"
+
+      - name: Preserve host binary
+        if: inputs.upload_artifacts
+        run: |
+          mkdir -p ci-artifacts
+          cp "zig-out/bin/${{ inputs.binary_name }}${{ runner.os == 'Windows' && '.exe' || '' }}" "ci-artifacts/${{ inputs.binary_name }}${{ runner.os == 'Windows' && '.exe' || '' }}"
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Zig CI - ${{ matrix.target }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f test-output.txt ]; then
+            TESTS=$(grep -o '[0-9]*/[0-9]* tests passed' test-output.txt | head -1 || true)
+            RSS=$(grep 'run test' test-output.txt | grep -o 'MaxRSS:[^ ]*' | head -1 | cut -d: -f2 || true)
+            echo "| Tests | ${TESTS:-n/a} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Test MaxRSS | ${RSS:-n/a} |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          BIN="ci-artifacts/${{ inputs.binary_name }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            BIN="ci-artifacts/${{ inputs.binary_name }}.exe"
+          fi
+          if [ -f "$BIN" ]; then
+            SIZE=$(wc -c < "$BIN" | tr -d ' ')
+            SIZE_HR=$(awk "BEGIN {printf \"%.1f MB\", $SIZE / 1048576}")
+            echo "| Binary (ReleaseSmall) | ${SIZE_HR} (${SIZE} bytes) |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload binary
+        if: inputs.upload_artifacts && success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.artifact.outputs.prefix }}-${{ matrix.target }}
+          path: ci-artifacts/${{ inputs.binary_name }}${{ runner.os == 'Windows' && '.exe' || '' }}
+
