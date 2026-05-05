@@ -38,7 +38,7 @@ env:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -139,4 +139,3 @@ jobs:
         with:
           name: ${{ steps.artifact.outputs.prefix }}-${{ matrix.target }}
           path: ci-artifacts/${{ inputs.binary_name }}${{ runner.os == 'Windows' && '.exe' || '' }}
-
