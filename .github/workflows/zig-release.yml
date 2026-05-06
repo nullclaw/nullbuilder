@@ -27,11 +27,68 @@ on:
         required: false
         type: string
         default: "29.0.14206865"
+      targets_json:
+        description: JSON array of release target matrix entries.
+        required: false
+        type: string
+        default: >-
+          [
+            {"os":"ubuntu-latest","target":"linux-x86_64","zig_target":"x86_64-linux-musl","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-aarch64","zig_target":"aarch64-linux-musl","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-arm32-gnu","zig_target":"arm-linux-gnueabihf","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-arm32-musl","zig_target":"arm-linux-musleabihf","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-riscv64","zig_target":"riscv64-linux-musl","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"android-aarch64","zig_target":"aarch64-linux-android","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"android-armv7","zig_target":"arm-linux-androideabi","zig_cpu":"baseline+v7a","ext":""},
+            {"os":"ubuntu-latest","target":"android-x86_64","zig_target":"x86_64-linux-android","zig_cpu":"","ext":""},
+            {"os":"macos-latest","target":"macos-aarch64","zig_target":"aarch64-macos","zig_cpu":"","ext":""},
+            {"os":"macos-latest","target":"macos-x86_64","zig_target":"x86_64-macos","zig_cpu":"","ext":""},
+            {"os":"windows-latest","target":"windows-x86_64","zig_target":"x86_64-windows","zig_cpu":"","ext":".exe"},
+            {"os":"windows-latest","target":"windows-aarch64","zig_target":"aarch64-windows","zig_cpu":"","ext":".exe"}
+          ]
+      node_version:
+        description: Optional Node.js version to install before custom commands.
+        required: false
+        type: string
+        default: ""
+      node_cache_dependency_path:
+        description: Optional npm dependency path for setup-node caching.
+        required: false
+        type: string
+        default: ""
+      pre_build_command:
+        description: Optional command run before each ReleaseSmall build. BUILD_VERSION is available.
+        required: false
+        type: string
+        default: ""
       build_args:
         description: Extra arguments appended to zig build.
         required: false
         type: string
         default: ""
+      source_archive:
+        description: Build and attach a source archive.
+        required: false
+        type: boolean
+        default: false
+      source_prepare_command:
+        description: Optional command run before creating the source archive. BUILD_VERSION is available.
+        required: false
+        type: string
+        default: ""
+      source_archive_name:
+        description: Source archive filename. Defaults to artifact-prefix-source-${GITHUB_REF_NAME}.tar.gz.
+        required: false
+        type: string
+        default: ""
+      source_archive_excludes:
+        description: Newline-separated tar exclude patterns for source archives.
+        required: false
+        type: string
+        default: |
+          .git
+          .zig-cache
+          zig-out
       generate_release_notes:
         description: Generate GitHub release notes.
         required: false
@@ -56,67 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x86_64
-            zig_target: x86_64-linux-musl
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-aarch64
-            zig_target: aarch64-linux-musl
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-arm32-gnu
-            zig_target: arm-linux-gnueabihf
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-arm32-musl
-            zig_target: arm-linux-musleabihf
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-riscv64
-            zig_target: riscv64-linux-musl
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: android-aarch64
-            zig_target: aarch64-linux-android
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: android-armv7
-            zig_target: arm-linux-androideabi
-            zig_cpu: baseline+v7a
-            ext: ""
-          - os: ubuntu-latest
-            target: android-x86_64
-            zig_target: x86_64-linux-android
-            zig_cpu: ""
-            ext: ""
-          - os: macos-latest
-            target: macos-aarch64
-            zig_target: aarch64-macos
-            zig_cpu: ""
-            ext: ""
-          - os: macos-latest
-            target: macos-x86_64
-            zig_target: x86_64-macos
-            zig_cpu: ""
-            ext: ""
-          - os: windows-latest
-            target: windows-x86_64
-            zig_target: x86_64-windows
-            zig_cpu: ""
-            ext: ".exe"
-          - os: windows-latest
-            target: windows-aarch64
-            zig_target: aarch64-windows
-            zig_cpu: ""
-            ext: ".exe"
+        include: ${{ fromJson(inputs.targets_json) }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -125,6 +122,20 @@ jobs:
         uses: nullclaw/nullbuilder/.github/actions/setup-zig@v1
         with:
           version: ${{ inputs.zig_version }}
+
+      - name: Set up Node.js
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path == ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Set up Node.js with npm cache
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.node_cache_dependency_path }}
 
       - name: Resolve build version
         id: version
@@ -184,6 +195,13 @@ jobs:
           gcc_dir=
           EOF
 
+      - name: Run pre-build command
+        if: inputs.pre_build_command != ''
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.value }}
+          PRE_BUILD_COMMAND: ${{ inputs.pre_build_command }}
+        run: bash -euo pipefail -c "$PRE_BUILD_COMMAND"
+
       - name: Build ReleaseSmall
         env:
           ANDROID_API_LEVEL: ${{ inputs.android_api_level }}
@@ -216,9 +234,86 @@ jobs:
           name: ${{ steps.artifact.outputs.prefix }}-${{ matrix.target }}
           path: zig-out/bin/${{ inputs.binary_name }}${{ matrix.ext }}
 
+  source:
+    name: Prepare source archive
+    if: inputs.source_archive
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node.js
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path == ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Set up Node.js with npm cache
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.node_cache_dependency_path }}
+
+      - name: Resolve source version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve artifact prefix
+        id: artifact
+        run: |
+          artifact_prefix="${{ inputs.artifact_prefix }}"
+          if [ -z "${artifact_prefix}" ]; then
+            artifact_prefix="${{ inputs.binary_name }}"
+          fi
+          echo "prefix=${artifact_prefix}" >> "$GITHUB_OUTPUT"
+
+      - name: Run source prepare command
+        if: inputs.source_prepare_command != ''
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.value }}
+          SOURCE_PREPARE_COMMAND: ${{ inputs.source_prepare_command }}
+        run: bash -euo pipefail -c "$SOURCE_PREPARE_COMMAND"
+
+      - name: Create source archive
+        env:
+          RAW_ARCHIVE_NAME: ${{ inputs.source_archive_name }}
+          SOURCE_ARCHIVE_EXCLUDES: ${{ inputs.source_archive_excludes }}
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          archive_name="${RAW_ARCHIVE_NAME}"
+          if [ -z "${archive_name}" ]; then
+            archive_name="${ARTIFACT_PREFIX}-source-${GITHUB_REF_NAME}.tar.gz"
+          fi
+
+          tar_args=()
+          while IFS= read -r pattern; do
+            [ -n "${pattern}" ] || continue
+            tar_args+=("--exclude=${pattern}")
+          done <<< "${SOURCE_ARCHIVE_EXCLUDES}"
+
+          tar "${tar_args[@]}" -czf "/tmp/${archive_name}" .
+          mv "/tmp/${archive_name}" .
+          echo "archive_name=${archive_name}" >> "$GITHUB_ENV"
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.artifact.outputs.prefix }}-source
+          path: ${{ env.archive_name }}
+
   release:
-    needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build, source]
+    if: always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && (needs.source.result == 'success' || needs.source.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write

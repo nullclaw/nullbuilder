@@ -17,16 +17,61 @@ on:
         required: false
         type: string
         default: "0.16.0"
+      targets_json:
+        description: JSON array of target matrix entries. Each entry needs os, target, and zig_target.
+        required: false
+        type: string
+        default: >-
+          [
+            {"os":"ubuntu-latest","target":"linux-x86_64","zig_target":"x86_64-linux-musl"},
+            {"os":"macos-latest","target":"macos-aarch64","zig_target":"aarch64-macos"},
+            {"os":"windows-latest","target":"windows-x86_64","zig_target":"x86_64-windows"}
+          ]
+      node_version:
+        description: Optional Node.js version to install before custom commands.
+        required: false
+        type: string
+        default: ""
+      node_cache_dependency_path:
+        description: Optional npm dependency path for setup-node caching.
+        required: false
+        type: string
+        default: ""
+      setup_command:
+        description: Optional command run after tool setup and before tests.
+        required: false
+        type: string
+        default: ""
+      pre_test_command:
+        description: Optional command run immediately before tests.
+        required: false
+        type: string
+        default: ""
       test_command:
         description: Command used to run tests.
         required: false
         type: string
         default: "zig build test --summary all"
+      pre_build_command:
+        description: Optional command run immediately before ReleaseSmall builds.
+        required: false
+        type: string
+        default: ""
       build_args:
         description: Extra arguments appended to ReleaseSmall zig build.
         required: false
         type: string
         default: ""
+      e2e_command:
+        description: Optional command run after ReleaseSmall build on one matrix target.
+        required: false
+        type: string
+        default: ""
+      e2e_target:
+        description: Matrix target name that should run e2e_command.
+        required: false
+        type: string
+        default: "linux-x86_64"
       upload_artifacts:
         description: Upload host binaries as CI artifacts.
         required: false
@@ -46,16 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x86_64
-            zig_target: x86_64-linux-musl
-          - os: macos-latest
-            target: macos-aarch64
-            zig_target: aarch64-macos
-          - os: windows-latest
-            target: windows-x86_64
-            zig_target: x86_64-windows
+        include: ${{ fromJson(inputs.targets_json) }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -64,6 +100,20 @@ jobs:
         uses: nullclaw/nullbuilder/.github/actions/setup-zig@v1
         with:
           version: ${{ inputs.zig_version }}
+
+      - name: Set up Node.js
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path == ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Set up Node.js with npm cache
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.node_cache_dependency_path }}
 
       - name: Resolve artifact prefix
         id: artifact
@@ -83,10 +133,28 @@ jobs:
           key: zig-${{ matrix.target }}-${{ hashFiles('src/**/*.zig', 'build.zig', 'build.zig.zon', 'vendor/**') }}
           restore-keys: zig-${{ matrix.target }}-
 
+      - name: Run setup command
+        if: inputs.setup_command != ''
+        env:
+          SETUP_COMMAND: ${{ inputs.setup_command }}
+        run: bash -euo pipefail -c "$SETUP_COMMAND"
+
+      - name: Run pre-test command
+        if: inputs.pre_test_command != ''
+        env:
+          PRE_TEST_COMMAND: ${{ inputs.pre_test_command }}
+        run: bash -euo pipefail -c "$PRE_TEST_COMMAND"
+
       - name: Run tests
         env:
           TEST_COMMAND: ${{ inputs.test_command }}
         run: ${TEST_COMMAND} 2>&1 | tee test-output.txt
+
+      - name: Run pre-build command
+        if: inputs.pre_build_command != ''
+        env:
+          PRE_BUILD_COMMAND: ${{ inputs.pre_build_command }}
+        run: bash -euo pipefail -c "$PRE_BUILD_COMMAND"
 
       - name: Build ReleaseSmall
         env:
@@ -101,6 +169,12 @@ jobs:
             zig_args+=("${extra_args[@]}")
           fi
           zig build "${zig_args[@]}"
+
+      - name: Run E2E command
+        if: inputs.e2e_command != '' && matrix.target == inputs.e2e_target
+        env:
+          E2E_COMMAND: ${{ inputs.e2e_command }}
+        run: bash -euo pipefail -c "$E2E_COMMAND"
 
       - name: Preserve host binary
         if: inputs.upload_artifacts

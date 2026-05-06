@@ -27,6 +27,40 @@ on:
         required: false
         type: string
         default: "29.0.14206865"
+      targets_json:
+        description: JSON array of nightly target matrix entries.
+        required: false
+        type: string
+        default: >-
+          [
+            {"os":"ubuntu-latest","target":"linux-x86_64","zig_target":"x86_64-linux-musl","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-aarch64","zig_target":"aarch64-linux-musl","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-arm32-gnu","zig_target":"arm-linux-gnueabihf","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-arm32-musl","zig_target":"arm-linux-musleabihf","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"linux-riscv64","zig_target":"riscv64-linux-musl","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"android-aarch64","zig_target":"aarch64-linux-android","zig_cpu":"","ext":""},
+            {"os":"ubuntu-latest","target":"android-armv7","zig_target":"arm-linux-androideabi","zig_cpu":"baseline+v7a","ext":""},
+            {"os":"ubuntu-latest","target":"android-x86_64","zig_target":"x86_64-linux-android","zig_cpu":"","ext":""},
+            {"os":"macos-latest","target":"macos-aarch64","zig_target":"aarch64-macos","zig_cpu":"","ext":""},
+            {"os":"macos-latest","target":"macos-x86_64","zig_target":"x86_64-macos","zig_cpu":"","ext":""},
+            {"os":"windows-latest","target":"windows-x86_64","zig_target":"x86_64-windows","zig_cpu":"","ext":".exe"},
+            {"os":"windows-latest","target":"windows-aarch64","zig_target":"aarch64-windows","zig_cpu":"","ext":".exe"}
+          ]
+      node_version:
+        description: Optional Node.js version to install before custom commands.
+        required: false
+        type: string
+        default: ""
+      node_cache_dependency_path:
+        description: Optional npm dependency path for setup-node caching.
+        required: false
+        type: string
+        default: ""
+      pre_build_command:
+        description: Optional command run before each nightly build. BUILD_VERSION is available.
+        required: false
+        type: string
+        default: ""
       build_args:
         description: Extra arguments appended to zig build.
         required: false
@@ -129,67 +163,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x86_64
-            zig_target: x86_64-linux-musl
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-aarch64
-            zig_target: aarch64-linux-musl
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-arm32-gnu
-            zig_target: arm-linux-gnueabihf
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-arm32-musl
-            zig_target: arm-linux-musleabihf
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: linux-riscv64
-            zig_target: riscv64-linux-musl
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: android-aarch64
-            zig_target: aarch64-linux-android
-            zig_cpu: ""
-            ext: ""
-          - os: ubuntu-latest
-            target: android-armv7
-            zig_target: arm-linux-androideabi
-            zig_cpu: baseline+v7a
-            ext: ""
-          - os: ubuntu-latest
-            target: android-x86_64
-            zig_target: x86_64-linux-android
-            zig_cpu: ""
-            ext: ""
-          - os: macos-latest
-            target: macos-aarch64
-            zig_target: aarch64-macos
-            zig_cpu: ""
-            ext: ""
-          - os: macos-latest
-            target: macos-x86_64
-            zig_target: x86_64-macos
-            zig_cpu: ""
-            ext: ""
-          - os: windows-latest
-            target: windows-x86_64
-            zig_target: x86_64-windows
-            zig_cpu: ""
-            ext: ".exe"
-          - os: windows-latest
-            target: windows-aarch64
-            zig_target: aarch64-windows
-            zig_cpu: ""
-            ext: ".exe"
+        include: ${{ fromJson(inputs.targets_json) }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -198,6 +172,20 @@ jobs:
         uses: nullclaw/nullbuilder/.github/actions/setup-zig@v1
         with:
           version: ${{ inputs.zig_version }}
+
+      - name: Set up Node.js
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path == ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Set up Node.js with npm cache
+        if: inputs.node_version != '' && inputs.node_cache_dependency_path != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.node_cache_dependency_path }}
 
       - name: Set up JDK 17
         if: startsWith(matrix.target, 'android-')
@@ -238,6 +226,13 @@ jobs:
           kernel32_lib_dir=
           gcc_dir=
           EOF
+
+      - name: Run pre-build command
+        if: inputs.pre_build_command != ''
+        env:
+          BUILD_VERSION: ${{ needs.preflight.outputs.version }}
+          PRE_BUILD_COMMAND: ${{ inputs.pre_build_command }}
+        run: bash -euo pipefail -c "$PRE_BUILD_COMMAND"
 
       - name: Build ReleaseSmall
         env:
@@ -297,4 +292,3 @@ jobs:
           path: nightly-artifacts/*
           if-no-files-found: error
           retention-days: ${{ inputs.retention_days }}
-

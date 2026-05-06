@@ -19,6 +19,35 @@ jobs:
       artifact_prefix: nullclaw
 ```
 
+Projects with generated assets can install Node, run setup hooks, customize the
+matrix, and attach one E2E command to a single target:
+
+```yaml
+jobs:
+  zig:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@v1
+    permissions:
+      contents: read
+    with:
+      binary_name: nullhub
+      artifact_prefix: nullhub
+      node_version: 22
+      node_cache_dependency_path: ui/package-lock.json
+      test_command: zig build test -Dembed-ui=false -Dbuild-ui=false --summary all
+      pre_build_command: |
+        npm --prefix ui ci --no-audit --no-fund
+        npm --prefix ui run build
+      build_args: -Dbuild-ui=false
+      e2e_command: bash tests/test_e2e.sh
+      targets_json: >-
+        [
+          {"os":"ubuntu-latest","target":"linux-x86_64","zig_target":"x86_64-linux-musl"},
+          {"os":"ubuntu-latest","target":"linux-aarch64","zig_target":"aarch64-linux-musl"},
+          {"os":"macos-latest","target":"macos-aarch64","zig_target":"aarch64-macos"},
+          {"os":"windows-latest","target":"windows-x86_64","zig_target":"x86_64-windows"}
+        ]
+```
+
 ### Nightly
 
 ```yaml
@@ -49,3 +78,7 @@ jobs:
       artifact_prefix: nullclaw
       publish_docker: true
 ```
+
+Release builds support the same Node/pre-build and target-matrix inputs. Projects
+that publish generated source archives can enable `source_archive` and provide a
+`source_prepare_command`.
