@@ -83,7 +83,7 @@ env:
 
 jobs:
   test:
-    name: ${{ matrix.os }}
+    name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
