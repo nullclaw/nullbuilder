@@ -338,6 +338,11 @@ jobs:
 
           for artifact_dir in "${artifact_prefix}"-*; do
             [ -d "${artifact_dir}" ] || continue
+            if [[ "${artifact_dir}" == "${artifact_prefix}-source" ]]; then
+              cp "${artifact_dir}"/*.tar.gz release-output/
+              continue
+            fi
+
             target="${artifact_dir#${artifact_prefix}-}"
             if [[ "${target}" == windows-* ]]; then
               cp "${artifact_dir}/${BINARY_NAME}.exe" "release-output/${artifact_prefix}-${target}.exe"
