@@ -81,6 +81,21 @@ on:
         required: false
         type: string
         default: "Nightly"
+      publish_release:
+        description: Publish or update a GitHub prerelease with nightly artifacts.
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: Tag name for the rolling nightly prerelease.
+        required: false
+        type: string
+        default: "nightly"
+      release_title:
+        description: Title prefix for the rolling nightly prerelease.
+        required: false
+        type: string
+        default: "Nightly"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -98,6 +113,7 @@ jobs:
       version: ${{ steps.version.outputs.value }}
       short_sha: ${{ steps.version.outputs.short_sha }}
       artifact_prefix: ${{ steps.version.outputs.artifact_prefix }}
+      built_at: ${{ steps.version.outputs.built_at }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -111,12 +127,14 @@ jobs:
         id: version
         run: |
           short_sha="${GITHUB_SHA::7}"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           build_date="$(date -u +%Y%m%d)"
           artifact_prefix="${{ inputs.artifact_prefix }}"
           if [ -z "${artifact_prefix}" ]; then
             artifact_prefix="${{ inputs.binary_name }}"
           fi
           echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "built_at=${built_at}" >> "$GITHUB_OUTPUT"
           echo "value=nightly-${build_date}-${short_sha}" >> "$GITHUB_OUTPUT"
           echo "artifact_prefix=${artifact_prefix}" >> "$GITHUB_OUTPUT"
 
@@ -292,3 +310,77 @@ jobs:
           path: nightly-artifacts/*
           if-no-files-found: error
           retention-days: ${{ inputs.retention_days }}
+
+  release:
+    name: Publish prerelease
+    needs: [preflight, build]
+    if: inputs.publish_release && needs.preflight.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download nightly artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: ${{ needs.preflight.outputs.artifact_prefix }}-nightly-${{ needs.preflight.outputs.short_sha }}-*
+          path: nightly-downloads
+          merge-multiple: true
+
+      - name: Publish rolling nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          BUILT_AT: ${{ needs.preflight.outputs.built_at }}
+        run: |
+          mkdir -p release-output
+          find nightly-downloads -maxdepth 2 -type f -exec cp '{}' release-output/ ';'
+
+          if ! compgen -G "release-output/*" >/dev/null; then
+            echo "no nightly release assets were downloaded" >&2
+            exit 1
+          fi
+
+          built_label="${BUILT_AT%Z}"
+          built_label="${built_label/T/ } UTC"
+          release_title="${RELEASE_TITLE} ${built_label}"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          cat > release-notes.md <<EOF
+          Nightly build generated at ${BUILT_AT}.
+
+          - Version: \`${VERSION}\`
+          - Commit: \`${GITHUB_SHA}\`
+          - Workflow run: ${run_url}
+          EOF
+
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' |
+              while IFS= read -r asset; do
+                [ -n "${asset}" ] || continue
+                gh release delete-asset "${RELEASE_TAG}" "${asset}" --repo "${GITHUB_REPOSITORY}" --yes
+              done
+
+            gh release edit "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${release_title}" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest=false \
+              --target "${GITHUB_SHA}"
+          else
+            gh release create "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${release_title}" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest=false \
+              --target "${GITHUB_SHA}"
+          fi
+
+          gh release upload "${RELEASE_TAG}" release-output/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
