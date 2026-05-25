@@ -65,7 +65,9 @@ runs:
         curl -fsSL "${download_url}" -o "${archive_path}"
 
         if [ "${archive_ext}" = "zip" ]; then
-          powershell -NoProfile -Command "Expand-Archive -LiteralPath '${archive_path}' -DestinationPath '${work_dir}' -Force"
+          archive_win_path="$(cygpath -w "${archive_path}")"
+          work_win_path="$(cygpath -w "${work_dir}")"
+          powershell -NoProfile -Command "Expand-Archive -LiteralPath '${archive_win_path}' -DestinationPath '${work_win_path}' -Force"
         else
           tar -xf "${archive_path}" -C "${work_dir}"
         fi
