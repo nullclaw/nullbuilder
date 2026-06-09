@@ -40,7 +40,7 @@ pub fn intField(object: JsonObject, field_name: []const u8) u64 {
 
 fn positiveFloatToU64(value: f64) ?u64 {
     const max_u64_float: f64 = @floatFromInt(std.math.maxInt(u64));
-    if (!std.math.isFinite(value) or value <= 0 or value >= max_u64_float) {
+    if (!std.math.isFinite(value) or value <= 0 or value >= max_u64_float or @floor(value) != value) {
         return null;
     }
 
@@ -67,15 +67,17 @@ test "field helpers return typed values and fallbacks" {
     try std.testing.expectEqual(null, objectField(object, "items"));
 }
 
-test "intField clamps missing negative and fractional values" {
+test "intField accepts only safe positive integers" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
-        \\{"positive":42,"negative":-42,"fractional":4.8}
+        \\{"positive":42,"floatInteger":4.0,"negative":-42,"fractional":4.8,"unsafe":18446744073709551616.0}
     , .{});
     defer parsed.deinit();
     const object = parsed.value.object;
 
     try std.testing.expectEqual(@as(u64, 42), intField(object, "positive"));
+    try std.testing.expectEqual(@as(u64, 4), intField(object, "floatInteger"));
     try std.testing.expectEqual(@as(u64, 0), intField(object, "negative"));
-    try std.testing.expectEqual(@as(u64, 4), intField(object, "fractional"));
+    try std.testing.expectEqual(@as(u64, 0), intField(object, "fractional"));
+    try std.testing.expectEqual(@as(u64, 0), intField(object, "unsafe"));
     try std.testing.expectEqual(@as(u64, 0), intField(object, "missing"));
 }
