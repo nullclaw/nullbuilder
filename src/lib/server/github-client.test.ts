@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
-import { GITHUB_RESPONSE_CACHE_MAX_ENTRIES, githubGetPages, githubRequest } from './github-client';
+import { GITHUB_RESPONSE_CACHE_MAX_ENTRIES, GitHubApiError, githubGetPages, githubRequest } from './github-client';
 
 const originalFetch = globalThis.fetch;
 
@@ -143,4 +143,56 @@ test('githubRequest bounds cached responses and evicts the oldest entry', async 
 
   assert.equal(requests.length, GITHUB_RESPONSE_CACHE_MAX_ENTRIES + 2);
   assert.equal(requests.at(-1), 'https://bounded-cache.example.test/repos/nullclaw/repo-0');
+});
+
+test('githubRequest keeps malformed rate-limit reset headers from masking API errors', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://rate-limit.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ message: 'rate limited' }), {
+      status: 403,
+      statusText: 'Forbidden',
+      headers: {
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': 'not-a-timestamp'
+      }
+    })) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof GitHubApiError &&
+      error.status === 403 &&
+      error.message === 'GitHub 403 Forbidden: rate limited'
+  );
+});
+
+test('githubRequest includes valid rate-limit reset timestamps in API errors', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://rate-limit-reset.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ message: 'rate limited' }), {
+      status: 403,
+      statusText: 'Forbidden',
+      headers: {
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': '1760000000'
+      }
+    })) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof GitHubApiError &&
+      error.status === 403 &&
+      error.message === 'GitHub 403 Forbidden: rate limited; rate limit resets at 2025-10-09T08:53:20.000Z'
+  );
 });

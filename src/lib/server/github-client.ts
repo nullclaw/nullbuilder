@@ -175,9 +175,27 @@ async function toGitHubApiError(response: Response): Promise<GitHubApiError> {
 
   const remaining = response.headers.get('X-RateLimit-Remaining');
   const reset = response.headers.get('X-RateLimit-Reset');
-  const rateLimit = remaining === '0' && reset ? `; rate limit resets at ${new Date(Number(reset) * 1000).toISOString()}` : '';
+  const rateLimit = rateLimitResetMessage(remaining, reset);
 
   return new GitHubApiError(`GitHub ${response.status} ${response.statusText}${detail}${rateLimit}`, response.status);
+}
+
+function rateLimitResetMessage(remaining: string | null, reset: string | null): string {
+  if (remaining !== '0' || !reset) {
+    return '';
+  }
+
+  const resetSeconds = Number(reset);
+  if (!Number.isSafeInteger(resetSeconds)) {
+    return '';
+  }
+
+  const resetDate = new Date(resetSeconds * 1000);
+  if (!Number.isFinite(resetDate.getTime())) {
+    return '';
+  }
+
+  return `; rate limit resets at ${resetDate.toISOString()}`;
 }
 
 function parseNextLink(link: string | null): string | null {
