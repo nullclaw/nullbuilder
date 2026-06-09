@@ -1,6 +1,5 @@
-import type { RepoSlug } from '../repositories';
-import { checkStatus } from './audit-summary';
-import type { AuditArea, AuditCheckResult, AuditFinding, AuditSeverity } from './audit-types';
+import type { AuditCheckResult, AuditFinding } from './audit-types';
+import { evaluateAuditRule, isPresent, type AuditContext, type AuditRule } from './audit-rule-kit';
 import {
   findActionUses,
   findNullbuilderWorkflowRefs,
@@ -8,66 +7,16 @@ import {
   shouldRequireShaPin
 } from './audit-workflows';
 
-export type GitHubRepositoryResponse = {
-  full_name: string;
-  html_url: string;
-  default_branch: string;
-  private: boolean;
-  archived: boolean;
-};
-
-export type GitHubContentItem = {
-  name: string;
-  path: string;
-  type: string;
-  html_url: string;
-};
-
-export type GitHubContentFile = GitHubContentItem & {
-  content?: string;
-  encoding?: string;
-};
-
-export type GitHubBranchProtection = {
-  required_status_checks?: unknown | null;
-  required_pull_request_reviews?: unknown | null;
-  enforce_admins?: {
-    enabled?: boolean;
-  } | null;
-};
-
-export type Probe<T> =
-  | { status: 'present'; data: T }
-  | { status: 'missing' }
-  | { status: 'denied' }
-  | { status: 'error'; error: string };
-
-export type WorkflowFile = {
-  name: string;
-  path: string;
-  url: string;
-  content: string;
-};
-
-export type AuditContext = {
-  repo: RepoSlug;
-  repository: GitHubRepositoryResponse;
-  workflowDirectory: Probe<GitHubContentItem[]>;
-  workflowFiles: WorkflowFile[];
-  branchProtection: Probe<GitHubBranchProtection>;
-  dependabot: Probe<GitHubContentFile>;
-  securityPolicy: Probe<GitHubContentFile>;
-  githubSecurityPolicy: Probe<GitHubContentFile>;
-  codeowners: Probe<GitHubContentFile>;
-  githubCodeowners: Probe<GitHubContentFile>;
-};
-
-type AuditRule = {
-  id: string;
-  title: string;
-  area: AuditArea;
-  evaluate: (context: AuditContext) => AuditFinding[];
-};
+export { isPresent };
+export type {
+  AuditContext,
+  GitHubBranchProtection,
+  GitHubContentFile,
+  GitHubContentItem,
+  GitHubRepositoryResponse,
+  Probe,
+  WorkflowFile
+} from './audit-rule-kit';
 
 const NULLBUILDER_WORKFLOWS = [
   { id: 'ci', file: 'zig-ci.yml', severity: 'warning' as const },
@@ -80,13 +29,17 @@ const RULES: AuditRule[] = [
     id: 'repository-active',
     title: 'Repository is active',
     area: 'repository',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       if (!context.repository.archived) {
         return [];
       }
 
       return [
-        finding(context, 'repository-active', 'warning', 'Archived repository', 'Archived repositories are skipped by most operational workflows.')
+        finding(
+          'warning',
+          'Archived repository',
+          'Archived repositories are skipped by most operational workflows.'
+        )
       ];
     }
   },
@@ -94,13 +47,17 @@ const RULES: AuditRule[] = [
     id: 'security-policy',
     title: 'Security policy exists',
     area: 'security',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       if (isPresent(context.securityPolicy) || isPresent(context.githubSecurityPolicy)) {
         return [];
       }
 
       return [
-        finding(context, 'security-policy', 'warning', 'Missing security policy', 'Add SECURITY.md so vulnerability reports have a stable intake path.')
+        finding(
+          'warning',
+          'Missing security policy',
+          'Add SECURITY.md so vulnerability reports have a stable intake path.'
+        )
       ];
     }
   },
@@ -108,13 +65,17 @@ const RULES: AuditRule[] = [
     id: 'dependabot',
     title: 'Dependabot configuration exists',
     area: 'security',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       if (isPresent(context.dependabot)) {
         return [];
       }
 
       return [
-        finding(context, 'dependabot', 'warning', 'Missing Dependabot configuration', 'Add .github/dependabot.yml to keep actions and package dependencies current.')
+        finding(
+          'warning',
+          'Missing Dependabot configuration',
+          'Add .github/dependabot.yml to keep actions and package dependencies current.'
+        )
       ];
     }
   },
@@ -122,13 +83,17 @@ const RULES: AuditRule[] = [
     id: 'codeowners',
     title: 'Code owners exist',
     area: 'security',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       if (isPresent(context.codeowners) || isPresent(context.githubCodeowners)) {
         return [];
       }
 
       return [
-        finding(context, 'codeowners', 'info', 'Missing CODEOWNERS', 'Add CODEOWNERS when review ownership should be enforceable instead of implicit.')
+        finding(
+          'info',
+          'Missing CODEOWNERS',
+          'Add CODEOWNERS when review ownership should be enforceable instead of implicit.'
+        )
       ];
     }
   },
@@ -136,7 +101,7 @@ const RULES: AuditRule[] = [
     id: 'branch-protection',
     title: 'Default branch is protected',
     area: 'security',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       if (context.branchProtection.status === 'present') {
         const findings: AuditFinding[] = [];
         const protection = context.branchProtection.data;
@@ -144,8 +109,6 @@ const RULES: AuditRule[] = [
         if (!protection.required_status_checks) {
           findings.push(
             finding(
-              context,
-              'branch-protection',
               'warning',
               'Default branch has no required status checks',
               `Require CI checks before merging into ${context.repository.default_branch}.`
@@ -156,8 +119,6 @@ const RULES: AuditRule[] = [
         if (!protection.required_pull_request_reviews) {
           findings.push(
             finding(
-              context,
-              'branch-protection',
               'info',
               'Default branch has no required reviews',
               `Require pull request reviews before merging into ${context.repository.default_branch} when the repository is collaborative.`
@@ -171,8 +132,6 @@ const RULES: AuditRule[] = [
       if (context.branchProtection.status === 'missing') {
         return [
           finding(
-            context,
-            'branch-protection',
             'warning',
             'Default branch protection was not found',
             `Protect ${context.repository.default_branch} with required checks before broad automation writes to this repository.`
@@ -182,8 +141,6 @@ const RULES: AuditRule[] = [
 
       return [
         finding(
-          context,
-          'branch-protection',
           'info',
           'Default branch protection could not be verified',
           'GitHub did not allow reading branch protection with the current token.'
@@ -195,12 +152,10 @@ const RULES: AuditRule[] = [
     id: 'nullbuilder-workflows',
     title: 'Nullbuilder workflows are installed',
     area: 'workflow',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       if (context.workflowDirectory.status !== 'present') {
         return [
           finding(
-            context,
-            'nullbuilder-workflows',
             'warning',
             'Workflow directory is missing or unreadable',
             'Add .github/workflows entries for reusable nullbuilder CI and release automation.'
@@ -219,8 +174,6 @@ const RULES: AuditRule[] = [
 
         return [
           finding(
-            context,
-            'nullbuilder-workflows',
             workflow.severity,
             `Missing nullbuilder ${workflow.id} workflow`,
             `Add a reusable workflow caller for ${workflow.file} when this repository should share nullbuilder automation.`
@@ -233,7 +186,7 @@ const RULES: AuditRule[] = [
     id: 'workflow-dangerous-triggers',
     title: 'Workflows avoid dangerous triggers',
     area: 'workflow',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       return context.workflowFiles.flatMap((file) => {
         if (!/\bpull_request_target\b/.test(file.content)) {
           return [];
@@ -241,8 +194,6 @@ const RULES: AuditRule[] = [
 
         return [
           finding(
-            context,
-            'workflow-dangerous-triggers',
             'critical',
             'Workflow uses pull_request_target',
             `${file.path} can expose write-scoped tokens to untrusted pull request code unless every checkout and script path is locked down.`,
@@ -257,15 +208,13 @@ const RULES: AuditRule[] = [
     id: 'workflow-permissions',
     title: 'Workflow token permissions are explicit',
     area: 'workflow',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       return context.workflowFiles.flatMap((file) => {
         const findings: AuditFinding[] = [];
 
         if (/^\s*permissions:\s*write-all\s*$/m.test(file.content)) {
           findings.push(
             finding(
-              context,
-              'workflow-permissions',
               'critical',
               'Workflow grants write-all permissions',
               `${file.path} should grant only the token scopes required by each job.`,
@@ -276,8 +225,6 @@ const RULES: AuditRule[] = [
         } else if (!/^\s*permissions:/m.test(file.content)) {
           findings.push(
             finding(
-              context,
-              'workflow-permissions',
               'warning',
               'Workflow token permissions are implicit',
               `${file.path} should declare top-level or job-level permissions explicitly.`,
@@ -290,8 +237,6 @@ const RULES: AuditRule[] = [
         if (/\bself-hosted\b/.test(file.content)) {
           findings.push(
             finding(
-              context,
-              'workflow-permissions',
               'warning',
               'Workflow uses self-hosted runners',
               `${file.path} should treat self-hosted runners as privileged infrastructure and restrict untrusted events.`,
@@ -309,7 +254,7 @@ const RULES: AuditRule[] = [
     id: 'workflow-pinning',
     title: 'Third-party workflow actions are pinned',
     area: 'workflow',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       return context.workflowFiles.flatMap((file) => {
         const findings: AuditFinding[] = [];
         const usesLines = findActionUses(file.content);
@@ -321,8 +266,6 @@ const RULES: AuditRule[] = [
 
           findings.push(
             finding(
-              context,
-              'workflow-pinning',
               'warning',
               'Workflow action is not pinned to a commit SHA',
               `${file.path} uses ${action.target}@${action.ref}; pin third-party actions to immutable commits for stronger supply-chain guarantees.`,
@@ -340,7 +283,7 @@ const RULES: AuditRule[] = [
     id: 'nullbuilder-workflow-ref',
     title: 'Nullbuilder workflow references are stable',
     area: 'release',
-    evaluate: (context) => {
+    evaluate: (context, finding) => {
       return context.workflowFiles.flatMap((file) => {
         const findings: AuditFinding[] = [];
         const references = findNullbuilderWorkflowRefs(file.content);
@@ -352,8 +295,6 @@ const RULES: AuditRule[] = [
 
           findings.push(
             finding(
-              context,
-              'nullbuilder-workflow-ref',
               'warning',
               'Reusable workflow uses a mutable ref',
               `${file.path} references ${reference.workflow}@${reference.ref}; use a release tag for predictable cross-repository behavior.`,
@@ -370,41 +311,5 @@ const RULES: AuditRule[] = [
 ];
 
 export function evaluateAuditChecks(context: AuditContext): AuditCheckResult[] {
-  return RULES.map((rule) => {
-    const findings = rule.evaluate(context);
-    return {
-      id: rule.id,
-      title: rule.title,
-      area: rule.area,
-      status: checkStatus(findings),
-      findings
-    };
-  });
-}
-
-export function isPresent<T>(probe: Probe<T>): probe is { status: 'present'; data: T } {
-  return probe.status === 'present';
-}
-
-function finding(
-  context: AuditContext,
-  ruleId: string,
-  severity: AuditSeverity,
-  title: string,
-  detail: string,
-  url?: string,
-  path?: string
-): AuditFinding {
-  const pathPart = path ? `:${path}` : '';
-  return {
-    id: `${context.repo}:${ruleId}:${severity}:${title}${pathPart}`,
-    ruleId,
-    repo: context.repo,
-    severity,
-    area: RULES.find((rule) => rule.id === ruleId)?.area ?? 'repository',
-    title,
-    detail,
-    url,
-    path
-  };
+  return RULES.map((rule) => evaluateAuditRule(rule, context));
 }
