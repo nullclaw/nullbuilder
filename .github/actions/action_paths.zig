@@ -10,6 +10,7 @@ fn isAsciiDigit(byte: u8) bool {
 
 pub fn isSafeLabel(value: []const u8) bool {
     if (value.len == 0) return false;
+    if (isWindowsReservedDeviceName(value)) return false;
 
     var previous_dot = false;
     for (value, 0..) |byte, index| {
@@ -21,6 +22,31 @@ pub fn isSafeLabel(value: []const u8) bool {
         if (index == 0 and !is_alpha and !is_digit) return false;
         if (byte == '.' and previous_dot) return false;
         previous_dot = byte == '.';
+    }
+
+    return !previous_dot;
+}
+
+fn isWindowsReservedDeviceName(value: []const u8) bool {
+    const stem = std.mem.sliceTo(value, '.');
+
+    if (eqlAsciiIgnoreCase(stem, "con")) return true;
+    if (eqlAsciiIgnoreCase(stem, "prn")) return true;
+    if (eqlAsciiIgnoreCase(stem, "aux")) return true;
+    if (eqlAsciiIgnoreCase(stem, "nul")) return true;
+
+    if (stem.len == 4 and (eqlAsciiIgnoreCase(stem[0..3], "com") or eqlAsciiIgnoreCase(stem[0..3], "lpt"))) {
+        return stem[3] >= '1' and stem[3] <= '9';
+    }
+
+    return false;
+}
+
+fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
+    if (left.len != right.len) return false;
+
+    for (left, right) |left_byte, right_byte| {
+        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
     }
 
     return true;
@@ -57,6 +83,12 @@ test "action paths rejects unsafe labels" {
     try std.testing.expect(!isSafeLabel(".."));
     try std.testing.expect(!isSafeLabel("-leading-dash"));
     try std.testing.expect(!isSafeLabel(".hidden"));
+    try std.testing.expect(!isSafeLabel("trailing."));
+    try std.testing.expect(!isSafeLabel("CON"));
+    try std.testing.expect(!isSafeLabel("nul.txt"));
+    try std.testing.expect(!isSafeLabel("COM1"));
+    try std.testing.expect(!isSafeLabel("lpt9.log"));
+    try std.testing.expect(isSafeLabel("com10"));
 }
 
 test "action paths accepts only safe relative paths" {
@@ -72,4 +104,6 @@ test "action paths accepts only safe relative paths" {
     try std.testing.expect(!isSafeRelativePath("C:\\temp\\nullclaw"));
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts//nullclaw"));
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/.hidden"));
+    try std.testing.expect(!isSafeRelativePath("nightly-artifacts/nullclaw."));
+    try std.testing.expect(!isSafeRelativePath("nightly-artifacts/CON"));
 }
