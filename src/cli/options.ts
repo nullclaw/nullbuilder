@@ -1,4 +1,7 @@
-export type Command = 'repos' | 'issues' | 'prs' | 'runs' | 'stars' | 'audit' | 'build-pr' | 'release-tag';
+const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
+const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
+
+export type Command = (typeof COMMANDS)[number];
 
 export type CliOptions = {
   json: boolean;
@@ -22,8 +25,6 @@ export type ParsedCommandLine =
       command: Command;
       options: CliOptions;
     };
-
-const COMMANDS = new Set<Command>(['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag']);
 
 export const HELP = `Usage: nullbuilder <command> [options]
 
@@ -71,13 +72,13 @@ export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
     return { kind: 'help' };
   }
 
-  if (!COMMANDS.has(rawCommand as Command)) {
+  if (!isCommand(rawCommand)) {
     throw new Error(`Unknown command: ${rawCommand}`);
   }
 
   return {
     kind: 'command',
-    command: rawCommand as Command,
+    command: rawCommand,
     options: parseOptions(rest)
   };
 }
@@ -146,10 +147,14 @@ function parsePositiveInteger(value: string, option: string): number {
     throw new Error(`${option} must be a positive number.`);
   }
 
-  const parsed = Number(value);
+  const parsed = Number.parseInt(value, 10);
   if (!Number.isSafeInteger(parsed)) {
     throw new Error(`${option} must be a positive number.`);
   }
 
   return parsed;
+}
+
+function isCommand(value: string): value is Command {
+  return COMMAND_SET.has(value);
 }

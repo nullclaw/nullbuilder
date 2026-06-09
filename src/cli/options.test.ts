@@ -5,7 +5,25 @@ import { parseCommandLine, parseOptions } from './options';
 test('parseCommandLine treats empty and explicit help as help', () => {
   assert.deepEqual(parseCommandLine([]), { kind: 'help' });
   assert.deepEqual(parseCommandLine(['--help']), { kind: 'help' });
+  assert.deepEqual(parseCommandLine(['-h']), { kind: 'help' });
   assert.deepEqual(parseCommandLine(['help']), { kind: 'help' });
+});
+
+test('parseCommandLine parses known commands through the command guard', () => {
+  assert.deepEqual(parseCommandLine(['repos', '--json']), {
+    kind: 'command',
+    command: 'repos',
+    options: {
+      json: true,
+      discover: false,
+      confirm: false,
+      force: false,
+      allowDraft: false,
+      allowFork: false,
+      allowNonDefaultBase: false,
+      positionals: []
+    }
+  });
 });
 
 test('parseCommandLine rejects unknown commands', () => {
