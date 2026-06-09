@@ -18,6 +18,8 @@ type CacheEntry<T> = {
   expiresAt: number;
 };
 
+export const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 256;
+
 const cache = new Map<string, CacheEntry<unknown>>();
 
 export async function githubGetPages<T>(
@@ -69,6 +71,7 @@ async function githubFetchJson<T>(
   const now = Date.now();
 
   if (cached && cached.expiresAt > now) {
+    touchCacheEntry(key, cached);
     return {
       data: cached.data,
       next: cached.next
@@ -100,6 +103,7 @@ async function githubFetchJson<T>(
 
   if (response.status === 304 && cached) {
     cached.expiresAt = now + config.cacheTtlMs;
+    touchCacheEntry(key, cached);
     return {
       data: cached.data,
       next: cached.next
@@ -114,7 +118,7 @@ async function githubFetchJson<T>(
   const data = response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 
   if (shouldCache) {
-    cache.set(key, {
+    writeCacheEntry(key, {
       data,
       next,
       etag: response.headers.get('ETag') ?? undefined,
@@ -211,6 +215,37 @@ export function publicErrorMessage(error: unknown): string {
 function cacheKey(config: NullbuilderConfig, url: string, accept: string): string {
   const tokenKey = config.token ? createHash('sha256').update(config.token).digest('hex').slice(0, 12) : 'anonymous';
   return `${config.apiBaseUrl}|${tokenKey}|${accept}|${url}`;
+}
+
+function touchCacheEntry<T>(key: string, entry: CacheEntry<T>): void {
+  if (!key) {
+    return;
+  }
+
+  cache.delete(key);
+  cache.set(key, entry);
+}
+
+function writeCacheEntry<T>(key: string, entry: CacheEntry<T>): void {
+  touchCacheEntry(key, entry);
+  pruneCache(Date.now());
+}
+
+function pruneCache(now: number): void {
+  for (const [key, entry] of cache) {
+    if (entry.expiresAt <= now) {
+      cache.delete(key);
+    }
+  }
+
+  while (cache.size > GITHUB_RESPONSE_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) {
+      return;
+    }
+
+    cache.delete(oldestKey);
+  }
 }
 
 export class GitHubApiError extends Error {
