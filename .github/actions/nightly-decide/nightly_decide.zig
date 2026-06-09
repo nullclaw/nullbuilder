@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const action_args = @import("action_args");
+const action_paths = @import("action_paths");
 
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 
@@ -34,11 +35,40 @@ const DecideOptions = struct {
     force: bool,
 };
 
+const DecideValidationError = error{
+    InvalidRunsJsonPath,
+    InvalidCurrentRunId,
+    InvalidHeadSha,
+};
+
 fn isNightlyEvent(event: []const u8) bool {
     for (NIGHTLY_EVENTS) |candidate| {
         if (std.mem.eql(u8, event, candidate)) return true;
     }
     return false;
+}
+
+fn isDecimalId(value: []const u8) bool {
+    if (value.len == 0) return false;
+
+    const id = std.fmt.parseUnsigned(u64, value, 10) catch return false;
+    return id > 0;
+}
+
+fn isHexSha(value: []const u8) bool {
+    if (value.len < 7 or value.len > 64) return false;
+
+    for (value) |byte| {
+        if (!std.ascii.isHex(byte)) return false;
+    }
+
+    return true;
+}
+
+fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
+    if (!action_paths.isSafeRelativePath(options.runs_json_path)) return error.InvalidRunsJsonPath;
+    if (!isDecimalId(options.current_run_id)) return error.InvalidCurrentRunId;
+    if (!isHexSha(options.head_sha)) return error.InvalidHeadSha;
 }
 
 fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(RunsPayload) {
@@ -133,6 +163,21 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 }
 
 fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !void {
+    validateDecideOptions(options) catch |err| switch (err) {
+        error.InvalidRunsJsonPath => {
+            std.debug.print("invalid runs json path: {s}\n", .{options.runs_json_path});
+            return error.InvalidArguments;
+        },
+        error.InvalidCurrentRunId => {
+            std.debug.print("invalid current run id: {s}\n", .{options.current_run_id});
+            return error.InvalidArguments;
+        },
+        error.InvalidHeadSha => {
+            std.debug.print("invalid head sha: {s}\n", .{options.head_sha});
+            return error.InvalidArguments;
+        },
+    };
+
     const json_bytes = try std.Io.Dir.cwd().readFileAlloc(
         io,
         options.runs_json_path,
@@ -248,4 +293,28 @@ test "nightly parses workflow run API payload with unknown fields" {
     const decision = decideShouldBuild(parsed.value.workflow_runs, "43", "abc", "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
+}
+
+test "nightly validates action options before reading runs json" {
+    const valid_options = DecideOptions{
+        .runs_json_path = "previous-nightly-runs.json",
+        .current_run_id = "10",
+        .head_sha = "0123456789abcdef0123456789abcdef01234567",
+        .workflow_name = "Nightly",
+        .force = false,
+    };
+
+    try validateDecideOptions(valid_options);
+
+    var unsafe_path_options = valid_options;
+    unsafe_path_options.runs_json_path = "../previous-nightly-runs.json";
+    try std.testing.expectError(error.InvalidRunsJsonPath, validateDecideOptions(unsafe_path_options));
+
+    var unsafe_run_options = valid_options;
+    unsafe_run_options.current_run_id = "not-a-number";
+    try std.testing.expectError(error.InvalidCurrentRunId, validateDecideOptions(unsafe_run_options));
+
+    var unsafe_sha_options = valid_options;
+    unsafe_sha_options.head_sha = "not-a-sha";
+    try std.testing.expectError(error.InvalidHeadSha, validateDecideOptions(unsafe_sha_options));
 }

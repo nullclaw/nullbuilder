@@ -54,8 +54,10 @@ runs:
 
         zig run \
           --dep action_args \
+          --dep action_paths \
           -Mroot="$GITHUB_ACTION_PATH/nightly_decide.zig" \
           -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
+          -Maction_paths="$GITHUB_ACTION_PATH/../action_paths.zig" \
           -- \
           --runs-json "${DECIDE_RUNS_JSON}" \
           --current-run-id "${DECIDE_CURRENT_RUN_ID}" \

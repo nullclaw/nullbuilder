@@ -48,8 +48,10 @@ runs:
       run: |
         zig run \
           --dep action_args \
+          --dep action_paths \
           -Mroot="$GITHUB_ACTION_PATH/package_artifact.zig" \
           -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
+          -Maction_paths="$GITHUB_ACTION_PATH/../action_paths.zig" \
           -- \
           --binary "${PACKAGE_BINARY}" \
           --target "${PACKAGE_TARGET}" \

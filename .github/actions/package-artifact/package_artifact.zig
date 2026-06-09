@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const action_args = @import("action_args");
+const action_paths = @import("action_paths");
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 
@@ -63,55 +64,9 @@ fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
     });
 }
 
-fn isAsciiAlpha(byte: u8) bool {
-    return (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z');
-}
-
-fn isAsciiDigit(byte: u8) bool {
-    return byte >= '0' and byte <= '9';
-}
-
-fn isSafeArtifactLabel(value: []const u8) bool {
-    if (value.len == 0) return false;
-
-    var previous_dot = false;
-    for (value, 0..) |byte, index| {
-        const is_alpha = isAsciiAlpha(byte);
-        const is_digit = isAsciiDigit(byte);
-        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
-
-        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
-        if (index == 0 and !is_alpha and !is_digit) return false;
-        if (byte == '.' and previous_dot) return false;
-        previous_dot = byte == '.';
-    }
-
-    return true;
-}
-
-fn hasWindowsDrivePrefix(path: []const u8) bool {
-    return path.len >= 2 and isAsciiAlpha(path[0]) and path[1] == ':';
-}
-
-fn isSafeRelativeArtifactPath(path: []const u8) bool {
-    if (path.len == 0) return false;
-    if (path[0] == '/') return false;
-    if (std.mem.indexOfScalar(u8, path, '\\') != null) return false;
-    if (hasWindowsDrivePrefix(path)) return false;
-
-    var segments = std.mem.splitScalar(u8, path, '/');
-    while (segments.next()) |segment| {
-        if (std.mem.eql(u8, segment, ".")) return false;
-        if (std.mem.eql(u8, segment, "..")) return false;
-        if (!isSafeArtifactLabel(segment)) return false;
-    }
-
-    return true;
-}
-
 fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
-    if (!isSafeRelativeArtifactPath(options.binary_path)) return error.InvalidBinaryPath;
-    if (!isSafeArtifactLabel(options.target)) return error.InvalidTargetLabel;
+    if (!action_paths.isSafeRelativePath(options.binary_path)) return error.InvalidBinaryPath;
+    if (!action_paths.isSafeLabel(options.target)) return error.InvalidTargetLabel;
 }
 
 fn printUsage(io: std.Io) !u8 {
@@ -258,28 +213,6 @@ test "package artifact builds parseable manifest" {
         "https://github.com/nullclaw/nullclaw/actions/runs/123",
         parsed.value.object.get("run_url").?.string,
     );
-}
-
-test "package artifact rejects unsafe manifest target labels" {
-    try std.testing.expect(isSafeArtifactLabel("linux-x86_64"));
-    try std.testing.expect(!isSafeArtifactLabel("../outside"));
-    try std.testing.expect(!isSafeArtifactLabel("linux/amd64"));
-    try std.testing.expect(!isSafeArtifactLabel(".."));
-    try std.testing.expect(!isSafeArtifactLabel("-leading-dash"));
-}
-
-test "package artifact accepts only safe relative binary paths" {
-    try std.testing.expect(isSafeRelativeArtifactPath("nightly-artifacts/nullclaw-linux-x86_64"));
-    try std.testing.expect(isSafeRelativeArtifactPath("nightly-artifacts/nullclaw-linux-x86_64.exe"));
-
-    try std.testing.expect(!isSafeRelativeArtifactPath(""));
-    try std.testing.expect(!isSafeRelativeArtifactPath("../outside"));
-    try std.testing.expect(!isSafeRelativeArtifactPath("nightly-artifacts/../outside"));
-    try std.testing.expect(!isSafeRelativeArtifactPath("/tmp/nullclaw"));
-    try std.testing.expect(!isSafeRelativeArtifactPath("C:/temp/nullclaw"));
-    try std.testing.expect(!isSafeRelativeArtifactPath("C:\\temp\\nullclaw"));
-    try std.testing.expect(!isSafeRelativeArtifactPath("nightly-artifacts//nullclaw"));
-    try std.testing.expect(!isSafeRelativeArtifactPath("nightly-artifacts/.hidden"));
 }
 
 test "package artifact validates package options before filesystem writes" {

@@ -47,12 +47,25 @@ pub fn build(b: *std.Build) void {
     const run_action_args_tests = b.addRunArtifact(action_args_tests);
     test_step.dependOn(&run_action_args_tests.step);
 
+    const action_paths_module = b.createModule(.{
+        .root_source_file = b.path(".github/actions/action_paths.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const action_paths_tests = b.addTest(.{
+        .root_module = action_paths_module,
+    });
+    const run_action_paths_tests = b.addRunArtifact(action_paths_tests);
+    test_step.dependOn(&run_action_paths_tests.step);
+
     const nightly_decide_module = b.createModule(.{
         .root_source_file = b.path(".github/actions/nightly-decide/nightly_decide.zig"),
         .target = target,
         .optimize = optimize,
     });
     nightly_decide_module.addImport("action_args", action_args_module);
+    nightly_decide_module.addImport("action_paths", action_paths_module);
 
     const nightly_decide_tests = b.addTest(.{
         .root_module = nightly_decide_module,
@@ -66,6 +79,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     package_artifact_module.addImport("action_args", action_args_module);
+    package_artifact_module.addImport("action_paths", action_paths_module);
 
     const package_artifact_tests = b.addTest(.{
         .root_module = package_artifact_module,
