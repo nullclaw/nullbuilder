@@ -13,6 +13,12 @@ const red = "\x1b[31m";
 const dim = "\x1b[2m";
 const reset = "\x1b[0m";
 
+const repo_column_width: usize = 28;
+const count_column_width: usize = 6;
+const status_column_width: usize = 12;
+const work_number_width: usize = 5;
+const work_title_width: usize = 74;
+const error_message_width: usize = 90;
 const max_recent_work_items = 8;
 
 pub fn render(
@@ -42,22 +48,34 @@ pub fn render(
         totals.failing,
     });
 
-    try out.print("{s:<28} {s:>6} {s:>6} {s:<12} {s:<12} {s:<12}\n", .{ "repo", "issues", "prs", "ci", "nightly", "release" });
+    try out.print("{s:<[6]} {s:>[7]} {s:>[7]} {s:<[8]} {s:<[8]} {s:<[8]}\n", .{
+        "repo",
+        "issues",
+        "prs",
+        "ci",
+        "nightly",
+        "release",
+        repo_column_width,
+        count_column_width,
+        status_column_width,
+    });
     try out.writeAll("--------------------------------------------------------------------------------\n");
 
     for (dashboard.items) |item| {
         const repo = dashboard_model.repositoryFromValue(item) orelse continue;
 
-        try out.print("{s:<28} {d:>6} {d:>6} ", .{
-            clipUtf8(repo.slug, 28),
+        try out.print("{s:<[3]} {d:>[4]} {d:>[4]} ", .{
+            clipUtf8(repo.slug, repo_column_width),
             repo.open_issues,
             repo.open_pulls,
+            repo_column_width,
+            count_column_width,
         });
-        try printStatus(out, no_color, repo.runs.ci, 12);
+        try printStatus(out, no_color, repo.runs.ci, status_column_width);
         try out.writeByte(' ');
-        try printStatus(out, no_color, repo.runs.nightly, 12);
+        try printStatus(out, no_color, repo.runs.nightly, status_column_width);
         try out.writeByte(' ');
-        try printStatus(out, no_color, repo.runs.release, 12);
+        try printStatus(out, no_color, repo.runs.release, status_column_width);
         try out.writeByte('\n');
     }
 
@@ -71,9 +89,10 @@ pub fn render(
         try out.writeAll("-----------\n");
         var errors = dashboard_model.LoadErrorIterator.init(dashboard);
         while (errors.next()) |load_error| {
-            try out.print("  {s:<28} {s}\n", .{
-                clipUtf8(load_error.repo, 28),
-                clipUtf8(load_error.message, 90),
+            try out.print("  {s:<[2]} {s}\n", .{
+                clipUtf8(load_error.repo, repo_column_width),
+                clipUtf8(load_error.message, error_message_width),
+                repo_column_width,
             });
         }
     }
@@ -85,10 +104,12 @@ fn printWorkItems(out: *std.Io.Writer, dashboard: Dashboard, kind: WorkKind, lab
 
     while (printed < max_recent_work_items) {
         const work = items.next() orelse break;
-        try out.print("  {s:<28} #{d:<5} {s}\n", .{
-            clipUtf8(work.repo, 28),
+        try out.print("  {s:<[3]} #{d:<[4]} {s}\n", .{
+            clipUtf8(work.repo, repo_column_width),
             work.number,
-            clipUtf8(work.title, 74),
+            clipUtf8(work.title, work_title_width),
+            repo_column_width,
+            work_number_width,
         });
         printed += 1;
     }
@@ -100,7 +121,7 @@ fn printWorkItems(out: *std.Io.Writer, dashboard: Dashboard, kind: WorkKind, lab
 
 fn printStatus(out: *std.Io.Writer, no_color: bool, status: []const u8, width: usize) !void {
     try out.writeAll(statusColor(no_color, status));
-    try out.print("{s:<12}", .{clipUtf8(status, width)});
+    try out.print("{s:<[1]}", .{ clipUtf8(status, width), width });
     try out.writeAll(color(no_color, reset));
 }
 
@@ -139,6 +160,18 @@ test "clipUtf8 does not split multibyte sequences" {
     try std.testing.expectEqualStrings("repo-", clipUtf8(text, 6));
     try std.testing.expectEqualStrings("repo-\xd0\xbf", clipUtf8(text, 7));
     try std.testing.expectEqualStrings("", clipUtf8(text, 0));
+}
+
+test "printStatus honors requested display width" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try printStatus(&out.writer, true, "queued", 8);
+    try std.testing.expectEqualStrings("queued  ", out.writer.buffered());
+
+    out.clearRetainingCapacity();
+    try printStatus(&out.writer, true, "in_progress", 4);
+    try std.testing.expectEqualStrings("in_p", out.writer.buffered());
 }
 
 test "render prints repository rows recent work and load errors" {
