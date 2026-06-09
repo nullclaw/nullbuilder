@@ -24,7 +24,12 @@ test('mapRepositorySummary maps GitHub payloads and filters PR-backed issues', (
       issue({
         number: 7,
         user: null,
-        labels: ['bug', { name: 'security', color: 'b60205' }, {}],
+        labels: [
+          'bug',
+          { name: 'security', color: 'b60205' },
+          { name: 'unsafe', color: 'url(javascript:alert)' },
+          {}
+        ],
         updated_at: '2026-06-09T12:00:00Z'
       }),
       issue({ number: 8, pull_request: {} })
@@ -62,6 +67,7 @@ test('mapRepositorySummary maps GitHub payloads and filters PR-backed issues', (
   assert.deepEqual(summary.issues[0].labels, [
     { name: 'bug', color: 'd0d7de' },
     { name: 'security', color: 'b60205' },
+    { name: 'unsafe', color: 'd0d7de' },
     { name: 'label', color: 'd0d7de' }
   ]);
   assert.equal(summary.pullRequests[0].comments, 0);
