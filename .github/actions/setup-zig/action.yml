@@ -12,4 +12,4 @@ runs:
   steps:
     - name: Install Zig
       shell: bash
-      run: '"${GITHUB_ACTION_PATH}/install-zig.sh" "${{ inputs.version }}"'
+      run: 'bash "${GITHUB_ACTION_PATH}/install-zig.sh" "${{ inputs.version }}"'
