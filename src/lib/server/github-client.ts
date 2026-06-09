@@ -185,17 +185,26 @@ function rateLimitResetMessage(remaining: string | null, reset: string | null): 
     return '';
   }
 
-  const resetSeconds = Number(reset);
-  if (!Number.isSafeInteger(resetSeconds)) {
-    return '';
-  }
-
-  const resetDate = new Date(resetSeconds * 1000);
-  if (!Number.isFinite(resetDate.getTime())) {
+  const resetDate = parseRateLimitResetDate(reset);
+  if (!resetDate) {
     return '';
   }
 
   return `; rate limit resets at ${resetDate.toISOString()}`;
+}
+
+function parseRateLimitResetDate(reset: string): Date | null {
+  if (!/^[1-9]\d*$/.test(reset)) {
+    return null;
+  }
+
+  const resetSeconds = Number.parseInt(reset, 10);
+  if (!Number.isSafeInteger(resetSeconds)) {
+    return null;
+  }
+
+  const resetDate = new Date(resetSeconds * 1000);
+  return Number.isFinite(resetDate.getTime()) ? resetDate : null;
 }
 
 function parseNextLink(link: string | null): string | null {

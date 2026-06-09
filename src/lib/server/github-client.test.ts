@@ -152,23 +152,25 @@ test('githubRequest keeps malformed rate-limit reset headers from masking API er
     NULLBUILDER_CACHE_TTL_MS: '0'
   });
 
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ message: 'rate limited' }), {
-      status: 403,
-      statusText: 'Forbidden',
-      headers: {
-        'X-RateLimit-Remaining': '0',
-        'X-RateLimit-Reset': 'not-a-timestamp'
-      }
-    })) as typeof fetch;
+  for (const reset of ['not-a-timestamp', '1760000000.5', '1e3', '0', '9007199254740992']) {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: 'rate limited' }), {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: {
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': reset
+        }
+      })) as typeof fetch;
 
-  await assert.rejects(
-    githubRequest(config, '/repos/nullclaw/nullbuilder'),
-    (error: unknown) =>
-      error instanceof GitHubApiError &&
-      error.status === 403 &&
-      error.message === 'GitHub 403 Forbidden: rate limited'
-  );
+    await assert.rejects(
+      githubRequest(config, `/repos/nullclaw/nullbuilder-${reset}`),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.status === 403 &&
+        error.message === 'GitHub 403 Forbidden: rate limited'
+    );
+  }
 });
 
 test('githubRequest includes valid rate-limit reset timestamps in API errors', async () => {
