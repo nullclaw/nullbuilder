@@ -1,15 +1,11 @@
-import { normalizeRepoSlug, type RepoSlug } from '../repositories';
+import type { RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { mapWithConcurrency } from './concurrency';
-import { GitHubApiError, githubGetPages, githubRequest, publicErrorMessage } from './github-client';
-import {
-  BUILD_PR_TAG_PREFIX,
-  defaultBuildPrTagName,
-  sanitizeBuildPrTagName,
-  sanitizeReleaseTagName
-} from './tags';
+import { githubGetPages, githubRequest, publicErrorMessage } from './github-client';
 
 export { GitHubApiError, githubGet, githubGetPages, publicErrorMessage, resolveGitHubApiUrl } from './github-client';
+export { assertConfiguredRepository, buildPrTag, createReleaseTag } from './github-mutations';
+export type { BuildPrResult, ReleaseTagResult } from './github-mutations';
 
 export type GitHubLabel = {
   name: string;
@@ -104,34 +100,6 @@ export type DashboardData = {
   };
 };
 
-export type BuildPrResult = {
-  repo: RepoSlug;
-  prNumber: number;
-  prTitle: string;
-  headSha: string;
-  headBranch: string;
-  tagName: string;
-  tagUrl: string;
-  workflowUrl: string;
-  workflowTagPattern: string;
-  dryRun: boolean;
-  created: boolean;
-  forced: boolean;
-};
-
-export type ReleaseTagResult = {
-  repo: RepoSlug;
-  tagName: string;
-  targetRef: string;
-  targetSha: string;
-  tagUrl: string;
-  workflowUrl: string;
-  workflowTagPattern: string;
-  dryRun: boolean;
-  created: boolean;
-  forced: boolean;
-};
-
 type GitHubRepositoryResponse = {
   name: string;
   full_name: string;
@@ -208,22 +176,6 @@ type GitHubWorkflowRunResponse = {
 
 type GitHubStargazerResponse = {
   starred_at?: string;
-};
-
-type GitHubPullDetailResponse = GitHubPullResponse;
-
-type GitHubReferenceResponse = {
-  ref: string;
-  object: {
-    sha: string;
-  };
-};
-
-type GitHubBranchResponse = {
-  name: string;
-  commit: {
-    sha: string;
-  };
 };
 
 export async function getDashboard(config: NullbuilderConfig): Promise<DashboardData> {
@@ -340,149 +292,6 @@ export async function getRepositorySummary(config: NullbuilderConfig, repo: Repo
     };
   } catch (error) {
     return makeErrorRepository(config, repo, error);
-  }
-}
-
-export async function buildPrTag(
-  config: NullbuilderConfig,
-  options: {
-    repo: string;
-    prNumber: number;
-    tagName?: string;
-    confirm?: boolean;
-    force?: boolean;
-    allowDraft?: boolean;
-    allowFork?: boolean;
-    allowNonDefaultBase?: boolean;
-  }
-): Promise<BuildPrResult> {
-  const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
-  const requestedTagName = options.tagName ? sanitizeBuildPrTagName(options.tagName) : undefined;
-  const [repository, pull] = await Promise.all([
-    githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`, {
-      useCache: false
-    }),
-    githubRequest<GitHubPullDetailResponse>(config, `/repos/${repo}/pulls/${options.prNumber}`, {
-      useCache: false
-    })
-  ]);
-  assertTrustedPullRequest(repo, repository.default_branch, pull, options);
-  const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(options.prNumber, pull.head.sha));
-  const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
-  const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
-
-  const result: BuildPrResult = {
-    repo,
-    prNumber: pull.number,
-    prTitle: pull.title,
-    headSha: pull.head.sha,
-    headBranch: pull.head.ref,
-    tagName,
-    tagUrl,
-    workflowUrl,
-    workflowTagPattern: `${BUILD_PR_TAG_PREFIX}*`,
-    dryRun: !options.confirm,
-    created: false,
-    forced: false
-  };
-
-  if (!options.confirm) {
-    return result;
-  }
-
-  const tagState = await createOrMoveTagRef(config, repo, tagName, pull.head.sha, Boolean(options.force));
-
-  return {
-    ...result,
-    dryRun: false,
-    created: tagState.created,
-    forced: tagState.forced
-  };
-}
-
-export async function createReleaseTag(
-  config: NullbuilderConfig,
-  options: {
-    repo: string;
-    tagName: string;
-    targetRef?: string;
-    confirm?: boolean;
-    force?: boolean;
-  }
-): Promise<ReleaseTagResult> {
-  const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
-  const tagName = sanitizeReleaseTagName(options.tagName);
-  const repository = await githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`, {
-    useCache: false
-  });
-  const targetRef = options.targetRef?.trim() || repository.default_branch;
-  const targetSha = await resolveTargetSha(config, repo, targetRef);
-  const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
-  const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
-
-  const result: ReleaseTagResult = {
-    repo,
-    tagName,
-    targetRef,
-    targetSha,
-    tagUrl,
-    workflowUrl,
-    workflowTagPattern: 'v*',
-    dryRun: !options.confirm,
-    created: false,
-    forced: false
-  };
-
-  if (!options.confirm) {
-    return result;
-  }
-
-  const tagState = await createOrMoveTagRef(config, repo, tagName, targetSha, Boolean(options.force));
-
-  return {
-    ...result,
-    dryRun: false,
-    created: tagState.created,
-    forced: tagState.forced
-  };
-}
-
-export function assertConfiguredRepository(config: NullbuilderConfig, repo: RepoSlug): RepoSlug {
-  const allowed = new Set(config.repos.map((entry) => entry.toLowerCase()));
-  if (!allowed.has(repo.toLowerCase())) {
-    throw new Error(`Repository ${repo} is not in NULLBUILDER_REPOS.`);
-  }
-
-  return repo;
-}
-
-function assertTrustedPullRequest(
-  repo: RepoSlug,
-  defaultBranch: string,
-  pull: GitHubPullDetailResponse,
-  options: {
-    allowDraft?: boolean;
-    allowFork?: boolean;
-    allowNonDefaultBase?: boolean;
-  }
-): void {
-  const reasons: string[] = [];
-  const headRepo = pull.head.repo?.full_name;
-
-  if (pull.draft && !options.allowDraft) {
-    reasons.push('draft PRs are rejected by default');
-  }
-
-  if (pull.base.ref !== defaultBranch && !options.allowNonDefaultBase) {
-    reasons.push(`base branch must be ${defaultBranch}`);
-  }
-
-  if ((!headRepo || headRepo.toLowerCase() !== repo.toLowerCase()) && !options.allowFork) {
-    reasons.push('fork PRs are rejected by default');
-  }
-
-  if (reasons.length > 0) {
-    throw new Error(`Pull request is not trusted: ${reasons.join('; ')}.`);
   }
 }
 
@@ -682,68 +491,4 @@ function mapRun(run: GitHubWorkflowRunResponse | null): WorkflowRunSummary | nul
 
 function sortByUpdatedAt(left: { updatedAt: string }, right: { updatedAt: string }): number {
   return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
-}
-
-async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targetRef: string): Promise<string> {
-  if (/^[a-f0-9]{40}$/i.test(targetRef)) {
-    return targetRef;
-  }
-
-  const branch = await githubRequest<GitHubBranchResponse>(
-    config,
-    `/repos/${repo}/branches/${encodeURIComponent(targetRef)}`,
-    {
-      useCache: false
-    }
-  );
-
-  return branch.commit.sha;
-}
-
-async function createOrMoveTagRef(
-  config: NullbuilderConfig,
-  repo: RepoSlug,
-  tagName: string,
-  sha: string,
-  force: boolean
-): Promise<{ created: boolean; forced: boolean }> {
-  try {
-    await githubRequest<GitHubReferenceResponse>(config, `/repos/${repo}/git/refs`, {
-      useCache: false,
-      method: 'POST',
-      body: JSON.stringify({
-        ref: `refs/tags/${tagName}`,
-        sha
-      })
-    });
-    return {
-      created: true,
-      forced: false
-    };
-  } catch (error) {
-    if (!force || !isValidationError(error)) {
-      throw error;
-    }
-
-    await githubRequest<GitHubReferenceResponse>(config, `/repos/${repo}/git/ref/tags/${tagName}`, {
-      useCache: false
-    });
-    await githubRequest<GitHubReferenceResponse>(config, `/repos/${repo}/git/refs/tags/${tagName}`, {
-      useCache: false,
-      method: 'PATCH',
-      body: JSON.stringify({
-        sha,
-        force: true
-      })
-    });
-
-    return {
-      created: true,
-      forced: true
-    };
-  }
-}
-
-function isValidationError(error: unknown): boolean {
-  return error instanceof GitHubApiError && error.status === 422;
 }
