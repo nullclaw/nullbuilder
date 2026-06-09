@@ -12,11 +12,7 @@ import {
 import { buildPrTag, createReleaseTag, discoverRepositories, getDashboard, publicErrorMessage } from '$lib/server/github';
 import { readConfig } from '$lib/server/config';
 import { buildDashboardPageState, resolveDashboardAccess } from '$lib/server/web-page-state';
-import {
-  mutationAccessError,
-  parseBuildPrMutationForm,
-  parseReleaseTagMutationForm
-} from '$lib/server/web-actions';
+import { runBuildPrWebMutation, runReleaseTagWebMutation } from '$lib/server/web-actions';
 import type { Actions, PageServerLoad } from './$types';
 
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
@@ -110,74 +106,44 @@ export const actions: Actions = {
   buildPr: async ({ request, cookies }) => {
     const config = readConfig();
     const formData = await request.formData();
-    const accessError = mutationAccessError(config, cookies, formData.get('csrfToken'), 'build-pr');
-    if (accessError) {
-      return fail(403, {
-        buildError: accessError
+    const mutation = await runBuildPrWebMutation(
+      config,
+      cookies,
+      formData,
+      (input) => buildPrTag(config, input),
+      publicErrorMessage
+    );
+
+    if (!mutation.ok) {
+      return fail(mutation.status, {
+        buildError: mutation.message
       });
     }
 
-    const buildForm = parseBuildPrMutationForm(formData);
-
-    if (!buildForm.repo || !buildForm.prNumber) {
-      return fail(400, {
-        buildError: 'Repository and a positive PR number are required.'
-      });
-    }
-
-    try {
-      const result = await buildPrTag(config, {
-        repo: buildForm.repo,
-        prNumber: buildForm.prNumber,
-        tagName: buildForm.tagName,
-        confirm: buildForm.confirm,
-        force: buildForm.force
-      });
-
-      return {
-        buildResult: result
-      };
-    } catch (error) {
-      return fail(500, {
-        buildError: publicErrorMessage(error)
-      });
-    }
+    return {
+      buildResult: mutation.result
+    };
   },
 
   releaseTag: async ({ request, cookies }) => {
     const config = readConfig();
     const formData = await request.formData();
-    const accessError = mutationAccessError(config, cookies, formData.get('csrfToken'), 'release-tag');
-    if (accessError) {
-      return fail(403, {
-        releaseError: accessError
+    const mutation = await runReleaseTagWebMutation(
+      config,
+      cookies,
+      formData,
+      (input) => createReleaseTag(config, input),
+      publicErrorMessage
+    );
+
+    if (!mutation.ok) {
+      return fail(mutation.status, {
+        releaseError: mutation.message
       });
     }
 
-    const releaseForm = parseReleaseTagMutationForm(formData);
-
-    if (!releaseForm.repo || !releaseForm.tagName) {
-      return fail(400, {
-        releaseError: 'Repository and release tag are required.'
-      });
-    }
-
-    try {
-      const result = await createReleaseTag(config, {
-        repo: releaseForm.repo,
-        tagName: releaseForm.tagName,
-        targetRef: releaseForm.targetRef,
-        confirm: releaseForm.confirm,
-        force: releaseForm.force
-      });
-
-      return {
-        releaseResult: result
-      };
-    } catch (error) {
-      return fail(500, {
-        releaseError: publicErrorMessage(error)
-      });
-    }
+    return {
+      releaseResult: mutation.result
+    };
   }
 };
