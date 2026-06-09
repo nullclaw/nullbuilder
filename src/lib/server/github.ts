@@ -10,10 +10,10 @@ import {
   type GitHubPullResponse,
   type GitHubRepositoryResponse,
   type GitHubWorkflowRunResponse,
-  type RepositorySummary,
-  type StarGrowthSummary
+  type RepositorySummary
 } from './github-dashboard';
 import { githubGetPages, githubRequest } from './github-client';
+import { getStarGrowth } from './github-star-growth';
 
 export { GitHubApiError, githubGet, githubGetPages, publicErrorMessage, resolveGitHubApiUrl } from './github-client';
 export { assertConfiguredRepository, buildPrTag, createReleaseTag } from './github-mutations';
@@ -27,10 +27,6 @@ export type {
   StarGrowthSummary,
   WorkflowRunSummary
 } from './github-dashboard';
-
-type GitHubStargazerResponse = {
-  starred_at?: string;
-};
 
 export async function getDashboard(config: NullbuilderConfig): Promise<DashboardData> {
   const repoList = config.discoverRepos ? await discoverRepositories(config) : config.repos;
@@ -93,69 +89,5 @@ export async function getRepositorySummary(config: NullbuilderConfig, repo: Repo
     return mapRepositorySummary(repo, repository, issues, pulls, runs.workflow_runs, starGrowth);
   } catch (error) {
     return makeErrorRepository(config, repo, error);
-  }
-}
-
-async function getStarGrowth(
-  config: NullbuilderConfig,
-  repo: RepoSlug,
-  currentStars: number
-): Promise<StarGrowthSummary> {
-  if (currentStars === 0) {
-    return {
-      current: 0,
-      last7Days: 0,
-      last30Days: 0
-    };
-  }
-
-  try {
-    const now = Date.now();
-    const day = 24 * 60 * 60 * 1000;
-    const lastPage = Math.max(1, Math.ceil(currentStars / 100));
-    let last7Days = 0;
-    let last30Days = 0;
-
-    for (let page = lastPage, pagesRead = 0; page >= 1 && pagesRead < 10; page -= 1, pagesRead += 1) {
-      const stargazers = await githubRequest<GitHubStargazerResponse[]>(
-        config,
-        `/repos/${repo}/stargazers?per_page=100&page=${page}`,
-        {
-          accept: 'application/vnd.github.star+json'
-        }
-      );
-      let pageHasRecentStars = false;
-
-      for (const star of stargazers) {
-        if (!star.starred_at) {
-          continue;
-        }
-
-        const age = now - Date.parse(star.starred_at);
-        if (age <= 30 * day) {
-          pageHasRecentStars = true;
-          last30Days += 1;
-        }
-        if (age <= 7 * day) {
-          last7Days += 1;
-        }
-      }
-
-      if (!pageHasRecentStars) {
-        break;
-      }
-    }
-
-    return {
-      current: currentStars,
-      last7Days,
-      last30Days
-    };
-  } catch {
-    return {
-      current: currentStars,
-      last7Days: null,
-      last30Days: null
-    };
   }
 }
