@@ -23,7 +23,7 @@ pub fn isRepositorySlug(value: []const u8) bool {
     const repo = segments.next() orelse return false;
     if (segments.next() != null) return false;
 
-    return isSafeSlugSegment(owner) and isSafeSlugSegment(repo);
+    return isSafeOwnerSegment(owner) and isSafeRepoSegment(repo);
 }
 
 pub fn isHttpUrlBase(value: []const u8) bool {
@@ -103,7 +103,22 @@ pub fn isSafeMetadataValue(value: []const u8, max_len: usize) bool {
     return true;
 }
 
-fn isSafeSlugSegment(value: []const u8) bool {
+fn isSafeOwnerSegment(value: []const u8) bool {
+    if (value.len == 0 or value.len > 39) return false;
+
+    for (value, 0..) |byte, index| {
+        const is_alpha = std.ascii.isAlphabetic(byte);
+        const is_digit = std.ascii.isDigit(byte);
+        const is_hyphen = byte == '-';
+
+        if (!is_alpha and !is_digit and !is_hyphen) return false;
+        if ((index == 0 or index == value.len - 1) and !is_alpha and !is_digit) return false;
+    }
+
+    return true;
+}
+
+fn isSafeRepoSegment(value: []const u8) bool {
     if (value.len == 0) return false;
 
     var previous_dot = false;
@@ -146,6 +161,10 @@ test "action values validate repository slugs" {
     try std.testing.expect(!isRepositorySlug("nullclaw"));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder/extra"));
     try std.testing.expect(!isRepositorySlug("../nullbuilder"));
+    try std.testing.expect(!isRepositorySlug("null_claw/nullbuilder"));
+    try std.testing.expect(!isRepositorySlug("null.claw/nullbuilder"));
+    try std.testing.expect(!isRepositorySlug("nullclaw-/nullbuilder"));
+    try std.testing.expect(!isRepositorySlug("abcdefghijklmnopqrstuvwxyzabcdefghijklmn/nullbuilder"));
     try std.testing.expect(!isRepositorySlug("nullclaw/.hidden"));
 }
 
