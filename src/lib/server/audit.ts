@@ -1,6 +1,19 @@
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import {
+  buildAuditTotals,
+  checkStatus,
+  scoreFindings,
+  sortFindings
+} from './audit-summary';
+import type {
+  AuditArea,
+  AuditFinding,
+  AuditReport,
+  AuditRepositoryResult,
+  AuditSeverity
+} from './audit-types';
+import {
   decodeGitHubContent,
   encodeGitHubPath,
   findActionUses,
@@ -11,60 +24,15 @@ import {
 import { mapWithConcurrency } from './concurrency';
 import { discoverRepositories, GitHubApiError, githubGet, publicErrorMessage } from './github';
 
-export type AuditSeverity = 'critical' | 'warning' | 'info';
-export type AuditArea = 'repository' | 'security' | 'workflow' | 'release';
-export type AuditStatus = 'ok' | AuditSeverity;
-
-export type AuditFinding = {
-  id: string;
-  ruleId: string;
-  repo: RepoSlug;
-  severity: AuditSeverity;
-  area: AuditArea;
-  title: string;
-  detail: string;
-  url?: string;
-  path?: string;
-};
-
-export type AuditCheckResult = {
-  id: string;
-  title: string;
-  area: AuditArea;
-  status: AuditStatus;
-  findings: AuditFinding[];
-};
-
-export type AuditRepositoryResult = {
-  repo: RepoSlug;
-  url: string;
-  defaultBranch: string;
-  status: 'ok' | 'error';
-  score: number;
-  checks: AuditCheckResult[];
-  findings: AuditFinding[];
-  error?: string;
-};
-
-export type AuditReport = {
-  generatedAt: string;
-  hasToken: boolean;
-  owner: string;
-  repos: RepoSlug[];
-  repositories: AuditRepositoryResult[];
-  findings: AuditFinding[];
-  hasReadErrors: boolean;
-  totals: {
-    repositories: number;
-    loadedRepositories: number;
-    erroredRepositories: number;
-    critical: number;
-    warning: number;
-    info: number;
-    findings: number;
-    averageScore: number;
-  };
-};
+export type {
+  AuditArea,
+  AuditCheckResult,
+  AuditFinding,
+  AuditReport,
+  AuditRepositoryResult,
+  AuditSeverity,
+  AuditStatus
+} from './audit-types';
 
 type GitHubRepositoryResponse = {
   full_name: string;
@@ -430,13 +398,8 @@ const RULES: AuditRule[] = [
 export async function getAuditReport(config: NullbuilderConfig): Promise<AuditReport> {
   const repoList = config.discoverRepos ? await discoverRepositories(config) : config.repos;
   const repositories = await mapWithConcurrency(repoList, config.concurrency, (repo) => auditRepository(config, repo));
-  const loadedRepositories = repositories.filter((repo) => repo.status === 'ok');
   const findings = repositories.flatMap((repo) => repo.findings).sort(sortFindings);
-  const counts = countFindings(findings);
-  const averageScore =
-    loadedRepositories.length === 0
-      ? 0
-      : Math.round(loadedRepositories.reduce((total, repo) => total + repo.score, 0) / loadedRepositories.length);
+  const totals = buildAuditTotals(repositories, findings);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -445,17 +408,8 @@ export async function getAuditReport(config: NullbuilderConfig): Promise<AuditRe
     repos: repoList,
     repositories,
     findings,
-    hasReadErrors: repositories.some((repo) => repo.status === 'error'),
-    totals: {
-      repositories: repositories.length,
-      loadedRepositories: loadedRepositories.length,
-      erroredRepositories: repositories.length - loadedRepositories.length,
-      critical: counts.critical,
-      warning: counts.warning,
-      info: counts.info,
-      findings: findings.length,
-      averageScore
-    }
+    hasReadErrors: totals.erroredRepositories > 0,
+    totals
   };
 }
 
@@ -618,55 +572,4 @@ function finding(
 
 function isPresent<T>(probe: Probe<T>): probe is { status: 'present'; data: T } {
   return probe.status === 'present';
-}
-
-function checkStatus(findings: AuditFinding[]): AuditStatus {
-  if (findings.some((finding) => finding.severity === 'critical')) {
-    return 'critical';
-  }
-  if (findings.some((finding) => finding.severity === 'warning')) {
-    return 'warning';
-  }
-  if (findings.some((finding) => finding.severity === 'info')) {
-    return 'info';
-  }
-  return 'ok';
-}
-
-function scoreFindings(findings: AuditFinding[]): number {
-  const penalty = findings.reduce((total, finding) => {
-    if (finding.severity === 'critical') {
-      return total + 35;
-    }
-    if (finding.severity === 'warning') {
-      return total + 15;
-    }
-    return total + 5;
-  }, 0);
-
-  return Math.max(0, 100 - penalty);
-}
-
-function countFindings(findings: AuditFinding[]): Record<AuditSeverity, number> {
-  return findings.reduce(
-    (counts, finding) => {
-      counts[finding.severity] += 1;
-      return counts;
-    },
-    { critical: 0, warning: 0, info: 0 }
-  );
-}
-
-function sortFindings(left: AuditFinding, right: AuditFinding): number {
-  const severityOrder: Record<AuditSeverity, number> = {
-    critical: 0,
-    warning: 1,
-    info: 2
-  };
-
-  return (
-    severityOrder[left.severity] - severityOrder[right.severity] ||
-    left.repo.localeCompare(right.repo) ||
-    left.title.localeCompare(right.title)
-  );
 }
