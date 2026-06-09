@@ -1,4 +1,4 @@
-import { fail, type Cookies } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import { getAuditReport } from '$lib/server/audit';
 import {
   AUTH_COOKIE,
@@ -11,7 +11,12 @@ import {
   LoginRateLimiter
 } from '$lib/server/auth';
 import { buildPrTag, createReleaseTag, discoverRepositories, getDashboard, publicErrorMessage } from '$lib/server/github';
-import { readConfig, type NullbuilderConfig } from '$lib/server/config';
+import { readConfig } from '$lib/server/config';
+import {
+  mutationAccessError,
+  parseBuildPrMutationForm,
+  parseReleaseTagMutationForm
+} from '$lib/server/web-actions';
 import type { Actions, PageServerLoad } from './$types';
 
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
@@ -135,13 +140,9 @@ export const actions: Actions = {
       });
     }
 
-    const repo = String(formData.get('repo') ?? '');
-    const prNumber = parsePositiveFormInteger(formData.get('prNumber'));
-    const tagName = String(formData.get('tagName') ?? '').trim();
-    const confirm = formData.get('confirm') === 'on';
-    const force = formData.get('force') === 'on';
+    const buildForm = parseBuildPrMutationForm(formData);
 
-    if (!repo || !prNumber) {
+    if (!buildForm.repo || !buildForm.prNumber) {
       return fail(400, {
         buildError: 'Repository and a positive PR number are required.'
       });
@@ -149,11 +150,11 @@ export const actions: Actions = {
 
     try {
       const result = await buildPrTag(config, {
-        repo,
-        prNumber,
-        tagName: tagName || undefined,
-        confirm,
-        force
+        repo: buildForm.repo,
+        prNumber: buildForm.prNumber,
+        tagName: buildForm.tagName,
+        confirm: buildForm.confirm,
+        force: buildForm.force
       });
 
       return {
@@ -176,13 +177,9 @@ export const actions: Actions = {
       });
     }
 
-    const repo = String(formData.get('repo') ?? '');
-    const tagName = String(formData.get('tagName') ?? '').trim();
-    const targetRef = String(formData.get('targetRef') ?? '').trim();
-    const confirm = formData.get('confirm') === 'on';
-    const force = formData.get('force') === 'on';
+    const releaseForm = parseReleaseTagMutationForm(formData);
 
-    if (!repo || !tagName) {
+    if (!releaseForm.repo || !releaseForm.tagName) {
       return fail(400, {
         releaseError: 'Repository and release tag are required.'
       });
@@ -190,11 +187,11 @@ export const actions: Actions = {
 
     try {
       const result = await createReleaseTag(config, {
-        repo,
-        tagName,
-        targetRef: targetRef || undefined,
-        confirm,
-        force
+        repo: releaseForm.repo,
+        tagName: releaseForm.tagName,
+        targetRef: releaseForm.targetRef,
+        confirm: releaseForm.confirm,
+        force: releaseForm.force
       });
 
       return {
@@ -207,37 +204,3 @@ export const actions: Actions = {
     }
   }
 };
-
-function mutationAccessError(
-  config: NullbuilderConfig,
-  cookies: Cookies,
-  csrfToken: FormDataEntryValue | null,
-  operation: 'build-pr' | 'release-tag'
-): string | null {
-  if (!config.enableWebMutations) {
-    return `Web mutations are disabled. Set NULLBUILDER_ENABLE_MUTATIONS=true to enable ${operation} from the UI.`;
-  }
-
-  if (!config.webToken || !isAuthenticated(cookies, config)) {
-    return 'Web mutations require NULLBUILDER_WEB_TOKEN authentication.';
-  }
-
-  if (!isCsrfTokenMatch(csrfToken, cookies, config)) {
-    return 'Invalid request token.';
-  }
-
-  return null;
-}
-
-function parsePositiveFormInteger(value: FormDataEntryValue | null): number | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  if (!/^[1-9]\d*$/.test(value)) {
-    return null;
-  }
-
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
