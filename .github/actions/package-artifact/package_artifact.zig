@@ -16,6 +16,11 @@ const PackageOptions = struct {
     built_at: []const u8,
 };
 
+const PackageValidationError = error{
+    InvalidBinaryPath,
+    InvalidTargetLabel,
+};
+
 fn formatSha256Line(allocator: std.mem.Allocator, bytes: []const u8, name: []const u8) ![]u8 {
     var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
@@ -58,13 +63,21 @@ fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
     });
 }
 
+fn isAsciiAlpha(byte: u8) bool {
+    return (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z');
+}
+
+fn isAsciiDigit(byte: u8) bool {
+    return byte >= '0' and byte <= '9';
+}
+
 fn isSafeArtifactLabel(value: []const u8) bool {
     if (value.len == 0) return false;
 
     var previous_dot = false;
     for (value, 0..) |byte, index| {
-        const is_alpha = (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z');
-        const is_digit = byte >= '0' and byte <= '9';
+        const is_alpha = isAsciiAlpha(byte);
+        const is_digit = isAsciiDigit(byte);
         const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
 
         if (!is_alpha and !is_digit and !is_safe_symbol) return false;
@@ -74,6 +87,31 @@ fn isSafeArtifactLabel(value: []const u8) bool {
     }
 
     return true;
+}
+
+fn hasWindowsDrivePrefix(path: []const u8) bool {
+    return path.len >= 2 and isAsciiAlpha(path[0]) and path[1] == ':';
+}
+
+fn isSafeRelativeArtifactPath(path: []const u8) bool {
+    if (path.len == 0) return false;
+    if (path[0] == '/') return false;
+    if (std.mem.indexOfScalar(u8, path, '\\') != null) return false;
+    if (hasWindowsDrivePrefix(path)) return false;
+
+    var segments = std.mem.splitScalar(u8, path, '/');
+    while (segments.next()) |segment| {
+        if (std.mem.eql(u8, segment, ".")) return false;
+        if (std.mem.eql(u8, segment, "..")) return false;
+        if (!isSafeArtifactLabel(segment)) return false;
+    }
+
+    return true;
+}
+
+fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
+    if (!isSafeRelativeArtifactPath(options.binary_path)) return error.InvalidBinaryPath;
+    if (!isSafeArtifactLabel(options.target)) return error.InvalidTargetLabel;
 }
 
 fn printUsage(io: std.Io) !u8 {
@@ -137,10 +175,16 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 }
 
 fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions) !void {
-    if (!isSafeArtifactLabel(options.target)) {
-        std.debug.print("invalid target label: {s}\n", .{options.target});
-        return error.InvalidArguments;
-    }
+    validatePackageOptions(options) catch |err| switch (err) {
+        error.InvalidBinaryPath => {
+            std.debug.print("invalid binary path: {s}\n", .{options.binary_path});
+            return error.InvalidArguments;
+        },
+        error.InvalidTargetLabel => {
+            std.debug.print("invalid target label: {s}\n", .{options.target});
+            return error.InvalidArguments;
+        },
+    };
 
     const binary_bytes = try std.Io.Dir.cwd().readFileAlloc(
         io,
@@ -222,4 +266,42 @@ test "package artifact rejects unsafe manifest target labels" {
     try std.testing.expect(!isSafeArtifactLabel("linux/amd64"));
     try std.testing.expect(!isSafeArtifactLabel(".."));
     try std.testing.expect(!isSafeArtifactLabel("-leading-dash"));
+}
+
+test "package artifact accepts only safe relative binary paths" {
+    try std.testing.expect(isSafeRelativeArtifactPath("nightly-artifacts/nullclaw-linux-x86_64"));
+    try std.testing.expect(isSafeRelativeArtifactPath("nightly-artifacts/nullclaw-linux-x86_64.exe"));
+
+    try std.testing.expect(!isSafeRelativeArtifactPath(""));
+    try std.testing.expect(!isSafeRelativeArtifactPath("../outside"));
+    try std.testing.expect(!isSafeRelativeArtifactPath("nightly-artifacts/../outside"));
+    try std.testing.expect(!isSafeRelativeArtifactPath("/tmp/nullclaw"));
+    try std.testing.expect(!isSafeRelativeArtifactPath("C:/temp/nullclaw"));
+    try std.testing.expect(!isSafeRelativeArtifactPath("C:\\temp\\nullclaw"));
+    try std.testing.expect(!isSafeRelativeArtifactPath("nightly-artifacts//nullclaw"));
+    try std.testing.expect(!isSafeRelativeArtifactPath("nightly-artifacts/.hidden"));
+}
+
+test "package artifact validates package options before filesystem writes" {
+    const valid_options = PackageOptions{
+        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
+        .target = "linux-x86_64",
+        .zig_target = "x86_64-linux-musl",
+        .version = "nightly-20260504-abcdef0",
+        .repository = "nullclaw/nullclaw",
+        .commit = "abcdef012345",
+        .run_id = "123",
+        .server_url = "https://github.com",
+        .built_at = "2026-05-04T02:23:00Z",
+    };
+
+    try validatePackageOptions(valid_options);
+
+    var unsafe_path_options = valid_options;
+    unsafe_path_options.binary_path = "../outside";
+    try std.testing.expectError(error.InvalidBinaryPath, validatePackageOptions(unsafe_path_options));
+
+    var unsafe_target_options = valid_options;
+    unsafe_target_options.target = "../outside";
+    try std.testing.expectError(error.InvalidTargetLabel, validatePackageOptions(unsafe_target_options));
 }
