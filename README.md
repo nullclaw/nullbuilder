@@ -70,6 +70,7 @@ Build and run the terminal command center with Zig:
 
 ```sh
 zig build tui
+zig build test
 zig build tui -- release-tag nullclaw --tag v2026.6.9
 zig build tui -- build-pr nullclaw --pr 17 --tag build-pr-17-a1b2c3d
 ```

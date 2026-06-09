@@ -22,4 +22,16 @@ pub fn build(b: *std.Build) void {
 
     const tui_step = b.step("tui", "Run the nullbuilder Zig terminal dashboard");
     tui_step.dependOn(&run_tui.step);
+
+    const tui_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tui/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_tui_tests = b.addRunArtifact(tui_tests);
+
+    const test_step = b.step("test", "Run Zig TUI tests");
+    test_step.dependOn(&run_tui_tests.step);
 }

@@ -27,6 +27,7 @@ jobs:
       test_command: |
         npm run check
         npm run build
+        zig build test --summary all
         zig build --summary all
       e2e_command: zig build tui -- --help
 
