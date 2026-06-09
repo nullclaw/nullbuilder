@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const dashboard_json = @import("dashboard_json.zig");
+const dashboard_runs = @import("dashboard_runs.zig");
 
 const JsonValue = dashboard_json.JsonValue;
 const JsonObject = dashboard_json.JsonObject;
@@ -48,11 +49,7 @@ pub const Repository = struct {
     pull_requests: []const JsonValue,
 };
 
-pub const RunStatuses = struct {
-    ci: []const u8,
-    nightly: []const u8,
-    release: []const u8,
-};
+pub const RunStatuses = dashboard_runs.RunStatuses;
 
 pub const Totals = struct {
     repositories: u64 = 0,
@@ -153,45 +150,11 @@ fn repositoryFromObject(repo: JsonObject) Repository {
         .open_issues = dashboard_json.intField(repo, "openIssues"),
         .open_pulls = dashboard_json.intField(repo, "openPulls"),
         .stars = dashboard_json.intField(repo, "stars"),
-        .runs = repositoryRunStatuses(status, latest),
-        .has_failure = repoHasFailure(latest),
+        .runs = dashboard_runs.repositoryRunStatuses(status, latest),
+        .has_failure = dashboard_runs.repositoryHasFailure(latest),
         .issues = dashboard_json.arrayField(repo, "issues") orelse emptyJsonValues(),
         .pull_requests = dashboard_json.arrayField(repo, "pullRequests") orelse emptyJsonValues(),
     };
-}
-
-fn repositoryRunStatuses(status: []const u8, latest: ?JsonObject) RunStatuses {
-    if (std.mem.eql(u8, status, "error")) {
-        return .{ .ci = "error", .nightly = "error", .release = "error" };
-    }
-
-    const latest_runs = latest orelse return .{ .ci = "n/a", .nightly = "n/a", .release = "n/a" };
-    return .{
-        .ci = runLabel(latest_runs, "ci"),
-        .nightly = runLabel(latest_runs, "nightly"),
-        .release = runLabel(latest_runs, "release"),
-    };
-}
-
-fn repoHasFailure(latest: ?JsonObject) bool {
-    const latest_runs = latest orelse return false;
-    return isFailedRun(latest_runs, "ci") or
-        isFailedRun(latest_runs, "nightly") or
-        isFailedRun(latest_runs, "release");
-}
-
-fn isFailedRun(latest: JsonObject, field_name: []const u8) bool {
-    const run = dashboard_json.objectField(latest, field_name) orelse return false;
-    const status = dashboard_json.stringField(run, "status", "");
-    if (!std.mem.eql(u8, status, "completed")) return false;
-    return !std.mem.eql(u8, dashboard_json.stringField(run, "conclusion", ""), "success");
-}
-
-fn runLabel(latest: JsonObject, field_name: []const u8) []const u8 {
-    const run = dashboard_json.objectField(latest, field_name) orelse return "n/a";
-    const status = dashboard_json.stringField(run, "status", "");
-    if (!std.mem.eql(u8, status, "completed")) return status;
-    return dashboard_json.stringField(run, "conclusion", "completed");
 }
 
 fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
