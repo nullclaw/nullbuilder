@@ -19,6 +19,8 @@ test('sanitizeReleaseTagName accepts only v-prefixed release tags', () => {
 test('tag sanitizers reject unsafe git ref fragments', () => {
   assert.throws(() => sanitizeBuildPrTagName('build-pr-bad..tag'), /Invalid tag name/);
   assert.throws(() => sanitizeBuildPrTagName('build-pr-bad/tag'), /Invalid tag name/);
+  assert.throws(() => sanitizeBuildPrTagName('build-pr-17.lock'), /Invalid tag name/);
   assert.throws(() => sanitizeReleaseTagName('v1.2.3.'), /Invalid tag name/);
+  assert.throws(() => sanitizeReleaseTagName('v1.2.3.lock'), /Invalid tag name/);
   assert.throws(() => sanitizeReleaseTagName(`v${'a'.repeat(121)}`), /Invalid tag name/);
 });

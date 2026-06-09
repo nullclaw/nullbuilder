@@ -49,6 +49,7 @@ function isSafeTagName(tagName: string): boolean {
     SAFE_TAG_PATTERN.test(tagName) &&
     !tagName.startsWith('refs/') &&
     !tagName.includes('..') &&
-    !tagName.endsWith('.')
+    !tagName.endsWith('.') &&
+    !tagName.endsWith('.lock')
   );
 }
