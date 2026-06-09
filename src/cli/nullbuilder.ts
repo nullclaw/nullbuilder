@@ -1,16 +1,23 @@
 import {
   buildPrTag,
   createReleaseTag,
-  getDashboard,
-  GitHubApiError,
-  publicErrorMessage,
-  type DashboardData
+  getDashboard
 } from '../lib/server/github';
-import { getAuditReport, type AuditFinding, type AuditReport, type AuditSeverity } from '../lib/server/audit';
+import { getAuditReport } from '../lib/server/audit';
 import { readConfig } from '../lib/server/config';
 import { normalizeRepoSlug } from '../lib/repositories';
-import { formatGrowth, formatNullableNumber, workflowRunLabel } from '../lib/dashboard-format';
-import { HELP, parseCommandLine, type Command } from './options';
+import { HELP, parseCommandLine } from './options';
+import {
+  auditExitCode,
+  formatAuditReport,
+  formatBuildPrResult,
+  formatCliError,
+  formatDashboard,
+  formatReleaseTagResult,
+  formatRepositoryErrors,
+  readErrorExitCode,
+  selectDashboardJson
+} from './output';
 
 async function main() {
   const commandLine = parseCommandLine(process.argv.slice(2));
@@ -44,15 +51,7 @@ async function main() {
       return;
     }
 
-    console.log(`${result.dryRun ? 'Dry run' : result.forced ? 'Moved tag' : 'Created tag'} ${result.tagName}`);
-    console.log(`repo: ${result.repo}`);
-    console.log(`pr: #${result.prNumber} ${result.prTitle}`);
-    console.log(`head: ${result.headSha} (${result.headBranch})`);
-    console.log(`tag: ${result.tagUrl}`);
-    console.log(`runs: ${result.workflowUrl}`);
-    if (result.dryRun) {
-      console.log('pass --confirm to create the tag');
-    }
+    console.log(formatBuildPrResult(result));
     return;
   }
 
@@ -74,14 +73,7 @@ async function main() {
       return;
     }
 
-    console.log(`${result.dryRun ? 'Dry run' : result.forced ? 'Moved tag' : 'Created tag'} ${result.tagName}`);
-    console.log(`repo: ${result.repo}`);
-    console.log(`target: ${result.targetSha} (${result.targetRef})`);
-    console.log(`tag: ${result.tagUrl}`);
-    console.log(`runs: ${result.workflowUrl}`);
-    if (result.dryRun) {
-      console.log('pass --confirm to create the tag');
-    }
+    console.log(formatReleaseTagResult(result));
     return;
   }
 
@@ -100,257 +92,42 @@ async function main() {
 
     if (options.json) {
       printJson(report);
-      exitWithAuditProblems(report);
+      setExitCode(auditExitCode(report));
       return;
     }
 
-    printAuditReport(report);
-    exitWithAuditProblems(report);
+    console.log(formatAuditReport(report));
+    setExitCode(auditExitCode(report));
     return;
   }
 
   const dashboard = await getDashboard(config);
 
   if (options.json) {
-    printJson(selectJson(command, dashboard));
-    exitWithReadErrors(dashboard);
+    printJson(selectDashboardJson(command, dashboard));
+    setExitCode(readErrorExitCode(dashboard));
     return;
   }
 
-  switch (command) {
-    case 'repos':
-      printRepos(dashboard);
-      break;
-    case 'issues':
-      printIssues(dashboard);
-      break;
-    case 'prs':
-      printPullRequests(dashboard);
-      break;
-    case 'runs':
-      printRuns(dashboard);
-      break;
-    case 'stars':
-      printStars(dashboard);
-      break;
+  console.log(formatDashboard(command, dashboard));
+  const repositoryErrors = formatRepositoryErrors(dashboard);
+  if (repositoryErrors) {
+    console.error(repositoryErrors);
   }
-
-  printRepositoryErrors(dashboard);
-  exitWithReadErrors(dashboard);
-}
-
-function selectJson(command: Command, dashboard: DashboardData) {
-  const errors = dashboard.repositories
-    .filter((repo) => repo.status === 'error')
-    .map((repo) => ({ repo: repo.slug, error: repo.error }));
-
-  if (command === 'issues') {
-    return {
-      items: dashboard.issues,
-      errors
-    };
-  }
-  if (command === 'prs') {
-    return {
-      items: dashboard.pullRequests,
-      errors
-    };
-  }
-  if (command === 'runs' || command === 'stars' || command === 'repos') {
-    return {
-      items: dashboard.repositories,
-      errors
-    };
-  }
-
-  return dashboard;
-}
-
-function printRepos(dashboard: DashboardData) {
-  printTable(
-    dashboard.repositories.map((repo) => ({
-      repo: repo.slug,
-      state: repo.status,
-      issues: formatNullableNumber(repo.openIssues),
-      prs: formatNullableNumber(repo.openPulls),
-      stars: formatNullableNumber(repo.stars),
-      nightly: workflowRunLabel(repo.latestRuns.nightly),
-      ci: workflowRunLabel(repo.latestRuns.ci),
-      url: repo.url
-    })),
-    ['repo', 'state', 'issues', 'prs', 'stars', 'nightly', 'ci', 'url']
-  );
-}
-
-function printIssues(dashboard: DashboardData) {
-  if (dashboard.issues.length === 0 && dashboard.hasReadErrors) {
-    console.log('No issue rows from loaded repositories. Some repositories failed to load.');
-    return;
-  }
-
-  printTable(
-    dashboard.issues.map((issue) => ({
-      repo: issue.repo,
-      issue: `#${issue.number}`,
-      updated: formatDate(issue.updatedAt),
-      title: issue.title,
-      url: issue.url
-    })),
-    ['repo', 'issue', 'updated', 'title', 'url']
-  );
-}
-
-function printPullRequests(dashboard: DashboardData) {
-  if (dashboard.pullRequests.length === 0 && dashboard.hasReadErrors) {
-    console.log('No PR rows from loaded repositories. Some repositories failed to load.');
-    return;
-  }
-
-  printTable(
-    dashboard.pullRequests.map((pull) => ({
-      repo: pull.repo,
-      pr: `#${pull.number}`,
-      draft: pull.draft ? 'yes' : 'no',
-      updated: formatDate(pull.updatedAt),
-      title: pull.title,
-      url: pull.url
-    })),
-    ['repo', 'pr', 'draft', 'updated', 'title', 'url']
-  );
-}
-
-function printRuns(dashboard: DashboardData) {
-  printTable(
-    dashboard.repositories.flatMap((repo) =>
-      Object.entries(repo.latestRuns).map(([kind, run]) => ({
-        repo: repo.slug,
-        kind,
-        status: repo.status === 'error' ? 'unknown' : workflowRunLabel(run),
-        branch: run?.branch ?? '',
-        updated: run ? formatDate(run.updatedAt) : '',
-        url: run?.url ?? ''
-      }))
-    ),
-    ['repo', 'kind', 'status', 'branch', 'updated', 'url']
-  );
-}
-
-function printStars(dashboard: DashboardData) {
-  printTable(
-    dashboard.repositories.map((repo) => ({
-      repo: repo.slug,
-      stars: formatNullableNumber(repo.starGrowth.current),
-      '7d': formatGrowth(repo.starGrowth.last7Days),
-      '30d': formatGrowth(repo.starGrowth.last30Days),
-      url: repo.url
-    })),
-    ['repo', 'stars', '7d', '30d', 'url']
-  );
-}
-
-function printAuditReport(report: AuditReport) {
-  printTable(
-    report.repositories.map((repo) => {
-      const counts = countAuditFindings(repo.findings);
-      return {
-        repo: repo.repo,
-        state: repo.status,
-        score: String(repo.score),
-        critical: String(counts.critical),
-        warning: String(counts.warning),
-        info: String(counts.info),
-        top: repo.error ?? repo.findings[0]?.title ?? 'ok'
-      };
-    }),
-    ['repo', 'state', 'score', 'critical', 'warning', 'info', 'top']
-  );
-
-  if (report.findings.length === 0) {
-    return;
-  }
-
-  console.log('\nFindings:');
-  for (const item of report.findings) {
-    const path = item.path ? ` (${item.path})` : '';
-    console.log(`[${item.severity}] ${item.repo}: ${item.title}${path}`);
-    console.log(`  ${item.detail}`);
-    if (item.url) {
-      console.log(`  ${item.url}`);
-    }
-  }
-}
-
-function printTable(rows: Array<Record<string, string>>, columns: string[]) {
-  if (rows.length === 0) {
-    console.log('No rows.');
-    return;
-  }
-
-  const widths = columns.map((column) => {
-    return Math.max(column.length, ...rows.map((row) => printableLength(row[column] ?? '')));
-  });
-
-  console.log(columns.map((column, index) => column.padEnd(widths[index])).join('  '));
-  console.log(widths.map((width) => '-'.repeat(width)).join('  '));
-
-  for (const row of rows) {
-    console.log(columns.map((column, index) => (row[column] ?? '').padEnd(widths[index])).join('  '));
-  }
-}
-
-function printRepositoryErrors(dashboard: DashboardData) {
-  for (const repo of dashboard.repositories) {
-    if (repo.status === 'error') {
-      console.error(`${repo.slug}: ${repo.error}`);
-    }
-  }
-}
-
-function exitWithReadErrors(dashboard: DashboardData) {
-  if (dashboard.hasReadErrors) {
-    process.exitCode = 2;
-  }
-}
-
-function exitWithAuditProblems(report: AuditReport) {
-  if (report.hasReadErrors) {
-    process.exitCode = 2;
-  } else if (report.totals.critical > 0) {
-    process.exitCode = 3;
-  }
-}
-
-function countAuditFindings(findings: AuditFinding[]): Record<AuditSeverity, number> {
-  return findings.reduce(
-    (counts, finding) => {
-      counts[finding.severity] += 1;
-      return counts;
-    },
-    { critical: 0, warning: 0, info: 0 }
-  );
-}
-
-function printableLength(value: string): number {
-  return value.length;
-}
-
-function formatDate(value: string): string {
-  return value.slice(0, 10);
+  setExitCode(readErrorExitCode(dashboard));
 }
 
 function printJson(value: unknown) {
   console.log(JSON.stringify(value, null, 2));
 }
 
+function setExitCode(exitCode: number | null): void {
+  if (exitCode !== null) {
+    process.exitCode = exitCode;
+  }
+}
+
 main().catch((error: unknown) => {
   console.error(formatCliError(error));
   process.exit(1);
 });
-
-function formatCliError(error: unknown): string {
-  if (error instanceof GitHubApiError) {
-    return publicErrorMessage(error);
-  }
-
-  return error instanceof Error ? error.message : String(error);
-}
