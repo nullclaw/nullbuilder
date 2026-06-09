@@ -22,11 +22,24 @@ function cookiesWith(value?: string): Cookies {
 test('session tokens validate signature and expiry', () => {
   const issuedAt = 1_000_000;
   const token = createSessionToken('secret', issuedAt);
+  const [, signature] = token.split('.');
 
   assert.equal(isSessionTokenMatch(token, 'secret', issuedAt), true);
   assert.equal(isSessionTokenMatch(token, 'wrong', issuedAt), false);
-  assert.equal(isSessionTokenMatch(`bad!.${token.split('.')[1]}`, 'secret', issuedAt), false);
+  assert.equal(isSessionTokenMatch(`bad!.${signature}`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(token, 'secret', issuedAt + AUTH_MAX_AGE_SECONDS * 1000 + 1), false);
+});
+
+test('session tokens reject malformed bounded parts before matching signatures', () => {
+  const issuedAt = 1_000_000;
+  const token = createSessionToken('secret', issuedAt);
+  const [timestamp, signature] = token.split('.');
+
+  assert.equal(isSessionTokenMatch(`${timestamp.toUpperCase()}.${signature}`, 'secret', issuedAt), false);
+  assert.equal(isSessionTokenMatch(`${'z'.repeat(12)}.${signature}`, 'secret', issuedAt), false);
+  assert.equal(isSessionTokenMatch(`${timestamp}.${'f'.repeat(63)}`, 'secret', issuedAt), false);
+  assert.equal(isSessionTokenMatch(`${timestamp}.${'f'.repeat(65)}`, 'secret', issuedAt), false);
+  assert.equal(isSessionTokenMatch(`${timestamp}.${'g'.repeat(64)}`, 'secret', issuedAt), false);
 });
 
 test('authentication requires a valid web token session when token-backed data is configured', () => {

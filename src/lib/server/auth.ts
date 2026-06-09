@@ -7,6 +7,8 @@ export const AUTH_COOKIE = 'nullbuilder_auth';
 export const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;
 
 const ALLOWED_CLOCK_SKEW_MS = 60_000;
+const SESSION_SIGNATURE_LENGTH = 64;
+const MAX_ISSUED_AT_LENGTH = Number.MAX_SAFE_INTEGER.toString(36).length;
 
 export type LoginRateLimiterOptions = {
   windowMs: number;
@@ -18,6 +20,12 @@ export type LoginRateLimiterOptions = {
 type LoginAttempt = {
   failures: number;
   resetAt: number;
+};
+
+type SessionTokenParts = {
+  issuedAt: string;
+  signature: string;
+  timestamp: number;
 };
 
 export class LoginRateLimiter {
@@ -91,27 +99,17 @@ export function createSessionToken(secret: string, now = Date.now()): string {
 }
 
 export function isSessionTokenMatch(value: string, secret: string, now = Date.now()): boolean {
-  const parts = value.split('.');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    return false;
-  }
-
-  const [issuedAt, signature] = parts;
-  if (!/^[0-9a-z]+$/i.test(issuedAt)) {
-    return false;
-  }
-
-  const timestamp = Number.parseInt(issuedAt, 36);
+  const token = parseSessionToken(value);
 
   if (
-    !Number.isFinite(timestamp) ||
-    timestamp > now + ALLOWED_CLOCK_SKEW_MS ||
-    now - timestamp > AUTH_MAX_AGE_SECONDS * 1000
+    !token ||
+    token.timestamp > now + ALLOWED_CLOCK_SKEW_MS ||
+    now - token.timestamp > AUTH_MAX_AGE_SECONDS * 1000
   ) {
     return false;
   }
 
-  return isTokenMatch(signature, sessionSignature(issuedAt, secret));
+  return isTokenMatch(token.signature, sessionSignature(token.issuedAt, secret));
 }
 
 export function createCsrfToken(cookies: Cookies, config: NullbuilderConfig): string | null {
@@ -137,6 +135,37 @@ export function isTokenMatch(value: string, expected: string): boolean {
   const right = Buffer.from(expected);
 
   return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function parseSessionToken(value: string): SessionTokenParts | null {
+  const parts = value.split('.');
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [issuedAt, signature] = parts;
+  if (!isIssuedAtTokenPart(issuedAt) || !isSignatureTokenPart(signature)) {
+    return null;
+  }
+
+  const timestamp = Number.parseInt(issuedAt, 36);
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    return null;
+  }
+
+  return {
+    issuedAt,
+    signature,
+    timestamp
+  };
+}
+
+function isIssuedAtTokenPart(value: string): boolean {
+  return value.length > 0 && value.length <= MAX_ISSUED_AT_LENGTH && /^[0-9a-z]+$/.test(value);
+}
+
+function isSignatureTokenPart(value: string): boolean {
+  return value.length === SESSION_SIGNATURE_LENGTH && /^[0-9a-f]+$/.test(value);
 }
 
 function sessionSignature(issuedAt: string, secret: string): string {
