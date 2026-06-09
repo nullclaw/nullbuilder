@@ -21,6 +21,7 @@ type CacheEntry<T> = {
 export const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 256;
 
 const cache = new Map<string, CacheEntry<unknown>>();
+const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
 
 export async function githubGetPages<T>(
   config: NullbuilderConfig,
@@ -66,6 +67,7 @@ async function githubFetchJson<T>(
   const accept = requestedAccept ?? 'application/vnd.github+json';
   const url = resolveGitHubApiUrl(config, path);
   const shouldCache = method === 'GET' && useCache !== false && config.cacheTtlMs > 0;
+  const shouldCoalesce = shouldCache && !requestInit.signal;
   const key = shouldCache ? cacheKey(config, url, accept) : '';
   const cached = shouldCache ? (cache.get(key) as CacheEntry<T> | undefined) : undefined;
   const now = Date.now();
@@ -78,6 +80,36 @@ async function githubFetchJson<T>(
     };
   }
 
+  const pending = shouldCoalesce ? (inFlightRequests.get(key) as Promise<GitHubFetchResult<T>> | undefined) : undefined;
+  if (pending) {
+    return pending;
+  }
+
+  const request = requestGitHubJson<T>(config, url, method, accept, requestInit, shouldCache, key, cached);
+  if (!shouldCoalesce) {
+    return request;
+  }
+
+  inFlightRequests.set(key, request as Promise<GitHubFetchResult<unknown>>);
+  try {
+    return await request;
+  } finally {
+    if (inFlightRequests.get(key) === request) {
+      inFlightRequests.delete(key);
+    }
+  }
+}
+
+async function requestGitHubJson<T>(
+  config: NullbuilderConfig,
+  url: string,
+  method: string,
+  accept: string,
+  requestInit: RequestInit,
+  shouldCache: boolean,
+  key: string,
+  cached: CacheEntry<T> | undefined
+): Promise<GitHubFetchResult<T>> {
   const headers = new Headers(requestInit.headers);
   headers.set('Accept', accept);
   headers.set('X-GitHub-Api-Version', '2022-11-28');
@@ -102,7 +134,7 @@ async function githubFetchJson<T>(
   });
 
   if (response.status === 304 && cached) {
-    cached.expiresAt = now + config.cacheTtlMs;
+    cached.expiresAt = Date.now() + config.cacheTtlMs;
     touchCacheEntry(key, cached);
     return {
       data: cached.data,
@@ -122,7 +154,7 @@ async function githubFetchJson<T>(
       data,
       next,
       etag: response.headers.get('ETag') ?? undefined,
-      expiresAt: now + config.cacheTtlMs
+      expiresAt: Date.now() + config.cacheTtlMs
     });
   }
 

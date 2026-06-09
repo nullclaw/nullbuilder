@@ -59,6 +59,68 @@ test('githubRequest reuses fresh cached GET responses', async () => {
   assert.deepEqual(requests, ['https://cache.example.test/repos/nullclaw/nullbuilder']);
 });
 
+test('githubRequest shares in-flight cacheable GET responses', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://inflight-cache.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+  let releaseFetch: (() => void) | undefined;
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    await new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    return new Response(JSON.stringify({ id: requests.length }));
+  }) as typeof fetch;
+
+  const first = githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  const second = githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.equal(requests.length, 1);
+  assert.ok(releaseFetch);
+  releaseFetch?.();
+
+  assert.deepEqual(await Promise.all([first, second]), [{ id: 1 }, { id: 1 }]);
+  assert.deepEqual(await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder'), { id: 1 });
+  assert.deepEqual(requests, ['https://inflight-cache.example.test/repos/nullclaw/nullbuilder']);
+});
+
+test('githubRequest keeps caller-abortable GET requests independent', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://abortable-cache.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+  const releaseFetches: Array<() => void> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const id = requests.push(String(input));
+    await new Promise<void>((resolve) => {
+      releaseFetches.push(resolve);
+    });
+    return new Response(JSON.stringify({ id }));
+  }) as typeof fetch;
+
+  const firstController = new AbortController();
+  const secondController = new AbortController();
+  const first = githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder', {
+    signal: firstController.signal
+  });
+  const second = githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder', {
+    signal: secondController.signal
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(releaseFetches.length, 2);
+  releaseFetches.forEach((release) => release());
+
+  assert.deepEqual(await Promise.all([first, second]), [{ id: 1 }, { id: 2 }]);
+});
+
 test('githubRequest bounds cached responses and evicts the oldest entry', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
