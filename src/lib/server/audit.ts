@@ -1,6 +1,13 @@
-import { Buffer } from 'node:buffer';
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
+import {
+  decodeGitHubContent,
+  encodeGitHubPath,
+  findActionUses,
+  findNullbuilderWorkflowRefs,
+  isMutableRef,
+  shouldRequireShaPin
+} from './audit-workflows';
 import { mapWithConcurrency } from './concurrency';
 import { discoverRepositories, GitHubApiError, githubGet, publicErrorMessage } from './github';
 
@@ -125,7 +132,6 @@ const NULLBUILDER_WORKFLOWS = [
   { id: 'nightly', file: 'zig-nightly.yml', severity: 'info' as const },
   { id: 'release', file: 'zig-release.yml', severity: 'info' as const }
 ];
-const MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
 
 const RULES: AuditRule[] = [
   {
@@ -608,65 +614,6 @@ function finding(
     url,
     path
   };
-}
-
-function findActionUses(content: string): Array<{ target: string; ref: string }> {
-  const actions: Array<{ target: string; ref: string }> = [];
-  const regex = /^\s*uses:\s+([^@\s'"]+)@([^'"\s#]+)/gm;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    actions.push({
-      target: match[1],
-      ref: match[2]
-    });
-  }
-
-  return actions;
-}
-
-function findNullbuilderWorkflowRefs(content: string): Array<{ workflow: string; ref: string }> {
-  const references: Array<{ workflow: string; ref: string }> = [];
-  const regex = /nullclaw\/nullbuilder\/\.github\/workflows\/([^@\s'"]+)@([^'"\s#]+)/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    references.push({
-      workflow: match[1],
-      ref: match[2]
-    });
-  }
-
-  return references;
-}
-
-function shouldRequireShaPin(target: string, ref: string): boolean {
-  if (target.startsWith('./') || target.startsWith('docker://')) {
-    return false;
-  }
-
-  if (target.startsWith('nullclaw/nullbuilder/.github/workflows/')) {
-    return false;
-  }
-
-  return !/^[a-f0-9]{40}$/i.test(ref);
-}
-
-function isMutableRef(ref: string): boolean {
-  return ref === 'main' || ref === 'master' || ref.startsWith('refs/heads/');
-}
-
-function decodeGitHubContent(file: GitHubContentFile): string {
-  if (file.encoding !== 'base64' || !file.content) {
-    return '';
-  }
-
-  const decoded = Buffer.from(file.content.replaceAll('\n', ''), 'base64');
-  return decoded.subarray(0, MAX_WORKFLOW_FILE_BYTES).toString('utf8');
-}
-
-function encodeGitHubPath(path: string): string {
-  return path.split('/').map(encodeURIComponent).join('/');
 }
 
 function isPresent<T>(probe: Probe<T>): probe is { status: 'present'; data: T } {
