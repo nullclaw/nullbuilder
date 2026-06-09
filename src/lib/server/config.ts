@@ -77,6 +77,10 @@ function parseBaseUrl(value: string | undefined, fallback: string): string {
     throw new Error(`Invalid URL protocol for ${raw}.`);
   }
 
+  if (url.username || url.password) {
+    throw new Error(`Invalid URL credentials for ${raw}.`);
+  }
+
   url.hash = '';
   url.search = '';
   return url.toString().replace(/\/$/, '');

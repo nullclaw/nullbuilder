@@ -53,4 +53,20 @@ test('readConfig rejects invalid configured owners and URLs', () => {
       }),
     /Invalid URL/
   );
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_GITHUB_API_URL: 'https://token@api.github.com'
+      }),
+    /Invalid URL credentials/
+  );
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_GITHUB_WEB_URL: 'https://user:pass@github.com'
+      }),
+    /Invalid URL credentials/
+  );
 });
