@@ -4,12 +4,12 @@ import {
   getDashboard,
   GitHubApiError,
   publicErrorMessage,
-  type DashboardData,
-  type RepositorySummary
+  type DashboardData
 } from '../lib/server/github';
 import { getAuditReport, type AuditFinding, type AuditReport, type AuditSeverity } from '../lib/server/audit';
 import { readConfig } from '../lib/server/config';
 import { normalizeRepoSlug } from '../lib/repositories';
+import { formatGrowth, formatNullableNumber, workflowRunLabel } from '../lib/dashboard-format';
 import { HELP, parseCommandLine, type Command } from './options';
 
 async function main() {
@@ -171,11 +171,11 @@ function printRepos(dashboard: DashboardData) {
     dashboard.repositories.map((repo) => ({
       repo: repo.slug,
       state: repo.status,
-      issues: formatNumber(repo.openIssues),
-      prs: formatNumber(repo.openPulls),
-      stars: formatNumber(repo.stars),
-      nightly: formatRun(repo.latestRuns.nightly),
-      ci: formatRun(repo.latestRuns.ci),
+      issues: formatNullableNumber(repo.openIssues),
+      prs: formatNullableNumber(repo.openPulls),
+      stars: formatNullableNumber(repo.stars),
+      nightly: workflowRunLabel(repo.latestRuns.nightly),
+      ci: workflowRunLabel(repo.latestRuns.ci),
       url: repo.url
     })),
     ['repo', 'state', 'issues', 'prs', 'stars', 'nightly', 'ci', 'url']
@@ -225,7 +225,7 @@ function printRuns(dashboard: DashboardData) {
       Object.entries(repo.latestRuns).map(([kind, run]) => ({
         repo: repo.slug,
         kind,
-        status: repo.status === 'error' ? 'unknown' : formatRun(run),
+        status: repo.status === 'error' ? 'unknown' : workflowRunLabel(run),
         branch: run?.branch ?? '',
         updated: run ? formatDate(run.updatedAt) : '',
         url: run?.url ?? ''
@@ -239,7 +239,7 @@ function printStars(dashboard: DashboardData) {
   printTable(
     dashboard.repositories.map((repo) => ({
       repo: repo.slug,
-      stars: formatNumber(repo.starGrowth.current),
+      stars: formatNullableNumber(repo.starGrowth.current),
       '7d': formatGrowth(repo.starGrowth.last7Days),
       '30d': formatGrowth(repo.starGrowth.last30Days),
       url: repo.url
@@ -332,26 +332,6 @@ function countAuditFindings(findings: AuditFinding[]): Record<AuditSeverity, num
 
 function printableLength(value: string): number {
   return value.length;
-}
-
-function formatRun(run: RepositorySummary['latestRuns']['ci']): string {
-  if (!run) {
-    return 'n/a';
-  }
-
-  if (run.status !== 'completed') {
-    return run.status;
-  }
-
-  return run.conclusion ?? 'completed';
-}
-
-function formatNumber(value: number | null): string {
-  return value === null ? 'unknown' : String(value);
-}
-
-function formatGrowth(value: number | null): string {
-  return value === null ? 'unknown' : `+${value}`;
 }
 
 function formatDate(value: string): string {

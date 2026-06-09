@@ -14,12 +14,16 @@
     Tags,
     XCircle
   } from '@lucide/svelte';
+  import {
+    formatDashboardDate,
+    formatGrowth,
+    formatNullableNumber,
+    workflowRunClass,
+    workflowRunLabel
+  } from '$lib/dashboard-format';
   import type { ActionData, PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: ActionData } = $props();
-
-  type Dashboard = NonNullable<PageData['dashboard']>;
-  type WorkflowRun = Dashboard['repositories'][number]['latestRuns']['ci'];
 
   const dashboard = $derived(data.dashboard);
   const audit = $derived(data.audit);
@@ -30,51 +34,6 @@
   const auditRepositories = $derived(audit?.repositories ?? []);
   const auditFindings = $derived(audit?.findings ?? []);
   const hasErrors = $derived(repositories.some((repo) => repo.error) || Boolean(audit?.hasReadErrors));
-
-  function formatDate(value: string | null): string {
-    if (!value) {
-      return 'n/a';
-    }
-
-    return new Intl.DateTimeFormat('en', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(new Date(value));
-  }
-
-  function runLabel(run: WorkflowRun): string {
-    if (!run) {
-      return 'n/a';
-    }
-
-    if (run.status !== 'completed') {
-      return run.status;
-    }
-
-    return run.conclusion ?? 'completed';
-  }
-
-  function runClass(run: WorkflowRun): string {
-    if (!run) {
-      return 'muted';
-    }
-
-    if (run.status !== 'completed') {
-      return 'running';
-    }
-
-    return run.conclusion === 'success' ? 'success' : 'failed';
-  }
-
-  function formatNumber(value: number | null): string {
-    return value === null ? 'unknown' : String(value);
-  }
-
-  function formatGrowth(value: number | null): string {
-    return value === null ? 'unknown' : `+${value}`;
-  }
 </script>
 
 <svelte:head>
@@ -213,44 +172,44 @@
           </div>
         {:else}
           <div class="repo-stats">
-            <span><CircleDot size={15} /> {formatNumber(repo.openIssues)}</span>
-            <span><GitPullRequest size={15} /> {formatNumber(repo.openPulls)}</span>
-            <span><Star size={15} /> {formatNumber(repo.stars)}</span>
+            <span><CircleDot size={15} /> {formatNullableNumber(repo.openIssues)}</span>
+            <span><GitPullRequest size={15} /> {formatNullableNumber(repo.openPulls)}</span>
+            <span><Star size={15} /> {formatNullableNumber(repo.stars)}</span>
             <span><GitBranch size={15} /> {repo.defaultBranch}</span>
           </div>
 
           <div class="run-grid">
-            <a class={runClass(repo.latestRuns.ci)} href={repo.latestRuns.ci?.url ?? repo.url} target="_blank" rel="noreferrer">
+            <a class={workflowRunClass(repo.latestRuns.ci)} href={repo.latestRuns.ci?.url ?? repo.url} target="_blank" rel="noreferrer">
               <CheckCircle2 size={15} />
               <span>CI</span>
-              <strong>{runLabel(repo.latestRuns.ci)}</strong>
+              <strong>{workflowRunLabel(repo.latestRuns.ci)}</strong>
             </a>
             <a
-              class={runClass(repo.latestRuns.nightly)}
+              class={workflowRunClass(repo.latestRuns.nightly)}
               href={repo.latestRuns.nightly?.url ?? repo.url}
               target="_blank"
               rel="noreferrer"
             >
               <RefreshCw size={15} />
               <span>Nightly</span>
-              <strong>{runLabel(repo.latestRuns.nightly)}</strong>
+              <strong>{workflowRunLabel(repo.latestRuns.nightly)}</strong>
             </a>
             <a
-              class={runClass(repo.latestRuns.release)}
+              class={workflowRunClass(repo.latestRuns.release)}
               href={repo.latestRuns.release?.url ?? repo.url}
               target="_blank"
               rel="noreferrer"
             >
               <Tags size={15} />
               <span>Release</span>
-              <strong>{runLabel(repo.latestRuns.release)}</strong>
+              <strong>{workflowRunLabel(repo.latestRuns.release)}</strong>
             </a>
           </div>
 
           <footer>
             <span>{formatGrowth(repo.starGrowth.last7Days)} stars 7d</span>
             <span>{formatGrowth(repo.starGrowth.last30Days)} stars 30d</span>
-            <span>pushed {formatDate(repo.pushedAt)}</span>
+            <span>pushed {formatDashboardDate(repo.pushedAt)}</span>
           </footer>
         {/if}
       </article>
@@ -315,7 +274,7 @@
           <span class="work-repo">{issue.repo}</span>
           <span class="work-number">#{issue.number}</span>
           <strong>{issue.title}</strong>
-          <span>{formatDate(issue.updatedAt)}</span>
+          <span>{formatDashboardDate(issue.updatedAt)}</span>
           <ArrowRight size={16} />
         </a>
       {:else}
