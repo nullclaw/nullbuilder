@@ -122,6 +122,57 @@ test('createReleaseTag reports forced tag moves separately from creation', async
   );
 });
 
+test('createReleaseTag rejects unsafe target refs before fetching GitHub', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  await assert.rejects(
+    () =>
+      createReleaseTag(config, {
+        repo: 'nullbuilder',
+        tagName: 'v1.2.3',
+        targetRef: 'refs/heads/main'
+      }),
+    /Invalid target ref/
+  );
+  assert.deepEqual(requests, []);
+});
+
+test('createReleaseTag resolves slash branch target refs through the branch API', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/branches/release%2Fv1.2.3') {
+      return {
+        name: 'release/v1.2.3',
+        commit: {
+          sha: targetSha
+        }
+      };
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  const result = await createReleaseTag(config, {
+    repo: 'nullbuilder',
+    tagName: 'v1.2.3',
+    targetRef: ' release/v1.2.3 '
+  });
+
+  assert.equal(result.dryRun, true);
+  assert.equal(result.targetRef, 'release/v1.2.3');
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder', 'GET /repos/nullclaw/nullbuilder/branches/release%2Fv1.2.3']
+  );
+});
+
 function testConfig() {
   return readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

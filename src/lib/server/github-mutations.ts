@@ -62,6 +62,10 @@ type GitHubBranchResponse = {
   };
 };
 
+const FULL_SHA_PATTERN = /^[a-f0-9]{40}$/i;
+const MAX_TARGET_REF_LENGTH = 255;
+const UNSAFE_TARGET_REF_PATTERN = /[\u0000-\u001f\u007f ~^:?*[\]\\]/;
+
 export async function buildPrTag(
   config: NullbuilderConfig,
   options: {
@@ -131,10 +135,12 @@ export async function createReleaseTag(
 ): Promise<ReleaseTagResult> {
   const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
   const tagName = sanitizeReleaseTagName(options.tagName);
+  const requestedTargetRef = options.targetRef?.trim();
+  const targetRefOverride = requestedTargetRef ? sanitizeReleaseTargetRef(requestedTargetRef) : undefined;
   const repository = await githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`, {
     useCache: false
   });
-  const targetRef = options.targetRef?.trim() || repository.default_branch;
+  const targetRef = targetRefOverride ?? sanitizeReleaseTargetRef(repository.default_branch);
   const targetSha = await resolveTargetSha(config, repo, targetRef);
   const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
   const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
@@ -206,7 +212,7 @@ function assertTrustedPullRequest(
 }
 
 async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targetRef: string): Promise<string> {
-  if (/^[a-f0-9]{40}$/i.test(targetRef)) {
+  if (FULL_SHA_PATTERN.test(targetRef)) {
     return targetRef;
   }
 
@@ -219,6 +225,42 @@ async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targe
   );
 
   return branch.commit.sha;
+}
+
+function sanitizeReleaseTargetRef(value: string): string {
+  const targetRef = value.trim();
+
+  if (!isSafeReleaseTargetRef(targetRef)) {
+    throw new Error(`Invalid target ref: ${value}`);
+  }
+
+  return targetRef;
+}
+
+function isSafeReleaseTargetRef(targetRef: string): boolean {
+  if (!targetRef || targetRef.length > MAX_TARGET_REF_LENGTH) {
+    return false;
+  }
+
+  if (FULL_SHA_PATTERN.test(targetRef)) {
+    return true;
+  }
+
+  if (
+    targetRef.startsWith('refs/') ||
+    targetRef.startsWith('/') ||
+    targetRef.endsWith('/') ||
+    targetRef.endsWith('.') ||
+    targetRef.endsWith('.lock') ||
+    targetRef.includes('//') ||
+    targetRef.includes('..') ||
+    targetRef.includes('@{') ||
+    UNSAFE_TARGET_REF_PATTERN.test(targetRef)
+  ) {
+    return false;
+  }
+
+  return targetRef.split('/').every((part) => part && !part.startsWith('.') && !part.endsWith('.lock'));
 }
 
 async function createOrMoveTagRef(
