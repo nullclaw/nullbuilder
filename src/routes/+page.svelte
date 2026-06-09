@@ -11,10 +11,11 @@
     RefreshCw,
     ShieldCheck,
     Star,
-    Tags,
-    XCircle
+    Tags
   } from '@lucide/svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
+  import DashboardMetrics from '$lib/components/DashboardMetrics.svelte';
+  import DashboardTopbar from '$lib/components/DashboardTopbar.svelte';
   import {
     DASHBOARD_SECTIONS,
     authStateLabel,
@@ -57,21 +58,7 @@
 </svelte:head>
 
 <main class="shell">
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">nullbuilder</p>
-      <h1>Command Center</h1>
-    </div>
-    <div class="top-actions">
-      <span class:ok={data.authenticated || dashboard?.hasToken} class="token-state">
-        {tokenState}
-      </span>
-      <a class="icon-button" href="https://github.com/{owner}" target="_blank" rel="noreferrer">
-        <ExternalLink size={17} />
-        <span>GitHub</span>
-      </a>
-    </div>
-  </header>
+  <DashboardTopbar authenticated={data.authenticated} hasToken={Boolean(dashboard?.hasToken)} {owner} {tokenState} />
 
   {#if !dashboard}
     <AuthGate authConfigured={data.authConfigured} authError={form?.authError} />
@@ -83,48 +70,7 @@
     </section>
   {/if}
 
-  <section class="metrics" aria-label="Dashboard totals">
-    <div class="metric">
-      <CircleDot size={18} />
-      <span>Loaded</span>
-      <strong>{dashboard.totals.loadedRepositories}</strong>
-    </div>
-    <div class="metric">
-      <AlertTriangle size={18} />
-      <span>Errors</span>
-      <strong>{dashboard.totals.erroredRepositories}</strong>
-    </div>
-    <div class="metric">
-      <CircleDot size={18} />
-      <span>Total</span>
-      <strong>{dashboard.totals.repositories}</strong>
-    </div>
-    <div class="metric">
-      <CircleDot size={18} />
-      <span>Issues</span>
-      <strong>{dashboard.totals.issues}</strong>
-    </div>
-    <div class="metric">
-      <GitPullRequest size={18} />
-      <span>PRs</span>
-      <strong>{dashboard.totals.pullRequests}</strong>
-    </div>
-    <div class="metric">
-      <Star size={18} />
-      <span>Stars</span>
-      <strong>{dashboard.totals.stars}</strong>
-    </div>
-    <div class="metric">
-      <XCircle size={18} />
-      <span>Failing</span>
-      <strong>{dashboard.totals.failingRuns}</strong>
-    </div>
-    <div class="metric">
-      <ShieldCheck size={18} />
-      <span>Audit</span>
-      <strong>{audit?.totals.averageScore ?? 0}</strong>
-    </div>
-  </section>
+  <DashboardMetrics auditAverageScore={audit?.totals.averageScore ?? 0} totals={dashboard.totals} />
 
   <nav class="section-tabs" aria-label="Sections">
     {#each DASHBOARD_SECTIONS as section}
@@ -459,39 +405,14 @@
     padding: 28px 0 48px;
   }
 
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    margin-bottom: 22px;
-  }
-
-  .eyebrow {
-    margin: 0 0 4px;
-    color: #6d6a5f;
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  h1,
   h2,
   p {
     margin: 0;
   }
 
-  h1 {
-    font-size: clamp(2rem, 3vw, 3.2rem);
-    line-height: 1;
-  }
-
-  .top-actions,
-  .icon-button,
   .repo-stats,
   .repo-stats span,
   .section-tabs,
-  .metric,
   .repo-link,
   .form-message,
   button,
@@ -500,25 +421,6 @@
     align-items: center;
   }
 
-  .top-actions {
-    gap: 10px;
-  }
-
-  .token-state {
-    border: 1px solid #cfc8b4;
-    border-radius: 999px;
-    padding: 8px 12px;
-    color: #756f61;
-    font-size: 0.88rem;
-    font-weight: 700;
-  }
-
-  .token-state.ok {
-    border-color: #8fc7a3;
-    color: #277245;
-  }
-
-  .icon-button,
   button {
     gap: 8px;
     border: 1px solid #1f1e1a;
@@ -559,31 +461,6 @@
     border-left: 4px solid #c95f3f;
     background: #fff;
     padding: 12px 14px;
-  }
-
-  .metrics {
-    display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 10px;
-    margin-bottom: 18px;
-  }
-
-  .metric {
-    justify-content: space-between;
-    gap: 10px;
-    border: 1px solid #ded8c9;
-    border-radius: 8px;
-    background: #fffdfa;
-    padding: 14px;
-  }
-
-  .metric span {
-    color: #6f6b60;
-    font-weight: 700;
-  }
-
-  .metric strong {
-    font-size: 1.45rem;
   }
 
   .section-tabs {
@@ -1022,8 +899,7 @@
 
   @media (max-width: 1100px) {
     .repo-grid,
-    .audit-summary,
-    .metrics {
+    .audit-summary {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -1038,13 +914,6 @@
       padding-top: 18px;
     }
 
-    .topbar,
-    .top-actions {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .metrics,
     .repo-grid,
     .audit-summary,
     .build-form {
