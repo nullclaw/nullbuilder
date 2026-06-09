@@ -4,7 +4,9 @@ import type { Cookies } from '@sveltejs/kit';
 import { readConfig } from './config';
 import {
   AUTH_COOKIE,
+  AUTH_COOKIE_DELETE_OPTIONS,
   AUTH_MAX_AGE_SECONDS,
+  authCookieOptions,
   createCsrfToken,
   createSessionToken,
   isAuthenticated,
@@ -40,6 +42,26 @@ test('session tokens reject malformed bounded parts before matching signatures',
   assert.equal(isSessionTokenMatch(`${timestamp}.${'f'.repeat(63)}`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(`${timestamp}.${'f'.repeat(65)}`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(`${timestamp}.${'g'.repeat(64)}`, 'secret', issuedAt), false);
+});
+
+test('auth cookie options keep session cookie policy centralized', () => {
+  assert.deepEqual(authCookieOptions(true), {
+    httpOnly: true,
+    maxAge: AUTH_MAX_AGE_SECONDS,
+    path: '/',
+    sameSite: 'strict',
+    secure: true
+  });
+  assert.deepEqual(authCookieOptions(false), {
+    httpOnly: true,
+    maxAge: AUTH_MAX_AGE_SECONDS,
+    path: '/',
+    sameSite: 'strict',
+    secure: false
+  });
+  assert.deepEqual(AUTH_COOKIE_DELETE_OPTIONS, {
+    path: '/'
+  });
 });
 
 test('authentication requires a valid web token session when token-backed data is configured', () => {

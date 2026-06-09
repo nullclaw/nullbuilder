@@ -2,7 +2,8 @@ import { fail } from '@sveltejs/kit';
 import { getAuditReport } from '$lib/server/audit';
 import {
   AUTH_COOKIE,
-  AUTH_MAX_AGE_SECONDS,
+  AUTH_COOKIE_DELETE_OPTIONS,
+  authCookieOptions,
   LoginRateLimiter
 } from '$lib/server/auth';
 import { buildPrTag, createReleaseTag, discoverRepositories, getDashboard, publicErrorMessage } from '$lib/server/github';
@@ -58,13 +59,7 @@ export const actions: Actions = {
       });
     }
 
-    cookies.set(AUTH_COOKIE, login.sessionToken, {
-      httpOnly: true,
-      maxAge: AUTH_MAX_AGE_SECONDS,
-      path: '/',
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production'
-    });
+    cookies.set(AUTH_COOKIE, login.sessionToken, authCookieOptions(process.env.NODE_ENV === 'production'));
 
     return {
       authenticated: true
@@ -82,9 +77,7 @@ export const actions: Actions = {
       });
     }
 
-    cookies.delete(AUTH_COOKIE, {
-      path: '/'
-    });
+    cookies.delete(AUTH_COOKIE, AUTH_COOKIE_DELETE_OPTIONS);
 
     return {
       authenticated: false

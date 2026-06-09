@@ -5,6 +5,9 @@ import type { NullbuilderConfig } from './config';
 
 export const AUTH_COOKIE = 'nullbuilder_auth';
 export const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;
+export const AUTH_COOKIE_DELETE_OPTIONS = {
+  path: '/'
+} as const;
 
 const ALLOWED_CLOCK_SKEW_MS = 60_000;
 const SESSION_SIGNATURE_LENGTH = 64;
@@ -15,6 +18,14 @@ export type LoginRateLimiterOptions = {
   maxFailures: number;
   maxKeys: number;
   now?: () => number;
+};
+
+export type AuthCookieOptions = {
+  httpOnly: true;
+  maxAge: number;
+  path: '/';
+  sameSite: 'strict';
+  secure: boolean;
 };
 
 type LoginAttempt = {
@@ -91,6 +102,16 @@ export function isAuthenticated(cookies: Cookies, config: NullbuilderConfig): bo
 
   const cookie = cookies.get(AUTH_COOKIE);
   return Boolean(cookie && isSessionTokenMatch(cookie, config.webToken));
+}
+
+export function authCookieOptions(isProduction: boolean): AuthCookieOptions {
+  return {
+    httpOnly: true,
+    maxAge: AUTH_MAX_AGE_SECONDS,
+    path: '/',
+    sameSite: 'strict',
+    secure: isProduction
+  };
 }
 
 export function createSessionToken(secret: string, now = Date.now()): string {
