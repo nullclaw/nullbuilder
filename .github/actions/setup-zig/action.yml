@@ -11,6 +11,5 @@ runs:
   using: composite
   steps:
     - name: Install Zig
-      uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
-      with:
-        version: ${{ inputs.version }}
+      shell: bash
+      run: '"${GITHUB_ACTION_PATH}/install-zig.sh" "${{ inputs.version }}"'
