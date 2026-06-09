@@ -193,6 +193,40 @@ test('githubRequest revalidates stale cached GET responses with ETags', async ()
   ]);
 });
 
+test('githubRequest returns undefined for no-content responses', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://no-content.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () => new Response(null, { status: 204 })) as typeof fetch;
+
+  assert.equal(await githubRequest<void>(config, '/repos/nullclaw/nullbuilder', { method: 'DELETE' }), undefined);
+});
+
+test('githubRequest ignores non-string GitHub error messages', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://non-string-error.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ message: { text: 'private upstream detail' } }), {
+      status: 500,
+      statusText: 'Server Error'
+    })) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof GitHubApiError &&
+      error.status === 500 &&
+      error.message === 'GitHub 500 Server Error'
+  );
+});
+
 test('githubRequest keeps malformed rate-limit reset headers from masking API errors', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

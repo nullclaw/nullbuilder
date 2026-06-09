@@ -141,7 +141,7 @@ async function requestGitHubJson<T>(
   }
 
   const next = parseNextLink(response.headers.get('Link'));
-  const data = response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+  const data = await readResponseJson<T>(response);
 
   if (shouldCache) {
     writeCacheEntry(key, {
@@ -159,19 +159,33 @@ async function requestGitHubJson<T>(
 }
 
 async function toGitHubApiError(response: Response): Promise<GitHubApiError> {
-  let detail = '';
-  try {
-    const body = (await response.json()) as { message?: string };
-    detail = body.message ? `: ${body.message}` : '';
-  } catch {
-    detail = '';
-  }
-
+  const detail = await readErrorDetail(response);
   const remaining = response.headers.get('X-RateLimit-Remaining');
   const reset = response.headers.get('X-RateLimit-Reset');
   const rateLimit = rateLimitResetMessage(remaining, reset);
 
   return new GitHubApiError(`GitHub ${response.status} ${response.statusText}${detail}${rateLimit}`, response.status);
+}
+
+async function readResponseJson<T>(response: Response): Promise<T> {
+  return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+}
+
+async function readErrorDetail(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    return isGitHubErrorPayload(body) && body.message ? `: ${body.message}` : '';
+  } catch {
+    return '';
+  }
+}
+
+function isGitHubErrorPayload(value: unknown): value is { message: string } {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  return typeof (value as Record<string, unknown>).message === 'string';
 }
 
 function rateLimitResetMessage(remaining: string | null, reset: string | null): string {
