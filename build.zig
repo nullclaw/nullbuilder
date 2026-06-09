@@ -1,16 +1,26 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+const ZigBuildOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+};
 
+const SharedActionModules = struct {
+    args: *std.Build.Module,
+    paths: *std.Build.Module,
+    values: *std.Build.Module,
+};
+
+pub fn build(b: *std.Build) void {
+    const options = ZigBuildOptions{
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{}),
+    };
+
+    const tui_module = createModule(b, options, "src/tui/main.zig");
     const tui = b.addExecutable(.{
         .name = "nullbuilder-tui",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/tui/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = tui_module,
     });
 
     b.installArtifact(tui);
@@ -23,81 +33,58 @@ pub fn build(b: *std.Build) void {
     const tui_step = b.step("tui", "Run the nullbuilder Zig terminal dashboard");
     tui_step.dependOn(&run_tui.step);
 
-    const tui_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/tui/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    const run_tui_tests = b.addRunArtifact(tui_tests);
-
     const test_step = b.step("test", "Run Zig tests");
-    test_step.dependOn(&run_tui_tests.step);
+    addModuleTest(b, test_step, tui_module);
 
-    const action_args_module = b.createModule(.{
-        .root_source_file = b.path(".github/actions/action_args.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const action_modules = SharedActionModules{
+        .args = createModule(b, options, ".github/actions/action_args.zig"),
+        .paths = createModule(b, options, ".github/actions/action_paths.zig"),
+        .values = createModule(b, options, ".github/actions/action_values.zig"),
+    };
+    addModuleTest(b, test_step, action_modules.args);
+    addModuleTest(b, test_step, action_modules.paths);
+    addModuleTest(b, test_step, action_modules.values);
 
-    const action_args_tests = b.addTest(.{
-        .root_module = action_args_module,
-    });
-    const run_action_args_tests = b.addRunArtifact(action_args_tests);
-    test_step.dependOn(&run_action_args_tests.step);
+    const nightly_decide_module = createActionModule(
+        b,
+        options,
+        ".github/actions/nightly-decide/nightly_decide.zig",
+        action_modules,
+    );
+    addModuleTest(b, test_step, nightly_decide_module);
 
-    const action_paths_module = b.createModule(.{
-        .root_source_file = b.path(".github/actions/action_paths.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const package_artifact_module = createActionModule(
+        b,
+        options,
+        ".github/actions/package-artifact/package_artifact.zig",
+        action_modules,
+    );
+    addModuleTest(b, test_step, package_artifact_module);
+}
 
-    const action_paths_tests = b.addTest(.{
-        .root_module = action_paths_module,
+fn createModule(b: *std.Build, options: ZigBuildOptions, root_source_file: []const u8) *std.Build.Module {
+    return b.createModule(.{
+        .root_source_file = b.path(root_source_file),
+        .target = options.target,
+        .optimize = options.optimize,
     });
-    const run_action_paths_tests = b.addRunArtifact(action_paths_tests);
-    test_step.dependOn(&run_action_paths_tests.step);
+}
 
-    const action_values_module = b.createModule(.{
-        .root_source_file = b.path(".github/actions/action_values.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+fn createActionModule(
+    b: *std.Build,
+    options: ZigBuildOptions,
+    root_source_file: []const u8,
+    action_modules: SharedActionModules,
+) *std.Build.Module {
+    const module = createModule(b, options, root_source_file);
+    module.addImport("action_args", action_modules.args);
+    module.addImport("action_paths", action_modules.paths);
+    module.addImport("action_values", action_modules.values);
+    return module;
+}
 
-    const action_values_tests = b.addTest(.{
-        .root_module = action_values_module,
-    });
-    const run_action_values_tests = b.addRunArtifact(action_values_tests);
-    test_step.dependOn(&run_action_values_tests.step);
-
-    const nightly_decide_module = b.createModule(.{
-        .root_source_file = b.path(".github/actions/nightly-decide/nightly_decide.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    nightly_decide_module.addImport("action_args", action_args_module);
-    nightly_decide_module.addImport("action_paths", action_paths_module);
-    nightly_decide_module.addImport("action_values", action_values_module);
-
-    const nightly_decide_tests = b.addTest(.{
-        .root_module = nightly_decide_module,
-    });
-    const run_nightly_decide_tests = b.addRunArtifact(nightly_decide_tests);
-    test_step.dependOn(&run_nightly_decide_tests.step);
-
-    const package_artifact_module = b.createModule(.{
-        .root_source_file = b.path(".github/actions/package-artifact/package_artifact.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    package_artifact_module.addImport("action_args", action_args_module);
-    package_artifact_module.addImport("action_paths", action_paths_module);
-    package_artifact_module.addImport("action_values", action_values_module);
-
-    const package_artifact_tests = b.addTest(.{
-        .root_module = package_artifact_module,
-    });
-    const run_package_artifact_tests = b.addRunArtifact(package_artifact_tests);
-    test_step.dependOn(&run_package_artifact_tests.step);
+fn addModuleTest(b: *std.Build, test_step: *std.Build.Step, module: *std.Build.Module) void {
+    const tests = b.addTest(.{ .root_module = module });
+    const run_tests = b.addRunArtifact(tests);
+    test_step.dependOn(&run_tests.step);
 }
