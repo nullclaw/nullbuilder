@@ -49,9 +49,11 @@ runs:
         zig run \
           --dep action_args \
           --dep action_paths \
+          --dep action_values \
           -Mroot="$GITHUB_ACTION_PATH/package_artifact.zig" \
           -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
           -Maction_paths="$GITHUB_ACTION_PATH/../action_paths.zig" \
+          -Maction_values="$GITHUB_ACTION_PATH/../action_values.zig" \
           -- \
           --binary "${PACKAGE_BINARY}" \
           --target "${PACKAGE_TARGET}" \

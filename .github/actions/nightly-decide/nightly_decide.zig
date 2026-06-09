@@ -2,6 +2,7 @@ const std = @import("std");
 
 const action_args = @import("action_args");
 const action_paths = @import("action_paths");
+const action_values = @import("action_values");
 
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 
@@ -48,27 +49,10 @@ fn isNightlyEvent(event: []const u8) bool {
     return false;
 }
 
-fn isDecimalId(value: []const u8) bool {
-    if (value.len == 0) return false;
-
-    const id = std.fmt.parseUnsigned(u64, value, 10) catch return false;
-    return id > 0;
-}
-
-fn isHexSha(value: []const u8) bool {
-    if (value.len < 7 or value.len > 64) return false;
-
-    for (value) |byte| {
-        if (!std.ascii.isHex(byte)) return false;
-    }
-
-    return true;
-}
-
 fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
     if (!action_paths.isSafeRelativePath(options.runs_json_path)) return error.InvalidRunsJsonPath;
-    if (!isDecimalId(options.current_run_id)) return error.InvalidCurrentRunId;
-    if (!isHexSha(options.head_sha)) return error.InvalidHeadSha;
+    if (!action_values.isDecimalId(options.current_run_id)) return error.InvalidCurrentRunId;
+    if (!action_values.isHexSha(options.head_sha)) return error.InvalidHeadSha;
 }
 
 fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(RunsPayload) {

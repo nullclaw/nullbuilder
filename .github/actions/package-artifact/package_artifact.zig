@@ -2,6 +2,7 @@ const std = @import("std");
 
 const action_args = @import("action_args");
 const action_paths = @import("action_paths");
+const action_values = @import("action_values");
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 
@@ -20,6 +21,13 @@ const PackageOptions = struct {
 const PackageValidationError = error{
     InvalidBinaryPath,
     InvalidTargetLabel,
+    InvalidZigTarget,
+    InvalidVersion,
+    InvalidRepository,
+    InvalidCommitSha,
+    InvalidRunId,
+    InvalidServerUrl,
+    InvalidBuiltAt,
 };
 
 fn formatSha256Line(allocator: std.mem.Allocator, bytes: []const u8, name: []const u8) ![]u8 {
@@ -67,6 +75,13 @@ fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
 fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
     if (!action_paths.isSafeRelativePath(options.binary_path)) return error.InvalidBinaryPath;
     if (!action_paths.isSafeLabel(options.target)) return error.InvalidTargetLabel;
+    if (!action_values.isSafeMetadataValue(options.zig_target, 128)) return error.InvalidZigTarget;
+    if (!action_values.isSafeMetadataValue(options.version, 128)) return error.InvalidVersion;
+    if (!action_values.isRepositorySlug(options.repository)) return error.InvalidRepository;
+    if (!action_values.isHexSha(options.commit)) return error.InvalidCommitSha;
+    if (!action_values.isDecimalId(options.run_id)) return error.InvalidRunId;
+    if (!action_values.isHttpUrlBase(options.server_url)) return error.InvalidServerUrl;
+    if (!action_values.isSafeMetadataValue(options.built_at, 64)) return error.InvalidBuiltAt;
 }
 
 fn printUsage(io: std.Io) !u8 {
@@ -137,6 +152,34 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
         },
         error.InvalidTargetLabel => {
             std.debug.print("invalid target label: {s}\n", .{options.target});
+            return error.InvalidArguments;
+        },
+        error.InvalidZigTarget => {
+            std.debug.print("invalid zig target: {s}\n", .{options.zig_target});
+            return error.InvalidArguments;
+        },
+        error.InvalidVersion => {
+            std.debug.print("invalid version: {s}\n", .{options.version});
+            return error.InvalidArguments;
+        },
+        error.InvalidRepository => {
+            std.debug.print("invalid repository: {s}\n", .{options.repository});
+            return error.InvalidArguments;
+        },
+        error.InvalidCommitSha => {
+            std.debug.print("invalid commit sha: {s}\n", .{options.commit});
+            return error.InvalidArguments;
+        },
+        error.InvalidRunId => {
+            std.debug.print("invalid run id: {s}\n", .{options.run_id});
+            return error.InvalidArguments;
+        },
+        error.InvalidServerUrl => {
+            std.debug.print("invalid server url: {s}\n", .{options.server_url});
+            return error.InvalidArguments;
+        },
+        error.InvalidBuiltAt => {
+            std.debug.print("invalid build timestamp: {s}\n", .{options.built_at});
             return error.InvalidArguments;
         },
     };
@@ -237,4 +280,24 @@ test "package artifact validates package options before filesystem writes" {
     var unsafe_target_options = valid_options;
     unsafe_target_options.target = "../outside";
     try std.testing.expectError(error.InvalidTargetLabel, validatePackageOptions(unsafe_target_options));
+
+    var unsafe_repository_options = valid_options;
+    unsafe_repository_options.repository = "nullclaw/nullbuilder/extra";
+    try std.testing.expectError(error.InvalidRepository, validatePackageOptions(unsafe_repository_options));
+
+    var unsafe_commit_options = valid_options;
+    unsafe_commit_options.commit = "not-a-sha";
+    try std.testing.expectError(error.InvalidCommitSha, validatePackageOptions(unsafe_commit_options));
+
+    var unsafe_run_options = valid_options;
+    unsafe_run_options.run_id = "0";
+    try std.testing.expectError(error.InvalidRunId, validatePackageOptions(unsafe_run_options));
+
+    var unsafe_url_options = valid_options;
+    unsafe_url_options.server_url = "https://github.com/path";
+    try std.testing.expectError(error.InvalidServerUrl, validatePackageOptions(unsafe_url_options));
+
+    var unsafe_metadata_options = valid_options;
+    unsafe_metadata_options.built_at = "2026-05-04T02:23:00Z\ninjected";
+    try std.testing.expectError(error.InvalidBuiltAt, validatePackageOptions(unsafe_metadata_options));
 }
