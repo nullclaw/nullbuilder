@@ -56,11 +56,12 @@ export function readConfig(env: Record<string, string | undefined> = process.env
 }
 
 function parseBoolean(value: string | undefined): boolean {
-  if (!value) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
     return false;
   }
 
-  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
 }
 
 function optionalTrimmed(value: string | undefined): string | undefined {
@@ -82,12 +83,17 @@ function parseBaseUrl(value: string | undefined, fallback: string): string {
 }
 
 function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
-  if (!value?.trim()) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
     return fallback;
   }
 
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed)) {
+  if (!/^[+-]?\d+$/.test(trimmed)) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isSafeInteger(parsed)) {
     return fallback;
   }
 

@@ -20,6 +20,23 @@ test('readConfig normalizes URLs and clamps numeric settings', () => {
   assert.equal(config.requestTimeoutMs, 5_000);
 });
 
+test('readConfig parses booleans and integers from explicit decimal env values only', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_DISCOVER_REPOS: ' TRUE ',
+    NULLBUILDER_ENABLE_MUTATIONS: ' yes ',
+    NULLBUILDER_CACHE_TTL_MS: '0x10',
+    NULLBUILDER_CONCURRENCY: '1e2',
+    NULLBUILDER_REQUEST_TIMEOUT_MS: '5000.5'
+  });
+
+  assert.equal(config.discoverRepos, true);
+  assert.equal(config.enableWebMutations, true);
+  assert.equal(config.cacheTtlMs, 60_000);
+  assert.equal(config.concurrency, 3);
+  assert.equal(config.requestTimeoutMs, 15_000);
+});
+
 test('readConfig rejects invalid configured owners and URLs', () => {
   assert.throws(
     () =>
