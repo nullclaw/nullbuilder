@@ -1,7 +1,9 @@
 const std = @import("std");
 
-const JsonValue = std.json.Value;
-const JsonObject = std.json.ObjectMap;
+const dashboard_json = @import("dashboard_json.zig");
+
+const JsonValue = dashboard_json.JsonValue;
+const JsonObject = dashboard_json.JsonObject;
 
 const green = "\x1b[32m";
 const yellow = "\x1b[33m";
@@ -24,7 +26,7 @@ pub fn render(
         .object => |object| object,
         else => return error.InvalidDashboardJson,
     };
-    const items = arrayField(root, "items") orelse return error.InvalidDashboardJson;
+    const items = dashboard_json.arrayField(root, "items") orelse return error.InvalidDashboardJson;
 
     const totals = collectTotals(items);
 
@@ -45,17 +47,17 @@ pub fn render(
     for (items) |item| {
         if (item != .object) continue;
         const repo = item.object;
-        const slug = stringField(repo, "slug", "unknown");
-        const status = stringField(repo, "status", "ok");
-        const latest = objectField(repo, "latestRuns");
+        const slug = dashboard_json.stringField(repo, "slug", "unknown");
+        const status = dashboard_json.stringField(repo, "status", "ok");
+        const latest = dashboard_json.objectField(repo, "latestRuns");
         const ci = if (std.mem.eql(u8, status, "error")) "error" else if (latest) |latest_runs| runLabel(latest_runs, "ci") else "n/a";
         const nightly = if (std.mem.eql(u8, status, "error")) "error" else if (latest) |latest_runs| runLabel(latest_runs, "nightly") else "n/a";
         const release = if (std.mem.eql(u8, status, "error")) "error" else if (latest) |latest_runs| runLabel(latest_runs, "release") else "n/a";
 
         try out.print("{s:<28} {d:>6} {d:>6} ", .{
             clipUtf8(slug, 28),
-            intField(repo, "openIssues"),
-            intField(repo, "openPulls"),
+            dashboard_json.intField(repo, "openIssues"),
+            dashboard_json.intField(repo, "openPulls"),
         });
         try printStatus(out, no_color, ci, 12);
         try out.writeByte(' ');
@@ -70,7 +72,7 @@ pub fn render(
     try printWorkItems(out, items, "issues", "open issues");
     try printWorkItems(out, items, "pullRequests", "open pull requests");
 
-    if (arrayField(root, "errors")) |errors| {
+    if (dashboard_json.arrayField(root, "errors")) |errors| {
         if (errors.len > 0) {
             try out.writeAll("\nLoad errors\n");
             try out.writeAll("-----------\n");
@@ -78,8 +80,8 @@ pub fn render(
                 if (error_item != .object) continue;
                 const load_error = error_item.object;
                 try out.print("  {s:<28} {s}\n", .{
-                    clipUtf8(stringField(load_error, "repo", ""), 28),
-                    clipUtf8(stringField(load_error, "error", ""), 90),
+                    clipUtf8(dashboard_json.stringField(load_error, "repo", ""), 28),
+                    clipUtf8(dashboard_json.stringField(load_error, "error", ""), 90),
                 });
             }
         }
@@ -93,9 +95,9 @@ fn collectTotals(items: []const JsonValue) Totals {
         if (item != .object) continue;
         const repo = item.object;
         totals.repositories += 1;
-        totals.issues += intField(repo, "openIssues");
-        totals.pull_requests += intField(repo, "openPulls");
-        totals.stars += intField(repo, "stars");
+        totals.issues += dashboard_json.intField(repo, "openIssues");
+        totals.pull_requests += dashboard_json.intField(repo, "openPulls");
+        totals.stars += dashboard_json.intField(repo, "stars");
         if (repoHasFailure(repo)) totals.failing += 1;
     }
 
@@ -109,16 +111,16 @@ fn printWorkItems(out: *std.Io.Writer, repos: []const JsonValue, field_name: []c
         if (printed >= max_recent_work_items) break;
         if (item != .object) continue;
         const repo = item.object;
-        const list = arrayField(repo, field_name) orelse continue;
+        const list = dashboard_json.arrayField(repo, field_name) orelse continue;
 
         for (list) |work_item| {
             if (printed >= max_recent_work_items) break;
             if (work_item != .object) continue;
             const work = work_item.object;
             try out.print("  {s:<28} #{d:<5} {s}\n", .{
-                clipUtf8(stringField(work, "repo", ""), 28),
-                intField(work, "number"),
-                clipUtf8(stringField(work, "title", ""), 74),
+                clipUtf8(dashboard_json.stringField(work, "repo", ""), 28),
+                dashboard_json.intField(work, "number"),
+                clipUtf8(dashboard_json.stringField(work, "title", ""), 74),
             });
             printed += 1;
         }
@@ -136,66 +138,22 @@ fn printStatus(out: *std.Io.Writer, no_color: bool, status: []const u8, width: u
 }
 
 fn repoHasFailure(repo: JsonObject) bool {
-    const latest = objectField(repo, "latestRuns") orelse return false;
+    const latest = dashboard_json.objectField(repo, "latestRuns") orelse return false;
     return isFailedRun(latest, "ci") or isFailedRun(latest, "nightly") or isFailedRun(latest, "release");
 }
 
 fn isFailedRun(latest: JsonObject, field_name: []const u8) bool {
-    const run = objectField(latest, field_name) orelse return false;
-    const status = stringField(run, "status", "");
+    const run = dashboard_json.objectField(latest, field_name) orelse return false;
+    const status = dashboard_json.stringField(run, "status", "");
     if (!std.mem.eql(u8, status, "completed")) return false;
-    return !std.mem.eql(u8, stringField(run, "conclusion", ""), "success");
+    return !std.mem.eql(u8, dashboard_json.stringField(run, "conclusion", ""), "success");
 }
 
 fn runLabel(latest: JsonObject, field_name: []const u8) []const u8 {
-    const run = objectField(latest, field_name) orelse return "n/a";
-    const status = stringField(run, "status", "");
+    const run = dashboard_json.objectField(latest, field_name) orelse return "n/a";
+    const status = dashboard_json.stringField(run, "status", "");
     if (!std.mem.eql(u8, status, "completed")) return status;
-    return stringField(run, "conclusion", "completed");
-}
-
-fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue {
-    const value = object.get(field_name) orelse return null;
-    return switch (value) {
-        .array => |array| array.items,
-        else => null,
-    };
-}
-
-fn objectField(object: JsonObject, field_name: []const u8) ?JsonObject {
-    const value = object.get(field_name) orelse return null;
-    return switch (value) {
-        .object => |child| child,
-        else => null,
-    };
-}
-
-fn stringField(object: JsonObject, field_name: []const u8, fallback: []const u8) []const u8 {
-    const value = object.get(field_name) orelse return fallback;
-    return switch (value) {
-        .string => |string| string,
-        .null => fallback,
-        else => fallback,
-    };
-}
-
-fn intField(object: JsonObject, field_name: []const u8) u64 {
-    const value = object.get(field_name) orelse return 0;
-    return switch (value) {
-        .integer => |integer| if (integer > 0) @intCast(integer) else 0,
-        .float => |float| positiveFloatToU64(float) orelse 0,
-        .null => 0,
-        else => 0,
-    };
-}
-
-fn positiveFloatToU64(value: f64) ?u64 {
-    const max_u64_float: f64 = @floatFromInt(std.math.maxInt(u64));
-    if (!std.math.isFinite(value) or value <= 0 or value >= max_u64_float) {
-        return null;
-    }
-
-    return @intFromFloat(value);
+    return dashboard_json.stringField(run, "conclusion", "completed");
 }
 
 fn statusColor(no_color: bool, status: []const u8) []const u8 {
@@ -241,19 +199,6 @@ test "clipUtf8 does not split multibyte sequences" {
     try std.testing.expectEqualStrings("repo-", clipUtf8(text, 6));
     try std.testing.expectEqualStrings("repo-\xd0\xbf", clipUtf8(text, 7));
     try std.testing.expectEqualStrings("", clipUtf8(text, 0));
-}
-
-test "intField clamps missing negative and fractional values" {
-    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
-        \\{"positive":42,"negative":-42,"fractional":4.8}
-    , .{});
-    defer parsed.deinit();
-    const object = parsed.value.object;
-
-    try std.testing.expectEqual(@as(u64, 42), intField(object, "positive"));
-    try std.testing.expectEqual(@as(u64, 0), intField(object, "negative"));
-    try std.testing.expectEqual(@as(u64, 4), intField(object, "fractional"));
-    try std.testing.expectEqual(@as(u64, 0), intField(object, "missing"));
 }
 
 test "runLabel reports active completed and missing runs" {
