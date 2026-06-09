@@ -1,4 +1,4 @@
-import type { RepoSlug } from '../repositories';
+import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { mapWithConcurrency } from './concurrency';
 import {
@@ -44,8 +44,8 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
     archived: boolean;
   };
 
-  const configured = new Map(config.repos.map((repo) => [repo.toLowerCase(), repo]));
-  const ignored = new Set(config.ignoredRepos.map((repo) => repo.toLowerCase()));
+  const configured = new Map(config.repos.map((repo) => [repoKey(repo), repo]));
+  const ignored = new Set(config.ignoredRepos.map(repoKey));
 
   try {
     const repos = await githubGetPages<RepositoryListItem>(
@@ -56,14 +56,15 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
     );
 
     for (const repo of repos) {
-      if (ignored.has(repo.full_name.toLowerCase())) {
+      const slug = normalizeDiscoveredRepoSlug(repo.full_name, config.owner);
+      if (!slug || ignored.has(repoKey(slug))) {
         continue;
       }
 
       const isNullRepo = repo.name.toLowerCase().startsWith('null') || repo.name.toLowerCase() === 'nllclw';
       const isZigRepo = repo.language === 'Zig';
       if (!repo.archived && (isNullRepo || isZigRepo)) {
-        configured.set(repo.full_name.toLowerCase(), repo.full_name as RepoSlug);
+        configured.set(repoKey(slug), slug);
       }
     }
   } catch {
@@ -71,6 +72,18 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
   }
 
   return [...configured.values()].sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeDiscoveredRepoSlug(fullName: string, defaultOwner: string): RepoSlug | null {
+  try {
+    return normalizeRepoSlug(fullName, defaultOwner);
+  } catch {
+    return null;
+  }
+}
+
+function repoKey(repo: RepoSlug): string {
+  return repo.toLowerCase();
 }
 
 export async function getRepositorySummary(config: NullbuilderConfig, repo: RepoSlug): Promise<RepositorySummary> {
