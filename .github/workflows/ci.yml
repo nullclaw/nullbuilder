@@ -13,6 +13,23 @@ permissions:
   contents: read
 
 jobs:
+  self:
+    name: Self build through nullbuilder
+    uses: ./.github/workflows/zig-ci.yml
+    permissions:
+      contents: read
+    with:
+      binary_name: nullbuilder-tui
+      artifact_prefix: nullbuilder
+      node_version: "24"
+      node_cache_dependency_path: package-lock.json
+      setup_command: npm ci --no-audit --no-fund
+      test_command: |
+        npm run check
+        npm run build
+        zig build --summary all
+      e2e_command: zig build tui -- --help
+
   test:
     name: Test actions
     runs-on: ubuntu-latest
@@ -33,4 +50,3 @@ jobs:
 
       - name: Test artifact package helper
         run: zig test .github/actions/package-artifact/package_artifact.zig
-

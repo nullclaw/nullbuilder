@@ -117,12 +117,24 @@ jobs:
 
       - name: Resolve artifact prefix
         id: artifact
+        env:
+          RAW_ARTIFACT_PREFIX: ${{ inputs.artifact_prefix }}
+          RAW_BINARY_NAME: ${{ inputs.binary_name }}
         run: |
-          artifact_prefix="${{ inputs.artifact_prefix }}"
-          if [ -z "${artifact_prefix}" ]; then
-            artifact_prefix="${{ inputs.binary_name }}"
+          if [[ ! "${RAW_BINARY_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${RAW_BINARY_NAME}" == *..* ]]; then
+            echo "invalid binary_name: use a basename containing only letters, numbers, dots, underscores, and dashes" >&2
+            exit 1
           fi
-          echo "prefix=${artifact_prefix}" >> "$GITHUB_OUTPUT"
+
+          artifact_prefix="${RAW_ARTIFACT_PREFIX}"
+          if [ -z "${artifact_prefix}" ]; then
+            artifact_prefix="${RAW_BINARY_NAME}"
+          fi
+          if [[ ! "${artifact_prefix}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${artifact_prefix}" == *..* ]]; then
+            echo "invalid artifact_prefix: use letters, numbers, dots, underscores, and dashes" >&2
+            exit 1
+          fi
+          printf 'prefix=%s\n' "${artifact_prefix}" >> "$GITHUB_OUTPUT"
 
       - name: Cache Zig build outputs
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
@@ -148,7 +160,7 @@ jobs:
       - name: Run tests
         env:
           TEST_COMMAND: ${{ inputs.test_command }}
-        run: ${TEST_COMMAND} 2>&1 | tee test-output.txt
+        run: bash -euo pipefail -c "$TEST_COMMAND" 2>&1 | tee test-output.txt
 
       - name: Run pre-build command
         if: inputs.pre_build_command != ''
@@ -159,9 +171,15 @@ jobs:
       - name: Build ReleaseSmall
         env:
           EXTRA_BUILD_ARGS: ${{ inputs.build_args }}
+          MATRIX_TARGET: ${{ matrix.target }}
+          MATRIX_ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
+          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+            echo "invalid matrix target fields" >&2
+            exit 1
+          fi
           zig_args=(
-            -Dtarget=${{ matrix.zig_target }}
+            "-Dtarget=${MATRIX_ZIG_TARGET}"
             -Doptimize=ReleaseSmall
           )
           if [ -n "${EXTRA_BUILD_ARGS}" ]; then
@@ -178,14 +196,25 @@ jobs:
 
       - name: Preserve host binary
         if: inputs.upload_artifacts
+        env:
+          BINARY_NAME: ${{ inputs.binary_name }}
+          BINARY_EXT: ${{ runner.os == 'Windows' && '.exe' || '' }}
         run: |
+          if [[ ! "${BINARY_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${BINARY_NAME}" == *..* ]]; then
+            echo "invalid binary_name" >&2
+            exit 1
+          fi
           mkdir -p ci-artifacts
-          cp "zig-out/bin/${{ inputs.binary_name }}${{ runner.os == 'Windows' && '.exe' || '' }}" "ci-artifacts/${{ inputs.binary_name }}${{ runner.os == 'Windows' && '.exe' || '' }}"
+          cp "zig-out/bin/${BINARY_NAME}${BINARY_EXT}" "ci-artifacts/${BINARY_NAME}${BINARY_EXT}"
 
       - name: Job summary
         if: always()
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+          BINARY_NAME: ${{ inputs.binary_name }}
+          BINARY_EXT: ${{ runner.os == 'Windows' && '.exe' || '' }}
         run: |
-          echo "## Zig CI - ${{ matrix.target }}" >> "$GITHUB_STEP_SUMMARY"
+          printf '## Zig CI - %s\n' "${MATRIX_TARGET}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
@@ -197,10 +226,7 @@ jobs:
             echo "| Test MaxRSS | ${RSS:-n/a} |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          BIN="ci-artifacts/${{ inputs.binary_name }}"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            BIN="ci-artifacts/${{ inputs.binary_name }}.exe"
-          fi
+          BIN="ci-artifacts/${BINARY_NAME}${BINARY_EXT}"
           if [ -f "$BIN" ]; then
             SIZE=$(wc -c < "$BIN" | tr -d ' ')
             SIZE_HR=$(awk "BEGIN {printf \"%.1f MB\", $SIZE / 1048576}")

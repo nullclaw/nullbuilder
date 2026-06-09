@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+      - build-pr-*
+
+permissions:
+  contents: read
+
+jobs:
+  self:
+    name: Self release through nullbuilder
+    uses: ./.github/workflows/zig-release.yml
+    permissions:
+      contents: write
+    with:
+      binary_name: nullbuilder-tui
+      artifact_prefix: nullbuilder
+      targets_json: >-
+        [
+          {"os":"ubuntu-latest","target":"linux-x86_64","zig_target":"x86_64-linux-musl","zig_cpu":"","ext":""},
+          {"os":"ubuntu-latest","target":"linux-aarch64","zig_target":"aarch64-linux-musl","zig_cpu":"","ext":""},
+          {"os":"macos-latest","target":"macos-aarch64","zig_target":"aarch64-macos","zig_cpu":"","ext":""},
+          {"os":"macos-latest","target":"macos-x86_64","zig_target":"x86_64-macos","zig_cpu":"","ext":""},
+          {"os":"windows-latest","target":"windows-x86_64","zig_target":"x86_64-windows","zig_cpu":"","ext":".exe"}
+        ]

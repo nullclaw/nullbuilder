@@ -125,18 +125,30 @@ jobs:
 
       - name: Resolve nightly version
         id: version
+        env:
+          RAW_ARTIFACT_PREFIX: ${{ inputs.artifact_prefix }}
+          RAW_BINARY_NAME: ${{ inputs.binary_name }}
         run: |
           short_sha="${GITHUB_SHA::7}"
           built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           build_date="$(date -u +%Y%m%d)"
-          artifact_prefix="${{ inputs.artifact_prefix }}"
-          if [ -z "${artifact_prefix}" ]; then
-            artifact_prefix="${{ inputs.binary_name }}"
+          if [[ ! "${RAW_BINARY_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${RAW_BINARY_NAME}" == *..* ]]; then
+            echo "invalid binary_name: use a basename containing only letters, numbers, dots, underscores, and dashes" >&2
+            exit 1
           fi
-          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
-          echo "built_at=${built_at}" >> "$GITHUB_OUTPUT"
-          echo "value=nightly-${build_date}-${short_sha}" >> "$GITHUB_OUTPUT"
-          echo "artifact_prefix=${artifact_prefix}" >> "$GITHUB_OUTPUT"
+
+          artifact_prefix="${RAW_ARTIFACT_PREFIX}"
+          if [ -z "${artifact_prefix}" ]; then
+            artifact_prefix="${RAW_BINARY_NAME}"
+          fi
+          if [[ ! "${artifact_prefix}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${artifact_prefix}" == *..* ]]; then
+            echo "invalid artifact_prefix: use letters, numbers, dots, underscores, and dashes" >&2
+            exit 1
+          fi
+          printf 'short_sha=%s\n' "${short_sha}" >> "$GITHUB_OUTPUT"
+          printf 'built_at=%s\n' "${built_at}" >> "$GITHUB_OUTPUT"
+          printf 'value=nightly-%s-%s\n' "${build_date}" "${short_sha}" >> "$GITHUB_OUTPUT"
+          printf 'artifact_prefix=%s\n' "${artifact_prefix}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch previous successful workflow runs
         env:
@@ -229,17 +241,23 @@ jobs:
         env:
           ANDROID_API_LEVEL: ${{ inputs.android_api_level }}
           ANDROID_NDK_VERSION: ${{ inputs.android_ndk_version }}
+          MATRIX_TARGET: ${{ matrix.target }}
+          MATRIX_ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
+          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+            echo "invalid Android matrix target" >&2
+            exit 1
+          fi
           NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}"
           SYSROOT="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
-          LIBC_FILE="$RUNNER_TEMP/android-libc-${{ matrix.target }}.txt"
+          LIBC_FILE="$RUNNER_TEMP/android-libc-${MATRIX_TARGET}.txt"
           echo "ANDROID_NDK_ROOT=${NDK_ROOT}" >> "$GITHUB_ENV"
           echo "ZIG_ANDROID_SYSROOT=${SYSROOT}" >> "$GITHUB_ENV"
           echo "ZIG_ANDROID_LIBC_FILE=${LIBC_FILE}" >> "$GITHUB_ENV"
           cat > "${LIBC_FILE}" <<EOF
-          include_dir=${SYSROOT}/usr/include/${{ matrix.zig_target }}
+          include_dir=${SYSROOT}/usr/include/${MATRIX_ZIG_TARGET}
           sys_include_dir=${SYSROOT}/usr/include
-          crt_dir=${SYSROOT}/usr/lib/${{ matrix.zig_target }}/${ANDROID_API_LEVEL}
+          crt_dir=${SYSROOT}/usr/lib/${MATRIX_ZIG_TARGET}/${ANDROID_API_LEVEL}
           msvc_lib_dir=
           kernel32_lib_dir=
           gcc_dir=
@@ -256,21 +274,29 @@ jobs:
         env:
           ANDROID_API_LEVEL: ${{ inputs.android_api_level }}
           EXTRA_BUILD_ARGS: ${{ inputs.build_args }}
+          MATRIX_TARGET: ${{ matrix.target }}
+          MATRIX_ZIG_CPU: ${{ matrix.zig_cpu }}
+          MATRIX_ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
-          zig_target="${{ matrix.zig_target }}"
-          if [[ "${{ matrix.target }}" == android-* ]]; then
+          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]] || [[ ! "${MATRIX_ZIG_CPU}" =~ ^[A-Za-z0-9._+-]*$ ]]; then
+            echo "invalid matrix target fields" >&2
+            exit 1
+          fi
+
+          zig_target="${MATRIX_ZIG_TARGET}"
+          if [[ "${MATRIX_TARGET}" == android-* ]]; then
             zig_target="${zig_target}.${ANDROID_API_LEVEL}"
           fi
 
           zig_args=(
             -Doptimize=ReleaseSmall
-            -Dtarget=${zig_target}
+            "-Dtarget=${zig_target}"
             -Dversion=${{ needs.preflight.outputs.version }}
           )
-          if [ -n "${{ matrix.zig_cpu }}" ]; then
-            zig_args+=(-Dcpu=${{ matrix.zig_cpu }})
+          if [ -n "${MATRIX_ZIG_CPU}" ]; then
+            zig_args+=("-Dcpu=${MATRIX_ZIG_CPU}")
           fi
-          if [[ "${{ matrix.target }}" == android-* ]]; then
+          if [[ "${MATRIX_TARGET}" == android-* ]]; then
             zig_args+=(--libc "${ZIG_ANDROID_LIBC_FILE}")
           fi
           if [ -n "${EXTRA_BUILD_ARGS}" ]; then
@@ -282,13 +308,25 @@ jobs:
       - name: Package nightly artifact
         env:
           ARTIFACT_PREFIX: ${{ needs.preflight.outputs.artifact_prefix }}
+          BINARY_NAME: ${{ inputs.binary_name }}
+          MATRIX_EXT: ${{ matrix.ext }}
+          MATRIX_TARGET: ${{ matrix.target }}
         run: |
+          if [[ ! "${BINARY_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${BINARY_NAME}" == *..* ]]; then
+            echo "invalid binary_name" >&2
+            exit 1
+          fi
+          if [[ ! "${ARTIFACT_PREFIX}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${ARTIFACT_PREFIX}" == *..* ]] || [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_EXT}" =~ ^(\.[A-Za-z0-9]+)?$ ]]; then
+            echo "invalid artifact naming fields" >&2
+            exit 1
+          fi
+
           mkdir -p nightly-artifacts
-          binary="zig-out/bin/${{ inputs.binary_name }}${{ matrix.ext }}"
-          out="nightly-artifacts/${ARTIFACT_PREFIX}-${{ matrix.target }}${{ matrix.ext }}"
+          binary="zig-out/bin/${BINARY_NAME}${MATRIX_EXT}"
+          out="nightly-artifacts/${ARTIFACT_PREFIX}-${MATRIX_TARGET}${MATRIX_EXT}"
           cp "${binary}" "${out}"
-          echo "artifact_binary=${out}" >> "$GITHUB_ENV"
-          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          printf 'artifact_binary=%s\n' "${out}" >> "$GITHUB_ENV"
+          printf 'built_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Write artifact metadata
         uses: nullclaw/nullbuilder/.github/actions/package-artifact@v1
@@ -336,6 +374,11 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
           BUILT_AT: ${{ needs.preflight.outputs.built_at }}
         run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${RELEASE_TAG}" == *..* ]]; then
+            echo "invalid release_tag: use letters, numbers, dots, underscores, and dashes" >&2
+            exit 1
+          fi
+
           mkdir -p release-output
           find nightly-downloads -maxdepth 2 -type f -exec cp '{}' release-output/ ';'
 

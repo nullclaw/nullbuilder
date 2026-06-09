@@ -35,15 +35,24 @@ runs:
   steps:
     - name: Package artifact metadata
       shell: bash
+      env:
+        PACKAGE_BINARY: ${{ inputs.binary }}
+        PACKAGE_TARGET: ${{ inputs.target }}
+        PACKAGE_ZIG_TARGET: ${{ inputs.zig_target }}
+        PACKAGE_VERSION: ${{ inputs.version }}
+        PACKAGE_REPOSITORY: ${{ inputs.repository }}
+        PACKAGE_COMMIT: ${{ inputs.commit }}
+        PACKAGE_RUN_ID: ${{ inputs.run_id }}
+        PACKAGE_SERVER_URL: ${{ inputs.server_url }}
+        PACKAGE_BUILT_AT: ${{ inputs.built_at }}
       run: |
         zig run "$GITHUB_ACTION_PATH/package_artifact.zig" -- \
-          --binary "${{ inputs.binary }}" \
-          --target "${{ inputs.target }}" \
-          --zig-target "${{ inputs.zig_target }}" \
-          --version "${{ inputs.version }}" \
-          --repository "${{ inputs.repository }}" \
-          --commit "${{ inputs.commit }}" \
-          --run-id "${{ inputs.run_id }}" \
-          --server-url "${{ inputs.server_url }}" \
-          --built-at "${{ inputs.built_at }}"
-
+          --binary "${PACKAGE_BINARY}" \
+          --target "${PACKAGE_TARGET}" \
+          --zig-target "${PACKAGE_ZIG_TARGET}" \
+          --version "${PACKAGE_VERSION}" \
+          --repository "${PACKAGE_REPOSITORY}" \
+          --commit "${PACKAGE_COMMIT}" \
+          --run-id "${PACKAGE_RUN_ID}" \
+          --server-url "${PACKAGE_SERVER_URL}" \
+          --built-at "${PACKAGE_BUILT_AT}"

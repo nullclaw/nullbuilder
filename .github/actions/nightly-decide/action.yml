@@ -41,6 +41,10 @@ runs:
       id: decide
       shell: bash
       env:
+        DECIDE_CURRENT_RUN_ID: ${{ inputs.current_run_id }}
+        DECIDE_HEAD_SHA: ${{ inputs.head_sha }}
+        DECIDE_RUNS_JSON: ${{ inputs.runs_json }}
+        DECIDE_WORKFLOW_NAME: ${{ inputs.workflow_name }}
         FORCE_NIGHTLY: ${{ inputs.force }}
       run: |
         force_args=()
@@ -49,10 +53,10 @@ runs:
         fi
 
         zig run "$GITHUB_ACTION_PATH/nightly_decide.zig" -- \
-          --runs-json "${{ inputs.runs_json }}" \
-          --current-run-id "${{ inputs.current_run_id }}" \
-          --head-sha "${{ inputs.head_sha }}" \
-          --workflow-name "${{ inputs.workflow_name }}" \
+          --runs-json "${DECIDE_RUNS_JSON}" \
+          --current-run-id "${DECIDE_CURRENT_RUN_ID}" \
+          --head-sha "${DECIDE_HEAD_SHA}" \
+          --workflow-name "${DECIDE_WORKFLOW_NAME}" \
           "${force_args[@]}" > nightly-decision.env
 
         cat nightly-decision.env
@@ -64,11 +68,10 @@ runs:
         {
           echo "## Nightly preflight"
           echo ""
-          echo "- Commit: \`${{ inputs.head_sha }}\`"
+          echo "- Commit: \`${DECIDE_HEAD_SHA}\`"
           echo "- Decision: \`${should_build}\`"
           echo "- Reason: \`${reason}\`"
           if [ -n "${matched_url}" ]; then
             echo "- Existing run: ${matched_url}"
           fi
         } >> "$GITHUB_STEP_SUMMARY"
-

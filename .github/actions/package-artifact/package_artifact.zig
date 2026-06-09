@@ -56,6 +56,24 @@ fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
     });
 }
 
+fn isSafeArtifactLabel(value: []const u8) bool {
+    if (value.len == 0) return false;
+
+    var previous_dot = false;
+    for (value, 0..) |byte, index| {
+        const is_alpha = (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z');
+        const is_digit = byte >= '0' and byte <= '9';
+        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
+
+        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
+        if (index == 0 and !is_alpha and !is_digit) return false;
+        if (byte == '.' and previous_dot) return false;
+        previous_dot = byte == '.';
+    }
+
+    return true;
+}
+
 fn printUsage(io: std.Io) !u8 {
     var err_buf: [2048]u8 = undefined;
     var err = std.Io.File.stderr().writer(io, &err_buf);
@@ -130,6 +148,11 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 }
 
 fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions) !void {
+    if (!isSafeArtifactLabel(options.target)) {
+        std.debug.print("invalid target label: {s}\n", .{options.target});
+        return error.InvalidArguments;
+    }
+
     const binary_bytes = try std.Io.Dir.cwd().readFileAlloc(
         io,
         options.binary_path,
@@ -202,4 +225,12 @@ test "package artifact builds parseable manifest" {
         "https://github.com/nullclaw/nullclaw/actions/runs/123",
         parsed.value.object.get("run_url").?.string,
     );
+}
+
+test "package artifact rejects unsafe manifest target labels" {
+    try std.testing.expect(isSafeArtifactLabel("linux-x86_64"));
+    try std.testing.expect(!isSafeArtifactLabel("../outside"));
+    try std.testing.expect(!isSafeArtifactLabel("linux/amd64"));
+    try std.testing.expect(!isSafeArtifactLabel(".."));
+    try std.testing.expect(!isSafeArtifactLabel("-leading-dash"));
 }
