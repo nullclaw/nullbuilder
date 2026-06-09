@@ -25,6 +25,8 @@ jobs:
       node_cache_dependency_path: package-lock.json
       setup_command: npm ci --no-audit --no-fund
       test_command: |
+        npm run test:ts
+        npm run typecheck
         npm run check
         npm run build
         zig build test --summary all

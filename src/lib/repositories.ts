@@ -29,6 +29,7 @@ const REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 
 export function normalizeRepoSlug(value: string, defaultOwner = DEFAULT_OWNER): RepoSlug {
   const trimmed = value.trim();
+  const owner = normalizeOwner(defaultOwner);
 
   if (!trimmed) {
     throw new Error('Repository name cannot be empty.');
@@ -46,7 +47,13 @@ export function normalizeRepoSlug(value: string, defaultOwner = DEFAULT_OWNER): 
   }
 
   validateRepo(trimmed, value);
-  return `${defaultOwner}/${trimmed}`;
+  return `${owner}/${trimmed}`;
+}
+
+export function normalizeOwner(value: string): string {
+  const owner = value.trim();
+  validateOwner(owner, value);
+  return owner;
 }
 
 export function parseRepositoryList(

@@ -57,6 +57,7 @@ npm run nb -- prs
 npm run nb -- runs
 npm run nb -- stars
 npm run nb -- audit
+npm run test
 ```
 
 Every list command supports `--repo <name>` and `--json`. `audit` checks each

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
+import { mapWithConcurrency } from './concurrency';
 
 export const BUILD_PR_TAG_PREFIX = 'build-pr-';
 
@@ -646,8 +647,9 @@ async function githubFetchJson<T>(
   const { accept: requestedAccept, useCache, ...requestInit } = init;
   const method = requestInit.method?.toUpperCase() ?? 'GET';
   const accept = requestedAccept ?? 'application/vnd.github+json';
+  const url = resolveGitHubApiUrl(config, path);
   const shouldCache = method === 'GET' && useCache !== false && config.cacheTtlMs > 0;
-  const key = shouldCache ? cacheKey(config, path, accept) : '';
+  const key = shouldCache ? cacheKey(config, url, accept) : '';
   const cached = shouldCache ? (cache.get(key) as CacheEntry<T> | undefined) : undefined;
   const now = Date.now();
 
@@ -658,7 +660,6 @@ async function githubFetchJson<T>(
     };
   }
 
-  const url = path.startsWith('http') ? path : `${config.apiBaseUrl}${path}`;
   const headers = new Headers(requestInit.headers);
   headers.set('Accept', accept);
   headers.set('X-GitHub-Api-Version', '2022-11-28');
@@ -738,9 +739,30 @@ function parseNextLink(link: string | null): string | null {
   return match?.[1] ?? null;
 }
 
-function cacheKey(config: NullbuilderConfig, path: string, accept: string): string {
+export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): string {
+  if (path.startsWith('/')) {
+    return `${config.apiBaseUrl}${path}`;
+  }
+
+  if (!/^https?:\/\//i.test(path)) {
+    throw new Error(`Invalid GitHub API path: ${path}`);
+  }
+
+  const base = new URL(config.apiBaseUrl);
+  const url = new URL(path);
+  const basePath = base.pathname.replace(/\/+$/, '');
+
+  if (url.origin !== base.origin || (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`))) {
+    throw new Error(`Invalid GitHub API URL: ${path}`);
+  }
+
+  url.hash = '';
+  return url.toString();
+}
+
+function cacheKey(config: NullbuilderConfig, url: string, accept: string): string {
   const tokenKey = config.token ? createHash('sha256').update(config.token).digest('hex').slice(0, 12) : 'anonymous';
-  return `${config.apiBaseUrl}|${tokenKey}|${accept}|${path}`;
+  return `${config.apiBaseUrl}|${tokenKey}|${accept}|${url}`;
 }
 
 function makeErrorRepository(config: NullbuilderConfig, repo: RepoSlug, error: unknown): RepositorySummary {
@@ -778,28 +800,6 @@ function makeErrorRepository(config: NullbuilderConfig, repo: RepoSlug, error: u
     status: 'error',
     error: publicErrorMessage(error)
   };
-}
-
-async function mapWithConcurrency<T, R>(
-  values: T[],
-  concurrency: number,
-  mapper: (value: T) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(values.length);
-  let nextIndex = 0;
-  const workerCount = Math.max(1, Math.min(concurrency, values.length));
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < values.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await mapper(values[index]);
-      }
-    })
-  );
-
-  return results;
 }
 
 function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse): IssueSummary {

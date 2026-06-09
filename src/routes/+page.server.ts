@@ -9,6 +9,7 @@ const AUTH_COOKIE = 'nullbuilder_auth';
 const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_LIMIT_MAX_FAILURES = 5;
+const LOGIN_RATE_LIMIT_MAX_KEYS = 1000;
 
 type LoginAttempt = {
   failures: number;
@@ -121,34 +122,22 @@ export const actions: Actions = {
   buildPr: async ({ request, cookies }) => {
     const config = readConfig();
     const formData = await request.formData();
-
-    if (!config.enableWebMutations) {
+    const accessError = mutationAccessError(config, cookies, formData.get('csrfToken'), 'build-pr');
+    if (accessError) {
       return fail(403, {
-        buildError: 'Web mutations are disabled. Set NULLBUILDER_ENABLE_MUTATIONS=true to enable build-pr from the UI.'
-      });
-    }
-
-    if (!config.webToken || !isAuthenticated(cookies, config)) {
-      return fail(403, {
-        buildError: 'Web mutations require NULLBUILDER_WEB_TOKEN authentication.'
-      });
-    }
-
-    if (!isCsrfTokenMatch(formData.get('csrfToken'), cookies, config)) {
-      return fail(403, {
-        buildError: 'Invalid request token.'
+        buildError: accessError
       });
     }
 
     const repo = String(formData.get('repo') ?? '');
-    const prNumber = Number.parseInt(String(formData.get('prNumber') ?? ''), 10);
+    const prNumber = parsePositiveFormInteger(formData.get('prNumber'));
     const tagName = String(formData.get('tagName') ?? '').trim();
     const confirm = formData.get('confirm') === 'on';
     const force = formData.get('force') === 'on';
 
-    if (!repo || Number.isNaN(prNumber)) {
+    if (!repo || !prNumber) {
       return fail(400, {
-        buildError: 'Repository and PR number are required.'
+        buildError: 'Repository and a positive PR number are required.'
       });
     }
 
@@ -174,22 +163,10 @@ export const actions: Actions = {
   releaseTag: async ({ request, cookies }) => {
     const config = readConfig();
     const formData = await request.formData();
-
-    if (!config.enableWebMutations) {
+    const accessError = mutationAccessError(config, cookies, formData.get('csrfToken'), 'release-tag');
+    if (accessError) {
       return fail(403, {
-        releaseError: 'Web mutations are disabled. Set NULLBUILDER_ENABLE_MUTATIONS=true to enable release-tag from the UI.'
-      });
-    }
-
-    if (!config.webToken || !isAuthenticated(cookies, config)) {
-      return fail(403, {
-        releaseError: 'Web mutations require NULLBUILDER_WEB_TOKEN authentication.'
-      });
-    }
-
-    if (!isCsrfTokenMatch(formData.get('csrfToken'), cookies, config)) {
-      return fail(403, {
-        releaseError: 'Invalid request token.'
+        releaseError: accessError
       });
     }
 
@@ -285,7 +262,42 @@ function isCsrfTokenMatch(value: FormDataEntryValue | null, cookies: Cookies, co
   return typeof value === 'string' && Boolean(expected && isTokenMatch(value, expected));
 }
 
+function mutationAccessError(
+  config: NullbuilderConfig,
+  cookies: Cookies,
+  csrfToken: FormDataEntryValue | null,
+  operation: 'build-pr' | 'release-tag'
+): string | null {
+  if (!config.enableWebMutations) {
+    return `Web mutations are disabled. Set NULLBUILDER_ENABLE_MUTATIONS=true to enable ${operation} from the UI.`;
+  }
+
+  if (!config.webToken || !isAuthenticated(cookies, config)) {
+    return 'Web mutations require NULLBUILDER_WEB_TOKEN authentication.';
+  }
+
+  if (!isCsrfTokenMatch(csrfToken, cookies, config)) {
+    return 'Invalid request token.';
+  }
+
+  return null;
+}
+
+function parsePositiveFormInteger(value: FormDataEntryValue | null): number | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  if (!/^[1-9]\d*$/.test(value)) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function isLoginAllowed(key: string): boolean {
+  pruneLoginAttempts();
   const attempt = loginAttempts.get(key);
   if (!attempt) {
     return true;
@@ -301,6 +313,7 @@ function isLoginAllowed(key: string): boolean {
 
 function recordLoginFailure(key: string): void {
   const now = Date.now();
+  pruneLoginAttempts(now);
   const current = loginAttempts.get(key);
 
   if (!current || current.resetAt <= now) {
@@ -316,4 +329,20 @@ function recordLoginFailure(key: string): void {
 
 function clearLoginFailures(key: string): void {
   loginAttempts.delete(key);
+}
+
+function pruneLoginAttempts(now = Date.now()): void {
+  for (const [key, attempt] of loginAttempts) {
+    if (attempt.resetAt <= now) {
+      loginAttempts.delete(key);
+    }
+  }
+
+  while (loginAttempts.size > LOGIN_RATE_LIMIT_MAX_KEYS) {
+    const oldestKey = loginAttempts.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    loginAttempts.delete(oldestKey);
+  }
 }

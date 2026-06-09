@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
+import { mapWithConcurrency } from './concurrency';
 import { discoverRepositories, GitHubApiError, githubGet, publicErrorMessage } from './github';
 
 export type AuditSeverity = 'critical' | 'warning' | 'info';
@@ -124,6 +125,7 @@ const NULLBUILDER_WORKFLOWS = [
   { id: 'nightly', file: 'zig-nightly.yml', severity: 'info' as const },
   { id: 'release', file: 'zig-release.yml', severity: 'info' as const }
 ];
+const MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
 
 const RULES: AuditRule[] = [
   {
@@ -659,7 +661,8 @@ function decodeGitHubContent(file: GitHubContentFile): string {
     return '';
   }
 
-  return Buffer.from(file.content.replaceAll('\n', ''), 'base64').toString('utf8');
+  const decoded = Buffer.from(file.content.replaceAll('\n', ''), 'base64');
+  return decoded.subarray(0, MAX_WORKFLOW_FILE_BYTES).toString('utf8');
 }
 
 function encodeGitHubPath(path: string): string {
@@ -719,26 +722,4 @@ function sortFindings(left: AuditFinding, right: AuditFinding): number {
     left.repo.localeCompare(right.repo) ||
     left.title.localeCompare(right.title)
   );
-}
-
-async function mapWithConcurrency<T, R>(
-  values: T[],
-  concurrency: number,
-  mapper: (value: T) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(values.length);
-  let nextIndex = 0;
-  const workerCount = Math.max(1, Math.min(concurrency, values.length));
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < values.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await mapper(values[index]);
-      }
-    })
-  );
-
-  return results;
 }
