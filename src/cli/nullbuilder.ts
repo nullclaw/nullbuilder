@@ -10,79 +10,17 @@ import {
 import { getAuditReport, type AuditFinding, type AuditReport, type AuditSeverity } from '../lib/server/audit';
 import { readConfig } from '../lib/server/config';
 import { normalizeRepoSlug } from '../lib/repositories';
-
-type Command = 'repos' | 'issues' | 'prs' | 'runs' | 'stars' | 'audit' | 'build-pr' | 'release-tag';
-
-type CliOptions = {
-  json: boolean;
-  repo?: string;
-  discover: boolean;
-  pr?: number;
-  tag?: string;
-  targetRef?: string;
-  confirm: boolean;
-  force: boolean;
-  allowDraft: boolean;
-  allowFork: boolean;
-  allowNonDefaultBase: boolean;
-  positionals: string[];
-};
-
-const COMMANDS = new Set<Command>(['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag']);
-
-const HELP = `Usage: nullbuilder <command> [options]
-
-Commands:
-  repos                 Show configured repositories and latest CI/nightly/release status
-  issues                Show open issues across configured repositories
-  prs                   Show open pull requests across configured repositories
-  runs                  Show latest CI/nightly/release runs across repositories
-  stars                 Show current stars and recent growth
-  audit                 Check repository policy, workflow, and security posture
-  build-pr <repo>       Create a build-pr-* tag on a pull request head SHA
-  release-tag <repo>    Create a v* release tag on the default branch, branch, or SHA
-
-Options:
-  --repo <repo>         Filter list commands by repository name or owner/name
-  --discover           Include discovered public Zig/null repositories for NULLBUILDER_OWNER
-  --json                Print JSON
-  --pr <number>         Pull request number for build-pr
-  --tag <tag>           Tag name. build-pr defaults to build-pr-<pr>-<sha>
-  --ref <ref>           Branch name or commit SHA for release-tag. Defaults to default branch
-  --confirm            Actually create/update the tag. Without this, tag commands are dry runs
-  --force              Move an existing tag when used with --confirm
-  --allow-draft        Allow draft PRs for build-pr
-  --allow-fork         Allow fork PRs for build-pr
-  --allow-non-default-base
-                       Allow PRs not targeting the repository default branch
-  -h, --help            Show help
-
-Environment:
-  NULLBUILDER_REPOS     Comma or whitespace-separated repositories. Defaults to NullClaw Zig repos
-  NULLBUILDER_IGNORE_REPOS
-                        Repositories skipped by discovery. Defaults to known forks/connectors
-  NULLBUILDER_OWNER     Default owner for unqualified repository names. Defaults to nullclaw
-  NULLBUILDER_DISCOVER_REPOS=true
-  NULLBUILDER_CACHE_TTL_MS=60000
-  NULLBUILDER_CONCURRENCY=3
-  NULLBUILDER_GITHUB_TOKEN
-                        Token for private repos and write operations
-`;
+import { HELP, parseCommandLine, type Command } from './options';
 
 async function main() {
-  const [rawCommand = 'help', ...rest] = process.argv.slice(2);
+  const commandLine = parseCommandLine(process.argv.slice(2));
 
-  if (rawCommand === 'help' || rawCommand === '--help' || rawCommand === '-h') {
+  if (commandLine.kind === 'help') {
     console.log(HELP);
     return;
   }
 
-  if (!COMMANDS.has(rawCommand as Command)) {
-    throw new Error(`Unknown command: ${rawCommand}`);
-  }
-
-  const command = rawCommand as Command;
-  const options = parseOptions(rest);
+  const { command, options } = commandLine;
   const baseConfig = readConfig();
 
   if (command === 'build-pr') {
@@ -199,69 +137,6 @@ async function main() {
 
   printRepositoryErrors(dashboard);
   exitWithReadErrors(dashboard);
-}
-
-function parseOptions(args: string[]): CliOptions {
-  const options: CliOptions = {
-    json: false,
-    discover: false,
-    confirm: false,
-    force: false,
-    allowDraft: false,
-    allowFork: false,
-    allowNonDefaultBase: false,
-    positionals: []
-  };
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === '--') {
-      options.positionals.push(...args.slice(index + 1));
-      break;
-    }
-
-    if (!arg.startsWith('-')) {
-      options.positionals.push(arg);
-    } else if (arg === '--json') {
-      options.json = true;
-    } else if (arg === '--discover') {
-      options.discover = true;
-    } else if (arg === '--repo') {
-      options.repo = readValue(args, (index += 1), '--repo');
-    } else if (arg === '--pr') {
-      options.pr = Number.parseInt(readValue(args, (index += 1), '--pr'), 10);
-    } else if (arg === '--tag') {
-      options.tag = readValue(args, (index += 1), '--tag');
-    } else if (arg === '--ref') {
-      options.targetRef = readValue(args, (index += 1), '--ref');
-    } else if (arg === '--confirm') {
-      options.confirm = true;
-    } else if (arg === '--force') {
-      options.force = true;
-    } else if (arg === '--allow-draft') {
-      options.allowDraft = true;
-    } else if (arg === '--allow-fork') {
-      options.allowFork = true;
-    } else if (arg === '--allow-non-default-base') {
-      options.allowNonDefaultBase = true;
-    } else {
-      throw new Error(`Unknown option: ${arg}`);
-    }
-  }
-
-  if (options.pr !== undefined && (!Number.isInteger(options.pr) || options.pr <= 0)) {
-    throw new Error('--pr must be a positive number.');
-  }
-
-  return options;
-}
-
-function readValue(args: string[], index: number, option: string): string {
-  const value = args[index];
-  if (!value || value.startsWith('-')) {
-    throw new Error(`${option} requires a value.`);
-  }
-  return value;
 }
 
 function selectJson(command: Command, dashboard: DashboardData) {
