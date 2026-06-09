@@ -2,8 +2,12 @@ import { createHash } from 'node:crypto';
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { mapWithConcurrency } from './concurrency';
-
-export const BUILD_PR_TAG_PREFIX = 'build-pr-';
+import {
+  BUILD_PR_TAG_PREFIX,
+  defaultBuildPrTagName,
+  sanitizeBuildPrTagName,
+  sanitizeReleaseTagName
+} from './tags';
 
 export type GitHubLabel = {
   name: string;
@@ -897,62 +901,6 @@ function mapRun(run: GitHubWorkflowRunResponse | null): WorkflowRunSummary | nul
 
 function sortByUpdatedAt(left: { updatedAt: string }, right: { updatedAt: string }): number {
   return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
-}
-
-function defaultBuildPrTagName(prNumber: number, sha: string): string {
-  return `${BUILD_PR_TAG_PREFIX}${prNumber}-${sha.slice(0, 7)}`;
-}
-
-function sanitizeBuildPrTagName(value: string): string {
-  const tagName = value.trim();
-
-  if (!tagName) {
-    throw new Error('Tag name cannot be empty.');
-  }
-
-  if (!tagName.startsWith(BUILD_PR_TAG_PREFIX)) {
-    throw new Error(`Build PR tag must start with ${BUILD_PR_TAG_PREFIX}.`);
-  }
-
-  if (
-    tagName.length > 120 ||
-    !/^[A-Za-z0-9._-]+$/.test(tagName) ||
-    tagName.startsWith('refs/') ||
-    tagName.includes('..') ||
-    tagName.endsWith('.')
-  ) {
-    throw new Error(`Invalid tag name: ${value}`);
-  }
-
-  return tagName;
-}
-
-function sanitizeReleaseTagName(value: string): string {
-  const tagName = value.trim();
-
-  if (!tagName) {
-    throw new Error('Tag name cannot be empty.');
-  }
-
-  if (!tagName.startsWith('v')) {
-    throw new Error('Release tag must start with v.');
-  }
-
-  if (!isSafeTagName(tagName)) {
-    throw new Error(`Invalid tag name: ${value}`);
-  }
-
-  return tagName;
-}
-
-function isSafeTagName(tagName: string): boolean {
-  return (
-    tagName.length <= 120 &&
-    /^[A-Za-z0-9._-]+$/.test(tagName) &&
-    !tagName.startsWith('refs/') &&
-    !tagName.includes('..') &&
-    !tagName.endsWith('.')
-  );
 }
 
 async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targetRef: string): Promise<string> {
