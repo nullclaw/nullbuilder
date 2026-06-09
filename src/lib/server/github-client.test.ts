@@ -4,9 +4,11 @@ import { readConfig } from './config';
 import { GITHUB_RESPONSE_CACHE_MAX_ENTRIES, GitHubApiError, githubGetPages, githubRequest } from './github-client';
 
 const originalFetch = globalThis.fetch;
+const originalDateNow = Date.now;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  Date.now = originalDateNow;
 });
 
 test('githubGetPages follows same-origin pagination links', async () => {
@@ -143,6 +145,52 @@ test('githubRequest bounds cached responses and evicts the oldest entry', async 
 
   assert.equal(requests.length, GITHUB_RESPONSE_CACHE_MAX_ENTRIES + 2);
   assert.equal(requests.at(-1), 'https://bounded-cache.example.test/repos/nullclaw/repo-0');
+});
+
+test('githubRequest revalidates stale cached GET responses with ETags', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://etag-cache.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '1'
+  });
+  const requests: Array<{ url: string; ifNoneMatch: string | null }> = [];
+  let now = 1_000;
+  Date.now = () => now;
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    requests.push({
+      url: String(input),
+      ifNoneMatch: headers.get('If-None-Match')
+    });
+
+    if (requests.length === 1) {
+      return new Response(JSON.stringify({ id: 1 }), {
+        headers: {
+          ETag: '"repo-v1"'
+        }
+      });
+    }
+
+    return new Response(null, { status: 304 });
+  }) as typeof fetch;
+
+  const first = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  now = 1_002;
+  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.deepEqual(first, { id: 1 });
+  assert.deepEqual(second, { id: 1 });
+  assert.deepEqual(requests, [
+    {
+      url: 'https://etag-cache.example.test/repos/nullclaw/nullbuilder',
+      ifNoneMatch: null
+    },
+    {
+      url: 'https://etag-cache.example.test/repos/nullclaw/nullbuilder',
+      ifNoneMatch: '"repo-v1"'
+    }
+  ]);
 });
 
 test('githubRequest keeps malformed rate-limit reset headers from masking API errors', async () => {

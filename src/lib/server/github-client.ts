@@ -69,18 +69,15 @@ async function githubFetchJson<T>(
   const shouldCache = method === 'GET' && useCache !== false && config.cacheTtlMs > 0;
   const shouldCoalesce = shouldCache && !requestInit.signal;
   const key = shouldCache ? cacheKey(config, url, accept) : '';
-  const cached = shouldCache ? (cache.get(key) as CacheEntry<T> | undefined) : undefined;
+  const cached = shouldCache ? readCacheEntry<T>(key) : undefined;
   const now = Date.now();
 
   if (cached && cached.expiresAt > now) {
     touchCacheEntry(key, cached);
-    return {
-      data: cached.data,
-      next: cached.next
-    };
+    return resultFromCacheEntry(cached);
   }
 
-  const pending = shouldCoalesce ? (inFlightRequests.get(key) as Promise<GitHubFetchResult<T>> | undefined) : undefined;
+  const pending = shouldCoalesce ? readPendingRequest<T>(key) : undefined;
   if (pending) {
     return pending;
   }
@@ -90,7 +87,7 @@ async function githubFetchJson<T>(
     return request;
   }
 
-  inFlightRequests.set(key, request as Promise<GitHubFetchResult<unknown>>);
+  rememberPendingRequest(key, request);
   try {
     return await request;
   } finally {
@@ -136,10 +133,7 @@ async function requestGitHubJson<T>(
   if (response.status === 304 && cached) {
     cached.expiresAt = Date.now() + config.cacheTtlMs;
     touchCacheEntry(key, cached);
-    return {
-      data: cached.data,
-      next: cached.next
-    };
+    return resultFromCacheEntry(cached);
   }
 
   if (!response.ok) {
@@ -288,6 +282,25 @@ function touchCacheEntry<T>(key: string, entry: CacheEntry<T>): void {
 function writeCacheEntry<T>(key: string, entry: CacheEntry<T>): void {
   touchCacheEntry(key, entry);
   pruneCache(Date.now());
+}
+
+function readCacheEntry<T>(key: string): CacheEntry<T> | undefined {
+  return cache.get(key) as CacheEntry<T> | undefined;
+}
+
+function resultFromCacheEntry<T>(entry: CacheEntry<T>): GitHubFetchResult<T> {
+  return {
+    data: entry.data,
+    next: entry.next
+  };
+}
+
+function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | undefined {
+  return inFlightRequests.get(key) as Promise<GitHubFetchResult<T>> | undefined;
+}
+
+function rememberPendingRequest<T>(key: string, request: Promise<GitHubFetchResult<T>>): void {
+  inFlightRequests.set(key, request);
 }
 
 function pruneCache(now: number): void {
