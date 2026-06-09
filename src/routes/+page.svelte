@@ -6,10 +6,10 @@
     CircleDot,
     GitPullRequest,
     Play,
-    ShieldCheck,
     Tags
   } from '@lucide/svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
+  import DashboardAudit from '$lib/components/DashboardAudit.svelte';
   import DashboardMetrics from '$lib/components/DashboardMetrics.svelte';
   import DashboardRepositories from '$lib/components/DashboardRepositories.svelte';
   import DashboardTopbar from '$lib/components/DashboardTopbar.svelte';
@@ -19,8 +19,7 @@
     buildPrResultMessage,
     dashboardOwner,
     hasDashboardReadErrors,
-    releaseResultMessage,
-    visibleAuditFindings
+    releaseResultMessage
   } from '$lib/dashboard-view';
   import { formatDashboardDate } from '$lib/dashboard-format';
   import type { ActionData, PageData } from './$types';
@@ -33,9 +32,6 @@
   const repositories = $derived(dashboard?.repositories ?? []);
   const issues = $derived(dashboard?.issues ?? []);
   const pullRequests = $derived(dashboard?.pullRequests ?? []);
-  const auditRepositories = $derived(audit?.repositories ?? []);
-  const auditFindings = $derived(audit?.findings ?? []);
-  const visibleFindings = $derived(visibleAuditFindings(auditFindings));
   const hasErrors = $derived(hasDashboardReadErrors(repositories, audit));
   const tokenState = $derived(authStateLabel(data.authenticated, data.authRequired));
 </script>
@@ -71,50 +67,7 @@
 
   <DashboardRepositories {repositories} />
 
-  <section id="audit" class="panel">
-    <div class="section-heading">
-      <h2>Audit</h2>
-      <span>{audit?.totals.findings ?? 0}</span>
-    </div>
-
-    {#if audit}
-      <div class="audit-summary" aria-label="Audit totals">
-        <span class="audit-pill critical"><strong>{audit.totals.critical}</strong> critical</span>
-        <span class="audit-pill warning"><strong>{audit.totals.warning}</strong> warning</span>
-        <span class="audit-pill info"><strong>{audit.totals.info}</strong> info</span>
-        <span class="audit-pill score"><strong>{audit.totals.averageScore}</strong> average</span>
-      </div>
-
-      <div class="audit-table">
-        {#each auditRepositories as repo}
-          <a class:error={repo.status === 'error'} class="audit-row" href={repo.url} target="_blank" rel="noreferrer">
-            <ShieldCheck size={16} />
-            <span class="audit-repo">{repo.repo}</span>
-            <strong>{repo.score}</strong>
-            <span>{repo.status === 'error' ? 'error' : repo.findings[0]?.severity ?? 'ok'}</span>
-            <span>{repo.error ?? repo.findings[0]?.title ?? 'ok'}</span>
-            <ArrowRight size={16} />
-          </a>
-        {/each}
-      </div>
-
-      <div class="audit-findings">
-        {#each visibleFindings as finding}
-          <a class="audit-finding {finding.severity}" href={finding.url ?? `https://github.com/${finding.repo}`} target="_blank" rel="noreferrer">
-            <AlertTriangle size={16} />
-            <span>{finding.severity}</span>
-            <strong>{finding.repo}</strong>
-            <span>{finding.title}</span>
-            <small>{finding.path ?? finding.area}</small>
-          </a>
-        {:else}
-          <p class="empty">No audit findings.</p>
-        {/each}
-      </div>
-    {:else}
-      <p class="empty">Audit unavailable.</p>
-    {/if}
-  </section>
+  <DashboardAudit {audit} />
 
   <section id="issues" class="panel">
     <div class="section-heading">
@@ -483,126 +436,6 @@
     font-weight: 700;
   }
 
-  .audit-summary {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
-    padding: 14px 16px;
-    border-bottom: 1px solid #eee7d8;
-  }
-
-  .audit-pill {
-    border: 1px solid #ddd5c2;
-    border-radius: 7px;
-    padding: 10px 12px;
-    color: #5d584d;
-    font-size: 0.86rem;
-    font-weight: 800;
-  }
-
-  .audit-pill strong {
-    margin-right: 6px;
-    color: #24231f;
-    font-size: 1.08rem;
-  }
-
-  .audit-pill.critical {
-    border-color: #d88d76;
-    background: #fff3ee;
-  }
-
-  .audit-pill.warning {
-    border-color: #d9b766;
-    background: #fff8df;
-  }
-
-  .audit-pill.info {
-    border-color: #a8bfd2;
-    background: #f2f7fb;
-  }
-
-  .audit-pill.score {
-    border-color: #9bc7a5;
-    background: #f2fbf2;
-  }
-
-  .audit-table,
-  .audit-findings {
-    display: grid;
-  }
-
-  .audit-table {
-    border-bottom: 1px solid #eee7d8;
-  }
-
-  .audit-row,
-  .audit-finding {
-    display: grid;
-    align-items: center;
-    gap: 10px;
-    min-height: 48px;
-    border-bottom: 1px solid #eee7d8;
-    padding: 0 16px;
-    text-decoration: none;
-  }
-
-  .audit-row {
-    grid-template-columns: 18px minmax(160px, 1fr) 58px 90px minmax(0, 2fr) 18px;
-  }
-
-  .audit-finding {
-    grid-template-columns: 18px 82px minmax(130px, 220px) minmax(0, 1fr) minmax(90px, 180px);
-  }
-
-  .audit-row:last-child,
-  .audit-finding:last-child {
-    border-bottom: 0;
-  }
-
-  .audit-row:hover,
-  .audit-finding:hover {
-    background: #faf3e4;
-  }
-
-  .audit-row.error {
-    color: #943f28;
-  }
-
-  .audit-row span,
-  .audit-row strong,
-  .audit-finding span,
-  .audit-finding strong,
-  .audit-finding small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .audit-row strong {
-    color: #24231f;
-    font-size: 0.95rem;
-  }
-
-  .audit-row span,
-  .audit-finding span,
-  .audit-finding small {
-    color: #6f6b60;
-    font-size: 0.84rem;
-    font-weight: 700;
-  }
-
-  .audit-finding.critical {
-    color: #943f28;
-  }
-
-  .audit-finding.warning {
-    color: #765508;
-  }
-
-  .audit-finding.info {
-    color: #365f7d;
-  }
-
   .work-number {
     color: #3f7364;
   }
@@ -687,10 +520,6 @@
   }
 
   @media (max-width: 1100px) {
-    .audit-summary {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .build-form {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -702,7 +531,6 @@
       padding-top: 18px;
     }
 
-    .audit-summary,
     .build-form {
       grid-template-columns: 1fr;
     }
@@ -716,18 +544,8 @@
       min-height: 62px;
     }
 
-    .audit-row,
-    .audit-finding {
-      grid-template-columns: 18px minmax(0, 1fr) 48px 18px;
-      min-height: 62px;
-    }
-
     .work-row .work-repo,
-    .work-row > span:last-of-type,
-    .audit-row > span:nth-of-type(2),
-    .audit-row > span:nth-of-type(3),
-    .audit-finding > span:first-of-type,
-    .audit-finding > small {
+    .work-row > span:last-of-type {
       display: none;
     }
   }
