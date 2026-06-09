@@ -36,8 +36,27 @@ type ReleaseResultLike = MutationResultLike & {
   targetSha: string;
 };
 
+export type AuthGateCopy = {
+  title: string;
+  description: string;
+};
+
 export function dashboardOwner(dashboard: DashboardOwnerLike | null | undefined): string {
   return dashboard?.owner ?? DEFAULT_DASHBOARD_OWNER;
+}
+
+export function authGateCopy(authConfigured: boolean): AuthGateCopy {
+  if (authConfigured) {
+    return {
+      title: 'Authentication Required',
+      description: 'Enter the configured web token to unlock the dashboard.'
+    };
+  }
+
+  return {
+    title: 'Web Token Required',
+    description: 'Set NULLBUILDER_WEB_TOKEN before exposing token-backed dashboard data.'
+  };
 }
 
 export function authStateLabel(authenticated: boolean, authRequired: boolean): string {

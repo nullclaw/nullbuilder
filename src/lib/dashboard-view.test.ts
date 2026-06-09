@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   DASHBOARD_SECTIONS,
+  authGateCopy,
   authStateLabel,
   buildPrResultMessage,
   dashboardOwner,
@@ -13,6 +14,17 @@ import {
 test('dashboardOwner falls back to the default owner', () => {
   assert.equal(dashboardOwner({ owner: 'octo' }), 'octo');
   assert.equal(dashboardOwner(null), 'nullclaw');
+});
+
+test('authGateCopy keeps authentication panel copy centralized', () => {
+  assert.deepEqual(authGateCopy(true), {
+    title: 'Authentication Required',
+    description: 'Enter the configured web token to unlock the dashboard.'
+  });
+  assert.deepEqual(authGateCopy(false), {
+    title: 'Web Token Required',
+    description: 'Set NULLBUILDER_WEB_TOKEN before exposing token-backed dashboard data.'
+  });
 });
 
 test('authStateLabel keeps token state display logic explicit', () => {

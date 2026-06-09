@@ -14,6 +14,7 @@
     Tags,
     XCircle
   } from '@lucide/svelte';
+  import AuthGate from '$lib/components/AuthGate.svelte';
   import {
     DASHBOARD_SECTIONS,
     authStateLabel,
@@ -73,36 +74,7 @@
   </header>
 
   {#if !dashboard}
-    <section class="auth-panel">
-      <div>
-        <h2>{data.authConfigured ? 'Authentication Required' : 'Web Token Required'}</h2>
-        <p>
-          {data.authConfigured
-            ? 'Enter the configured web token to unlock the dashboard.'
-            : 'Set NULLBUILDER_WEB_TOKEN before exposing token-backed dashboard data.'}
-        </p>
-      </div>
-
-      {#if form?.authError}
-        <div class="form-message error">
-          <AlertTriangle size={16} />
-          <span>{form.authError}</span>
-        </div>
-      {/if}
-
-      {#if data.authConfigured}
-        <form method="POST" action="?/login" class="login-form">
-          <label>
-            <span>Web token</span>
-            <input name="webToken" autocomplete="current-password" required type="password" />
-          </label>
-          <button type="submit">
-            <Play size={17} />
-            <span>Unlock</span>
-          </button>
-        </form>
-      {/if}
-    </section>
+    <AuthGate authConfigured={data.authConfigured} authError={form?.authError} />
   {:else}
   {#if hasErrors}
     <section class="notice">
@@ -589,31 +561,6 @@
     padding: 12px 14px;
   }
 
-  .auth-panel {
-    display: grid;
-    gap: 16px;
-    border: 1px solid #ded8c9;
-    border-radius: 8px;
-    background: #fffdfa;
-    padding: 18px;
-  }
-
-  .auth-panel h2 {
-    font-size: 1rem;
-  }
-
-  .auth-panel p {
-    margin-top: 6px;
-    color: #6f6b60;
-  }
-
-  .login-form {
-    display: grid;
-    grid-template-columns: minmax(220px, 360px) auto;
-    gap: 12px;
-    align-items: end;
-  }
-
   .metrics {
     display: grid;
     grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -1080,8 +1027,7 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .build-form,
-    .login-form {
+    .build-form {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
@@ -1101,8 +1047,7 @@
     .metrics,
     .repo-grid,
     .audit-summary,
-    .build-form,
-    .login-form {
+    .build-form {
       grid-template-columns: 1fr;
     }
 
