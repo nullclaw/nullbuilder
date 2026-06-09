@@ -33,17 +33,64 @@ pub fn isHttpUrlBase(value: []const u8) bool {
         "http://".len
     else
         return false;
-    const authority = value[scheme_len..];
+
+    return isHttpAuthority(value[scheme_len..]);
+}
+
+const HostPort = struct {
+    host: []const u8,
+    port: ?[]const u8 = null,
+};
+
+fn isHttpAuthority(authority: []const u8) bool {
     if (authority.len == 0) return false;
 
-    var has_hostname_char = false;
     for (authority) |byte| {
         if (isAsciiControlOrSpace(byte)) return false;
-        if (byte == '/' or byte == '?' or byte == '#') return false;
-        if (std.ascii.isAlphanumeric(byte)) has_hostname_char = true;
+        if (byte == '/' or byte == '?' or byte == '#' or byte == '@') return false;
     }
 
-    return has_hostname_char;
+    const host_port = splitHostPort(authority);
+    if (!isSafeHost(host_port.host)) return false;
+    if (host_port.port) |port| {
+        if (!isSafePort(port)) return false;
+    }
+
+    return true;
+}
+
+fn splitHostPort(authority: []const u8) HostPort {
+    const separator = std.mem.lastIndexOfScalar(u8, authority, ':') orelse return .{ .host = authority };
+    return .{
+        .host = authority[0..separator],
+        .port = authority[separator + 1 ..],
+    };
+}
+
+fn isSafeHost(host: []const u8) bool {
+    if (host.len == 0) return false;
+
+    var has_hostname_char = false;
+    var previous_dot = false;
+    for (host, 0..) |byte, index| {
+        const is_alpha = std.ascii.isAlphabetic(byte);
+        const is_digit = std.ascii.isDigit(byte);
+        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
+
+        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
+        if (index == 0 and !is_alpha and !is_digit) return false;
+        if (byte == '.' and previous_dot) return false;
+        if (is_alpha or is_digit) has_hostname_char = true;
+        previous_dot = byte == '.';
+    }
+
+    return has_hostname_char and !previous_dot;
+}
+
+fn isSafePort(port: []const u8) bool {
+    if (port.len == 0) return false;
+    const parsed = std.fmt.parseUnsigned(u16, port, 10) catch return false;
+    return parsed > 0;
 }
 
 pub fn isSafeMetadataValue(value: []const u8, max_len: usize) bool {
@@ -105,12 +152,18 @@ test "action values validate repository slugs" {
 test "action values validate URL bases and metadata" {
     try std.testing.expect(isHttpUrlBase("https://github.com"));
     try std.testing.expect(isHttpUrlBase("https://github.example.com:8443"));
+    try std.testing.expect(isHttpUrlBase("http://github.example.local"));
 
     try std.testing.expect(!isHttpUrlBase("github.com"));
     try std.testing.expect(!isHttpUrlBase("https://."));
+    try std.testing.expect(!isHttpUrlBase("https://github.com."));
     try std.testing.expect(!isHttpUrlBase("https://github.com/path"));
     try std.testing.expect(!isHttpUrlBase("https://github.com?query=1"));
     try std.testing.expect(!isHttpUrlBase("https://github.com\n"));
+    try std.testing.expect(!isHttpUrlBase("https://github.com@evil.example"));
+    try std.testing.expect(!isHttpUrlBase("https://github.com:abc"));
+    try std.testing.expect(!isHttpUrlBase("https://github.com:0"));
+    try std.testing.expect(!isHttpUrlBase("https://github.com:65536"));
 
     try std.testing.expect(isSafeMetadataValue("nightly-20260609-abcdef0", 64));
     try std.testing.expect(!isSafeMetadataValue("", 64));
