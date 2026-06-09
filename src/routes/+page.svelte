@@ -15,6 +15,15 @@
     XCircle
   } from '@lucide/svelte';
   import {
+    DASHBOARD_SECTIONS,
+    authStateLabel,
+    buildPrResultMessage,
+    dashboardOwner,
+    hasDashboardReadErrors,
+    releaseResultMessage,
+    visibleAuditFindings
+  } from '$lib/dashboard-view';
+  import {
     formatDashboardDate,
     formatGrowth,
     formatNullableNumber,
@@ -27,13 +36,15 @@
 
   const dashboard = $derived(data.dashboard);
   const audit = $derived(data.audit);
-  const owner = $derived(dashboard?.owner ?? 'nullclaw');
+  const owner = $derived(dashboardOwner(dashboard));
   const repositories = $derived(dashboard?.repositories ?? []);
   const issues = $derived(dashboard?.issues ?? []);
   const pullRequests = $derived(dashboard?.pullRequests ?? []);
   const auditRepositories = $derived(audit?.repositories ?? []);
   const auditFindings = $derived(audit?.findings ?? []);
-  const hasErrors = $derived(repositories.some((repo) => repo.error) || Boolean(audit?.hasReadErrors));
+  const visibleFindings = $derived(visibleAuditFindings(auditFindings));
+  const hasErrors = $derived(hasDashboardReadErrors(repositories, audit));
+  const tokenState = $derived(authStateLabel(data.authenticated, data.authRequired));
 </script>
 
 <svelte:head>
@@ -52,7 +63,7 @@
     </div>
     <div class="top-actions">
       <span class:ok={data.authenticated || dashboard?.hasToken} class="token-state">
-        {data.authenticated ? 'Authenticated' : data.authRequired ? 'Locked token' : 'Anonymous API'}
+        {tokenState}
       </span>
       <a class="icon-button" href="https://github.com/{owner}" target="_blank" rel="noreferrer">
         <ExternalLink size={17} />
@@ -144,12 +155,9 @@
   </section>
 
   <nav class="section-tabs" aria-label="Sections">
-    <a href="#repos">Overview</a>
-    <a href="#audit">Audit</a>
-    <a href="#issues">Issues</a>
-    <a href="#prs">PRs</a>
-    <a href="#build-pr">Build PR</a>
-    <a href="#release-tag">Release Tag</a>
+    {#each DASHBOARD_SECTIONS as section}
+      <a href="#{section.id}">{section.label}</a>
+    {/each}
   </nav>
 
   <section id="repos" class="repo-grid" aria-label="Repositories">
@@ -244,7 +252,7 @@
       </div>
 
       <div class="audit-findings">
-        {#each auditFindings.slice(0, 18) as finding}
+        {#each visibleFindings as finding}
           <a class="audit-finding {finding.severity}" href={finding.url ?? `https://github.com/${finding.repo}`} target="_blank" rel="noreferrer">
             <AlertTriangle size={16} />
             <span>{finding.severity}</span>
@@ -331,8 +339,7 @@
       <div class="form-message success">
         <CheckCircle2 size={16} />
         <span>
-          {form.buildResult.dryRun ? 'Previewed' : form.buildResult.forced ? 'Moved' : 'Created'}
-          {form.buildResult.tagName} for {form.buildResult.repo} #{form.buildResult.prNumber}
+          {buildPrResultMessage(form.buildResult)}
         </span>
         <a href={form.buildResult.tagUrl} target="_blank" rel="noreferrer">Open</a>
         <a href={form.buildResult.workflowUrl} target="_blank" rel="noreferrer">Runs</a>
@@ -404,8 +411,7 @@
       <div class="form-message success">
         <CheckCircle2 size={16} />
         <span>
-          {form.releaseResult.dryRun ? 'Previewed' : form.releaseResult.forced ? 'Moved' : 'Created'}
-          {form.releaseResult.tagName} for {form.releaseResult.repo} at {form.releaseResult.targetSha.slice(0, 7)}
+          {releaseResultMessage(form.releaseResult)}
         </span>
         <a href={form.releaseResult.tagUrl} target="_blank" rel="noreferrer">Open</a>
         <a href={form.releaseResult.workflowUrl} target="_blank" rel="noreferrer">Runs</a>
