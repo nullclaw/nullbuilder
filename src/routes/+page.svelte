@@ -1,10 +1,7 @@
 <script lang="ts">
   import {
     AlertTriangle,
-    ArrowRight,
     CheckCircle2,
-    CircleDot,
-    GitPullRequest,
     Play,
     Tags
   } from '@lucide/svelte';
@@ -13,6 +10,7 @@
   import DashboardMetrics from '$lib/components/DashboardMetrics.svelte';
   import DashboardRepositories from '$lib/components/DashboardRepositories.svelte';
   import DashboardTopbar from '$lib/components/DashboardTopbar.svelte';
+  import DashboardWorkLists from '$lib/components/DashboardWorkLists.svelte';
   import {
     DASHBOARD_SECTIONS,
     authStateLabel,
@@ -21,7 +19,6 @@
     hasDashboardReadErrors,
     releaseResultMessage
   } from '$lib/dashboard-view';
-  import { formatDashboardDate } from '$lib/dashboard-format';
   import type { ActionData, PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: ActionData } = $props();
@@ -69,49 +66,7 @@
 
   <DashboardAudit {audit} />
 
-  <section id="issues" class="panel">
-    <div class="section-heading">
-      <h2>Issues</h2>
-      <span>{issues.length}</span>
-    </div>
-
-    <div class="work-list">
-      {#each issues as issue}
-        <a class="work-row" href={issue.url} target="_blank" rel="noreferrer">
-          <CircleDot size={16} />
-          <span class="work-repo">{issue.repo}</span>
-          <span class="work-number">#{issue.number}</span>
-          <strong>{issue.title}</strong>
-          <span>{formatDashboardDate(issue.updatedAt)}</span>
-          <ArrowRight size={16} />
-        </a>
-      {:else}
-        <p class="empty">{hasErrors ? 'No issue rows from loaded repositories.' : 'No open issues.'}</p>
-      {/each}
-    </div>
-  </section>
-
-  <section id="prs" class="panel">
-    <div class="section-heading">
-      <h2>Pull Requests</h2>
-      <span>{pullRequests.length}</span>
-    </div>
-
-    <div class="work-list">
-      {#each pullRequests as pull}
-        <a class="work-row" href={pull.url} target="_blank" rel="noreferrer">
-          <GitPullRequest size={16} />
-          <span class="work-repo">{pull.repo}</span>
-          <span class="work-number">#{pull.number}</span>
-          <strong>{pull.title}</strong>
-          <span>{pull.draft ? 'draft' : pull.headBranch}</span>
-          <ArrowRight size={16} />
-        </a>
-      {:else}
-        <p class="empty">{hasErrors ? 'No PR rows from loaded repositories.' : 'No open pull requests.'}</p>
-      {/each}
-    </div>
-  </section>
+  <DashboardWorkLists {hasErrors} {issues} {pullRequests} />
 
   <section id="build-pr" class="build-panel">
     <div class="section-heading">
@@ -287,8 +242,7 @@
     padding: 28px 0 48px;
   }
 
-  h2,
-  p {
+  h2 {
     margin: 0;
   }
 
@@ -366,14 +320,12 @@
     background: #ece6d7;
   }
 
-  .panel,
   .build-panel {
     border: 1px solid #ded8c9;
     border-radius: 8px;
     background: #fffdfa;
   }
 
-  .panel,
   .build-panel {
     margin-bottom: 18px;
     overflow: hidden;
@@ -394,55 +346,6 @@
   .section-heading span {
     color: #6f6b60;
     font-weight: 800;
-  }
-
-  .work-list {
-    display: grid;
-  }
-
-  .work-row {
-    display: grid;
-    grid-template-columns: 18px minmax(120px, 180px) 58px minmax(0, 1fr) minmax(90px, 150px) 18px;
-    gap: 10px;
-    align-items: center;
-    min-height: 48px;
-    border-bottom: 1px solid #eee7d8;
-    padding: 0 16px;
-    text-decoration: none;
-  }
-
-  .work-row:last-child {
-    border-bottom: 0;
-  }
-
-  .work-row:hover {
-    background: #faf3e4;
-  }
-
-  .work-row strong,
-  .work-row span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .work-row strong {
-    font-size: 0.92rem;
-  }
-
-  .work-row span {
-    color: #6f6b60;
-    font-size: 0.84rem;
-    font-weight: 700;
-  }
-
-  .work-number {
-    color: #3f7364;
-  }
-
-  .empty {
-    padding: 16px;
-    color: #6f6b60;
   }
 
   .build-panel {
@@ -537,16 +440,6 @@
 
     .section-tabs {
       overflow-x: auto;
-    }
-
-    .work-row {
-      grid-template-columns: 18px 64px minmax(0, 1fr) 18px;
-      min-height: 62px;
-    }
-
-    .work-row .work-repo,
-    .work-row > span:last-of-type {
-      display: none;
     }
   }
 </style>
