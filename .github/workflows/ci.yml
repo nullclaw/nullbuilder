@@ -49,7 +49,7 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Test nightly decision helper
-        run: zig test .github/actions/nightly-decide/nightly_decide.zig
+        run: zig test --dep action_args -Mroot=.github/actions/nightly-decide/nightly_decide.zig -Maction_args=.github/actions/action_args.zig
 
       - name: Test artifact package helper
-        run: zig test .github/actions/package-artifact/package_artifact.zig
+        run: zig test --dep action_args -Mroot=.github/actions/package-artifact/package_artifact.zig -Maction_args=.github/actions/action_args.zig

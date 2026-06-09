@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const action_args = @import("action_args");
+
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 
 const PackageOptions = struct {
@@ -86,18 +88,6 @@ fn printUsage(io: std.Io) !u8 {
     return 2;
 }
 
-fn takeValue(
-    iterator: *std.process.Args.Iterator,
-    allocator: std.mem.Allocator,
-    flag: []const u8,
-) ![]const u8 {
-    const value = iterator.next() orelse {
-        std.debug.print("missing value for {s}\n", .{flag});
-        return error.InvalidArguments;
-    };
-    return try allocator.dupe(u8, value);
-}
-
 fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator) !PackageOptions {
     var binary_path: ?[]const u8 = null;
     var target: ?[]const u8 = null;
@@ -111,39 +101,38 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 
     while (iterator.next()) |arg| {
         if (std.mem.eql(u8, arg, "--binary")) {
-            binary_path = try takeValue(iterator, allocator, arg);
+            binary_path = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--target")) {
-            target = try takeValue(iterator, allocator, arg);
+            target = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--zig-target")) {
-            zig_target = try takeValue(iterator, allocator, arg);
+            zig_target = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--version")) {
-            version = try takeValue(iterator, allocator, arg);
+            version = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--repository")) {
-            repository = try takeValue(iterator, allocator, arg);
+            repository = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--commit")) {
-            commit = try takeValue(iterator, allocator, arg);
+            commit = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--run-id")) {
-            run_id = try takeValue(iterator, allocator, arg);
+            run_id = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--server-url")) {
-            server_url = try takeValue(iterator, allocator, arg);
+            server_url = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--built-at")) {
-            built_at = try takeValue(iterator, allocator, arg);
+            built_at = try action_args.takeValue(iterator, allocator, arg);
         } else {
-            std.debug.print("unknown option: {s}\n", .{arg});
-            return error.InvalidArguments;
+            return action_args.unexpectedOption(arg);
         }
     }
 
     return .{
-        .binary_path = binary_path orelse return error.InvalidArguments,
-        .target = target orelse return error.InvalidArguments,
-        .zig_target = zig_target orelse return error.InvalidArguments,
-        .version = version orelse return error.InvalidArguments,
-        .repository = repository orelse return error.InvalidArguments,
-        .commit = commit orelse return error.InvalidArguments,
-        .run_id = run_id orelse return error.InvalidArguments,
-        .server_url = server_url orelse return error.InvalidArguments,
-        .built_at = built_at orelse return error.InvalidArguments,
+        .binary_path = try action_args.required(binary_path, "--binary"),
+        .target = try action_args.required(target, "--target"),
+        .zig_target = try action_args.required(zig_target, "--zig-target"),
+        .version = try action_args.required(version, "--version"),
+        .repository = try action_args.required(repository, "--repository"),
+        .commit = try action_args.required(commit, "--commit"),
+        .run_id = try action_args.required(run_id, "--run-id"),
+        .server_url = try action_args.required(server_url, "--server-url"),
+        .built_at = try action_args.required(built_at, "--built-at"),
     };
 }
 

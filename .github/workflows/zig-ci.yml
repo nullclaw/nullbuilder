@@ -142,7 +142,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-${{ matrix.target }}-${{ hashFiles('src/**/*.zig', 'build.zig', 'build.zig.zon', 'vendor/**') }}
+          key: zig-${{ matrix.target }}-${{ hashFiles('src/**/*.zig', '.github/actions/**/*.zig', 'build.zig', 'build.zig.zon', 'vendor/**') }}
           restore-keys: zig-${{ matrix.target }}-
 
       - name: Run setup command

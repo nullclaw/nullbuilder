@@ -52,7 +52,11 @@ runs:
           force_args+=(--force)
         fi
 
-        zig run "$GITHUB_ACTION_PATH/nightly_decide.zig" -- \
+        zig run \
+          --dep action_args \
+          -Mroot="$GITHUB_ACTION_PATH/nightly_decide.zig" \
+          -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
+          -- \
           --runs-json "${DECIDE_RUNS_JSON}" \
           --current-run-id "${DECIDE_CURRENT_RUN_ID}" \
           --head-sha "${DECIDE_HEAD_SHA}" \

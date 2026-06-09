@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const action_args = @import("action_args");
+
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
@@ -98,18 +100,6 @@ fn printUsage(io: std.Io) !u8 {
     return 2;
 }
 
-fn takeValue(
-    iterator: *std.process.Args.Iterator,
-    allocator: std.mem.Allocator,
-    flag: []const u8,
-) ![]const u8 {
-    const value = iterator.next() orelse {
-        std.debug.print("missing value for {s}\n", .{flag});
-        return error.InvalidArguments;
-    };
-    return try allocator.dupe(u8, value);
-}
-
 fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator) !DecideOptions {
     var runs_json_path: ?[]const u8 = null;
     var current_run_id: ?[]const u8 = null;
@@ -119,25 +109,24 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 
     while (iterator.next()) |arg| {
         if (std.mem.eql(u8, arg, "--runs-json")) {
-            runs_json_path = try takeValue(iterator, allocator, arg);
+            runs_json_path = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--current-run-id")) {
-            current_run_id = try takeValue(iterator, allocator, arg);
+            current_run_id = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--head-sha")) {
-            head_sha = try takeValue(iterator, allocator, arg);
+            head_sha = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--workflow-name")) {
-            workflow_name = try takeValue(iterator, allocator, arg);
+            workflow_name = try action_args.takeValue(iterator, allocator, arg);
         } else if (std.mem.eql(u8, arg, "--force")) {
             force = true;
         } else {
-            std.debug.print("unknown option: {s}\n", .{arg});
-            return error.InvalidArguments;
+            return action_args.unexpectedOption(arg);
         }
     }
 
     return .{
-        .runs_json_path = runs_json_path orelse return error.InvalidArguments,
-        .current_run_id = current_run_id orelse return error.InvalidArguments,
-        .head_sha = head_sha orelse return error.InvalidArguments,
+        .runs_json_path = try action_args.required(runs_json_path, "--runs-json"),
+        .current_run_id = try action_args.required(current_run_id, "--current-run-id"),
+        .head_sha = try action_args.required(head_sha, "--head-sha"),
         .workflow_name = workflow_name orelse "",
         .force = force,
     };

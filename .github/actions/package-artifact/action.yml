@@ -46,7 +46,11 @@ runs:
         PACKAGE_SERVER_URL: ${{ inputs.server_url }}
         PACKAGE_BUILT_AT: ${{ inputs.built_at }}
       run: |
-        zig run "$GITHUB_ACTION_PATH/package_artifact.zig" -- \
+        zig run \
+          --dep action_args \
+          -Mroot="$GITHUB_ACTION_PATH/package_artifact.zig" \
+          -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
+          -- \
           --binary "${PACKAGE_BINARY}" \
           --target "${PACKAGE_TARGET}" \
           --zig-target "${PACKAGE_ZIG_TARGET}" \
