@@ -1,8 +1,32 @@
 import type { Cookies } from '@sveltejs/kit';
-import { isAuthenticated, isCsrfTokenMatch } from './auth';
+import {
+  createSessionToken,
+  isAuthenticated,
+  isCsrfTokenMatch,
+  isTokenMatch,
+  type LoginRateLimiter
+} from './auth';
 import type { NullbuilderConfig } from './config';
 
 export type WebMutationOperation = 'build-pr' | 'release-tag';
+
+export type WebAuthFailure = {
+  ok: false;
+  status: 403 | 429;
+  message: string;
+};
+
+export type WebLoginSuccess = {
+  ok: true;
+  sessionToken: string;
+};
+
+export type WebLogoutSuccess = {
+  ok: true;
+};
+
+export type WebLoginResult = WebLoginSuccess | WebAuthFailure;
+export type WebLogoutResult = WebLogoutSuccess | WebAuthFailure;
 
 export type BuildPrMutationForm = {
   repo: string;
@@ -39,6 +63,44 @@ export type WebMutationSuccess<T> = {
 };
 
 export type WebMutationResult<T, Field extends string> = WebMutationSuccess<T> | WebMutationFailure<Field>;
+
+export function runLoginWebAction(
+  config: NullbuilderConfig,
+  rateLimiter: LoginRateLimiter,
+  rateLimitKey: string,
+  formData: FormData
+): WebLoginResult {
+  const token = formString(formData.get('webToken'));
+
+  if (!config.webToken) {
+    return authFailure(403, 'Set NULLBUILDER_WEB_TOKEN before exposing token-backed dashboard data.');
+  }
+
+  if (!rateLimiter.isAllowed(rateLimitKey)) {
+    return authFailure(429, 'Too many failed login attempts. Try again later.');
+  }
+
+  if (!isTokenMatch(token, config.webToken)) {
+    rateLimiter.recordFailure(rateLimitKey);
+    return authFailure(403, 'Invalid web token.');
+  }
+
+  rateLimiter.clear(rateLimitKey);
+  return {
+    ok: true,
+    sessionToken: createSessionToken(config.webToken)
+  };
+}
+
+export function runLogoutWebAction(config: NullbuilderConfig, cookies: Cookies, formData: FormData): WebLogoutResult {
+  if (config.webToken && isAuthenticated(cookies, config) && !isCsrfTokenMatch(formData.get('csrfToken'), cookies, config)) {
+    return authFailure(403, 'Invalid request token.');
+  }
+
+  return {
+    ok: true
+  };
+}
 
 export function mutationAccessError(
   config: NullbuilderConfig,
@@ -165,11 +227,23 @@ export function parsePositiveFormInteger(value: FormDataEntryValue | null): numb
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {
-  return typeof value === 'string' ? value.trim() : '';
+  return formString(value).trim();
 }
 
 function isChecked(value: FormDataEntryValue | null): boolean {
   return value === 'on';
+}
+
+function formString(value: FormDataEntryValue | null): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function authFailure(status: WebAuthFailure['status'], message: string): WebAuthFailure {
+  return {
+    ok: false,
+    status,
+    message
+  };
 }
 
 function mutationFailure<Field extends string>(

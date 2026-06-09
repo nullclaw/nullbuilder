@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import type { Cookies } from '@sveltejs/kit';
-import { AUTH_COOKIE, createCsrfToken, createSessionToken } from './auth';
+import { AUTH_COOKIE, createCsrfToken, createSessionToken, isSessionTokenMatch, LoginRateLimiter } from './auth';
 import { readConfig } from './config';
 import {
   mutationAccessError,
@@ -9,6 +9,8 @@ import {
   parsePositiveFormInteger,
   parseReleaseTagMutationForm,
   runBuildPrWebMutation,
+  runLoginWebAction,
+  runLogoutWebAction,
   runReleaseTagWebMutation
 } from './web-actions';
 
@@ -78,6 +80,75 @@ test('mutationAccessError enforces enablement authentication and CSRF order', ()
 
   const csrfToken = createCsrfToken(cookies, config);
   assert.equal(mutationAccessError(config, cookies, csrfToken, 'release-tag'), null);
+});
+
+test('runLoginWebAction creates a session token and clears prior failures', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret'
+  });
+  const limiter = testLoginRateLimiter(2);
+  const formData = new FormData();
+  formData.set('webToken', 'web-secret');
+  limiter.recordFailure('client');
+
+  const result = runLoginWebAction(config, limiter, 'client', formData);
+
+  assert.equal(result.ok, true);
+  assert.equal(limiter.size, 0);
+  if (result.ok) {
+    assert.equal(isSessionTokenMatch(result.sessionToken, 'web-secret'), true);
+  }
+});
+
+test('runLoginWebAction records failures and blocks rate-limited clients', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret'
+  });
+  const limiter = testLoginRateLimiter();
+  const formData = new FormData();
+  formData.set('webToken', 'wrong');
+
+  assert.deepEqual(runLoginWebAction(config, limiter, 'client', formData), {
+    ok: false,
+    status: 403,
+    message: 'Invalid web token.'
+  });
+  assert.deepEqual(runLoginWebAction(config, limiter, 'client', formData), {
+    ok: false,
+    status: 429,
+    message: 'Too many failed login attempts. Try again later.'
+  });
+});
+
+test('runLoginWebAction rejects missing web token configuration', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+
+  assert.deepEqual(runLoginWebAction(config, testLoginRateLimiter(), 'client', new FormData()), {
+    ok: false,
+    status: 403,
+    message: 'Set NULLBUILDER_WEB_TOKEN before exposing token-backed dashboard data.'
+  });
+});
+
+test('runLogoutWebAction enforces CSRF only for authenticated web sessions', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret'
+  });
+  const session = createSessionToken('web-secret');
+
+  assert.deepEqual(runLogoutWebAction(config, cookiesWith(session), new FormData()), {
+    ok: false,
+    status: 403,
+    message: 'Invalid request token.'
+  });
+  assert.deepEqual(runLogoutWebAction(config, cookiesWith(), new FormData()), {
+    ok: true
+  });
 });
 
 test('runBuildPrWebMutation validates access and passes normalized input to executor', async () => {
@@ -184,6 +255,15 @@ function cookiesWith(value?: string): Cookies {
   return {
     get: (name: string) => (name === AUTH_COOKIE ? value : undefined)
   } as Cookies;
+}
+
+function testLoginRateLimiter(maxFailures = 1): LoginRateLimiter {
+  return new LoginRateLimiter({
+    windowMs: 1000,
+    maxFailures,
+    maxKeys: 10,
+    now: () => 10_000
+  });
 }
 
 function authorizedMutationContext(): { config: ReturnType<typeof readConfig>; cookies: Cookies; csrfToken: string } {

@@ -3,16 +3,17 @@ import { getAuditReport } from '$lib/server/audit';
 import {
   AUTH_COOKIE,
   AUTH_MAX_AGE_SECONDS,
-  createSessionToken,
-  isAuthenticated,
-  isCsrfTokenMatch,
-  isTokenMatch,
   LoginRateLimiter
 } from '$lib/server/auth';
 import { buildPrTag, createReleaseTag, discoverRepositories, getDashboard, publicErrorMessage } from '$lib/server/github';
 import { readConfig } from '$lib/server/config';
 import { buildDashboardPageState, resolveDashboardAccess } from '$lib/server/web-page-state';
-import { runBuildPrWebMutation, runReleaseTagWebMutation } from '$lib/server/web-actions';
+import {
+  runBuildPrWebMutation,
+  runLoginWebAction,
+  runLogoutWebAction,
+  runReleaseTagWebMutation
+} from '$lib/server/web-actions';
 import type { Actions, PageServerLoad } from './$types';
 
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
@@ -49,29 +50,15 @@ export const actions: Actions = {
     const config = readConfig();
     const rateLimitKey = getClientAddress();
     const formData = await request.formData();
-    const token = String(formData.get('webToken') ?? '');
+    const login = runLoginWebAction(config, loginRateLimiter, rateLimitKey, formData);
 
-    if (!config.webToken) {
-      return fail(403, {
-        authError: 'Set NULLBUILDER_WEB_TOKEN before exposing token-backed dashboard data.'
+    if (!login.ok) {
+      return fail(login.status, {
+        authError: login.message
       });
     }
 
-    if (!loginRateLimiter.isAllowed(rateLimitKey)) {
-      return fail(429, {
-        authError: 'Too many failed login attempts. Try again later.'
-      });
-    }
-
-    if (!isTokenMatch(token, config.webToken)) {
-      loginRateLimiter.recordFailure(rateLimitKey);
-      return fail(403, {
-        authError: 'Invalid web token.'
-      });
-    }
-
-    loginRateLimiter.clear(rateLimitKey);
-    cookies.set(AUTH_COOKIE, createSessionToken(config.webToken), {
+    cookies.set(AUTH_COOKIE, login.sessionToken, {
       httpOnly: true,
       maxAge: AUTH_MAX_AGE_SECONDS,
       path: '/',
@@ -87,10 +74,11 @@ export const actions: Actions = {
   logout: async ({ request, cookies }) => {
     const config = readConfig();
     const formData = await request.formData();
+    const logout = runLogoutWebAction(config, cookies, formData);
 
-    if (config.webToken && isAuthenticated(cookies, config) && !isCsrfTokenMatch(formData.get('csrfToken'), cookies, config)) {
-      return fail(403, {
-        authError: 'Invalid request token.'
+    if (!logout.ok) {
+      return fail(logout.status, {
+        authError: logout.message
       });
     }
 
