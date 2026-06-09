@@ -222,7 +222,7 @@ export function parsePositiveFormInteger(value: FormDataEntryValue | null): numb
     return null;
   }
 
-  const parsed = Number(value);
+  const parsed = Number.parseInt(value, 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
