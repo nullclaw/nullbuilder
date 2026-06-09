@@ -3,7 +3,6 @@ import { getAuditReport } from '$lib/server/audit';
 import {
   AUTH_COOKIE,
   AUTH_MAX_AGE_SECONDS,
-  createCsrfToken,
   createSessionToken,
   isAuthenticated,
   isCsrfTokenMatch,
@@ -12,6 +11,7 @@ import {
 } from '$lib/server/auth';
 import { buildPrTag, createReleaseTag, discoverRepositories, getDashboard, publicErrorMessage } from '$lib/server/github';
 import { readConfig } from '$lib/server/config';
+import { buildDashboardPageState, resolveDashboardAccess } from '$lib/server/web-page-state';
 import {
   mutationAccessError,
   parseBuildPrMutationForm,
@@ -31,22 +31,10 @@ const loginRateLimiter = new LoginRateLimiter({
 
 export const load: PageServerLoad = async ({ cookies }) => {
   const config = readConfig();
-  const authRequired = Boolean(config.webToken || config.token);
-  const authConfigured = Boolean(config.webToken);
-  const authenticated = isAuthenticated(cookies, config);
+  const access = resolveDashboardAccess(config, cookies);
 
-  if (authRequired && !authenticated) {
-    return {
-      dashboard: null,
-      audit: null,
-      authRequired,
-      authConfigured,
-      authenticated: false,
-      webMutationsEnabled: config.enableWebMutations,
-      webMutationsAvailable: false,
-      hasGitHubToken: Boolean(config.token),
-      csrfToken: null
-    };
+  if (!access.canReadData) {
+    return buildDashboardPageState(config, cookies, access);
   }
 
   const repos = config.discoverRepos ? await discoverRepositories(config) : config.repos;
@@ -56,19 +44,8 @@ export const load: PageServerLoad = async ({ cookies }) => {
     discoverRepos: false
   };
   const [dashboard, audit] = await Promise.all([getDashboard(readConfigWithRepos), getAuditReport(readConfigWithRepos)]);
-  const csrfToken = createCsrfToken(cookies, config);
 
-  return {
-    dashboard,
-    audit,
-    authRequired,
-    authConfigured,
-    authenticated,
-    webMutationsEnabled: config.enableWebMutations,
-    webMutationsAvailable: config.enableWebMutations && authConfigured && authenticated,
-    hasGitHubToken: Boolean(config.token),
-    csrfToken
-  };
+  return buildDashboardPageState(config, cookies, access, { dashboard, audit });
 };
 
 export const actions: Actions = {
