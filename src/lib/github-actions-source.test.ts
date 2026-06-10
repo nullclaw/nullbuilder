@@ -48,6 +48,16 @@ test('setup-zig downloader keeps archive fetches on HTTPS', () => {
   assert.match(curlLine, /--proto-redir '=https'/);
 });
 
+test('setup-zig metadata fetch is bounded and anchored', () => {
+  const source = readFileSync(join(actionsRoot, 'setup-zig', 'install-zig.sh'), 'utf8');
+
+  assert.match(source, /METADATA_URL = "https:\/\/ziglang\.org\/download\/index\.json"/);
+  assert.match(source, /urllib\.request\.urlopen\(METADATA_URL, timeout=METADATA_TIMEOUT_SECONDS\)/);
+  assert.match(source, /ensure_metadata_url\(response\.geturl\(\)\)/);
+  assert.match(source, /response\.read\(MAX_METADATA_BYTES \+ 1\)/);
+  assert.match(source, /json\.loads\(metadata\.decode\("utf-8"\)\)/);
+});
+
 function actionYamlFiles(directory: string): string[] {
   const files: string[] = [];
 

@@ -76,9 +76,32 @@ import urllib.request
 
 version = sys.argv[1]
 host_key = sys.argv[2]
+METADATA_URL = "https://ziglang.org/download/index.json"
+METADATA_TIMEOUT_SECONDS = 30
+MAX_METADATA_BYTES = 2 * 1024 * 1024
 
-with urllib.request.urlopen("https://ziglang.org/download/index.json") as response:
-    data = json.load(response)
+def ensure_metadata_url(value: str) -> None:
+    parsed = urllib.parse.urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "ziglang.org"
+        or parsed.path != "/download/index.json"
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise SystemExit("invalid Zig download metadata URL")
+
+with urllib.request.urlopen(METADATA_URL, timeout=METADATA_TIMEOUT_SECONDS) as response:
+    ensure_metadata_url(response.geturl())
+    metadata = response.read(MAX_METADATA_BYTES + 1)
+
+if len(metadata) > MAX_METADATA_BYTES:
+    raise SystemExit("Zig download metadata is too large")
+
+try:
+    data = json.loads(metadata.decode("utf-8"))
+except UnicodeDecodeError as err:
+    raise SystemExit("invalid UTF-8 in Zig download metadata") from err
 
 host = data.get(version, {}).get(host_key)
 if not host:
