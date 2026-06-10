@@ -1,0 +1,58 @@
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+import {
+  collectRecentWorkItems,
+  compareByUpdatedAtDesc,
+  hasValidRecentWorkItemLimit,
+  RecentWorkItemCollector,
+  type WorkItemWithUpdatedAt
+} from './recent-work-items';
+
+type TestWorkItem = WorkItemWithUpdatedAt & {
+  id: number;
+};
+
+test('RecentWorkItemCollector keeps the newest bounded rows with stable timestamp ties', () => {
+  const collector = new RecentWorkItemCollector<TestWorkItem>(3);
+
+  collector.add(workItem(1, '2026-06-09T00:00:00Z'));
+  collector.add(workItem(2, '2026-06-09T00:03:00Z'));
+  collector.add(workItem(3, '2026-06-09T00:03:00Z'));
+  collector.add(workItem(4, '2026-06-09T00:01:00Z'));
+  collector.add(workItem(5, '2026-06-09T00:04:00Z'));
+
+  assert.deepEqual(collector.items().map(({ id }) => id), [5, 2, 3]);
+});
+
+test('collectRecentWorkItems treats invalid timestamps as older than valid timestamps', () => {
+  const items = [
+    workItem(1, 'not-a-date'),
+    workItem(2, '1960-01-01T00:00:00Z'),
+    workItem(3, ''),
+    workItem(4, '2026-06-09T00:00:00Z')
+  ];
+
+  assert.deepEqual(collectRecentWorkItems(items, 3).map(({ id }) => id), [4, 2, 1]);
+});
+
+test('recent work item helpers reject unsafe limits', () => {
+  assert.equal(hasValidRecentWorkItemLimit(0), false);
+  assert.equal(hasValidRecentWorkItemLimit(1.5), false);
+  assert.equal(hasValidRecentWorkItemLimit(Number.MAX_SAFE_INTEGER + 1), false);
+  assert.deepEqual(collectRecentWorkItems([workItem(1, '2026-06-09T00:00:00Z')], 0), []);
+});
+
+test('compareByUpdatedAtDesc orders invalid timestamps after any valid timestamp', () => {
+  assert.equal(
+    compareByUpdatedAtDesc(workItem(1, 'not-a-date'), workItem(2, '1960-01-01T00:00:00Z')),
+    1
+  );
+  assert.equal(
+    compareByUpdatedAtDesc(workItem(1, '2026-06-09T00:00:00Z'), workItem(2, '2026-06-09T00:00:00Z')),
+    0
+  );
+});
+
+function workItem(id: number, updatedAt: string): TestWorkItem {
+  return { id, updatedAt };
+}

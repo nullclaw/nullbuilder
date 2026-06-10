@@ -3,6 +3,12 @@ import type { NullbuilderConfig } from './config';
 import { publicErrorMessage } from './github-client';
 import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary } from './github-dashboard-types';
 import { githubRepositoryWebUrl } from './github-web-urls';
+import {
+  compareByUpdatedAtDesc,
+  hasValidRecentWorkItemLimit,
+  RecentWorkItemCollector,
+  type WorkItemWithUpdatedAt
+} from './recent-work-items';
 
 export const MAX_DASHBOARD_WORK_LIST_ITEMS = 500;
 
@@ -74,70 +80,19 @@ function collectRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
   itemsForRepository: (repo: RepositorySummary) => T[],
   maxItems = MAX_DASHBOARD_WORK_LIST_ITEMS
 ): T[] {
-  if (!Number.isSafeInteger(maxItems) || maxItems <= 0) {
+  if (!hasValidRecentWorkItemLimit(maxItems)) {
     return [];
   }
 
-  const rankedItems: RankedWorkItem<T>[] = [];
-  let ordinal = 0;
+  const collector = new RecentWorkItemCollector<T>(maxItems);
 
   for (const repo of repositories) {
     for (const item of itemsForRepository(repo)) {
-      insertRecentWorkItem(
-        rankedItems,
-        {
-          item,
-          timestamp: updatedAtTimestamp(item.updatedAt),
-          ordinal
-        },
-        maxItems
-      );
-      ordinal += 1;
+      collector.add(item);
     }
   }
 
-  return rankedItems.map(({ item }) => item);
-}
-
-type RankedWorkItem<T extends IssueSummary | PullRequestSummary> = {
-  item: T;
-  timestamp: number;
-  ordinal: number;
-};
-
-function insertRecentWorkItem<T extends IssueSummary | PullRequestSummary>(
-  items: RankedWorkItem<T>[],
-  item: RankedWorkItem<T>,
-  maxItems: number
-): void {
-  if (items.length >= maxItems && compareRecentWorkItems(item, items[items.length - 1]) >= 0) {
-    return;
-  }
-
-  let lower = 0;
-  let upper = items.length;
-
-  while (lower < upper) {
-    const middle = lower + Math.floor((upper - lower) / 2);
-    if (compareRecentWorkItems(item, items[middle]) < 0) {
-      upper = middle;
-    } else {
-      lower = middle + 1;
-    }
-  }
-
-  items.splice(lower, 0, item);
-  if (items.length > maxItems) {
-    items.length = maxItems;
-  }
-}
-
-function compareRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
-  left: RankedWorkItem<T>,
-  right: RankedWorkItem<T>
-): number {
-  const timestampOrder = right.timestamp - left.timestamp;
-  return timestampOrder === 0 ? left.ordinal - right.ordinal : timestampOrder;
+  return collector.items();
 }
 
 function countWorkItems(
@@ -189,18 +144,13 @@ export function makeErrorRepository(
   };
 }
 
-export function sortByUpdatedAt(left: { updatedAt: string }, right: { updatedAt: string }): number {
-  return updatedAtTimestamp(right.updatedAt) - updatedAtTimestamp(left.updatedAt);
+export function sortByUpdatedAt(left: WorkItemWithUpdatedAt, right: WorkItemWithUpdatedAt): number {
+  return compareByUpdatedAtDesc(left, right);
 }
 
 function repositoryHasFailingRun(repo: RepositorySummary): boolean {
   const runs = Object.values(repo.latestRuns);
   return runs.some((run) => run?.status === 'completed' && run.conclusion !== 'success');
-}
-
-function updatedAtTimestamp(value: string): number {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function saturatingSafeIntegerAdd(left: number, right: number): number {

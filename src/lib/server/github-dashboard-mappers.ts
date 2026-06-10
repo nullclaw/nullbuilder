@@ -21,6 +21,7 @@ import {
   safeGitHubWebUrl,
   type GitHubWebUrlContext
 } from './github-web-urls';
+import { hasValidRecentWorkItemLimit, RecentWorkItemCollector } from './recent-work-items';
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';
 const LABEL_COLOR_PATTERN = /^[0-9a-f]{6}$/i;
@@ -103,11 +104,11 @@ function collectBoundedWorkItems<Input, Output extends IssueSummary | PullReques
   mapper: (value: Input) => Output | null,
   maxItems = MAX_REPOSITORY_WORK_ITEMS
 ): BoundedWorkItems<Output> {
-  if (!Number.isSafeInteger(maxItems) || maxItems <= 0) {
+  if (!hasValidRecentWorkItemLimit(maxItems)) {
     return { items: [], total: 0 };
   }
 
-  const items: RankedWorkItem<Output>[] = [];
+  const collector = new RecentWorkItemCollector<Output>(maxItems);
   let total = 0;
 
   for (const value of values) {
@@ -116,63 +117,14 @@ function collectBoundedWorkItems<Input, Output extends IssueSummary | PullReques
       continue;
     }
 
-    insertRecentWorkItem(
-      items,
-      {
-        item,
-        timestamp: updatedAtTimestamp(item.updatedAt),
-        ordinal: total
-      },
-      maxItems
-    );
+    collector.add(item);
     total = saturatingSafeIntegerAdd(total, 1);
   }
 
   return {
-    items: items.map(({ item }) => item),
+    items: collector.items(),
     total
   };
-}
-
-type RankedWorkItem<T extends IssueSummary | PullRequestSummary> = {
-  item: T;
-  timestamp: number;
-  ordinal: number;
-};
-
-function insertRecentWorkItem<T extends IssueSummary | PullRequestSummary>(
-  items: RankedWorkItem<T>[],
-  item: RankedWorkItem<T>,
-  maxItems: number
-): void {
-  if (items.length >= maxItems && compareRecentWorkItems(item, items[items.length - 1]) >= 0) {
-    return;
-  }
-
-  let lower = 0;
-  let upper = items.length;
-
-  while (lower < upper) {
-    const middle = lower + Math.floor((upper - lower) / 2);
-    if (compareRecentWorkItems(item, items[middle]) < 0) {
-      upper = middle;
-    } else {
-      lower = middle + 1;
-    }
-  }
-
-  items.splice(lower, 0, item);
-  if (items.length > maxItems) {
-    items.length = maxItems;
-  }
-}
-
-function compareRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
-  left: RankedWorkItem<T>,
-  right: RankedWorkItem<T>
-): number {
-  const timestampOrder = right.timestamp - left.timestamp;
-  return timestampOrder === 0 ? left.ordinal - right.ordinal : timestampOrder;
 }
 
 export function mapLatestRuns(runs: GitHubWorkflowRunResponse[]): RepositoryLatestRuns {
@@ -320,11 +272,6 @@ function safeNullableCount(value: number | null | undefined): number | null {
 
 function safeWorkItemNumber(value: number): number | null {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
-}
-
-function updatedAtTimestamp(value: string): number {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function saturatingSafeIntegerAdd(left: number, right: number): number {
