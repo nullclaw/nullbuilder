@@ -41,10 +41,10 @@ export function findActionUses(
       continue;
     }
 
-    actions.push({
+    actions[actions.length] = {
       target,
       ref
-    });
+    };
   }
 
   return actions;
@@ -69,10 +69,10 @@ export function findNullbuilderWorkflowRefs(
       continue;
     }
 
-    references.push({
+    references[references.length] = {
       workflow,
       ref
-    });
+    };
   }
 
   return references;
@@ -150,7 +150,7 @@ function boundedBase64Content(content: string, maxBytes: number): string {
     const char = content[index];
     if (char === '\n' || char === '\r') {
       if (chunkStart < index) {
-        chunks.push(content.slice(chunkStart, index));
+        chunks[chunks.length] = content.slice(chunkStart, index);
       }
       chunkStart = index + 1;
       continue;
@@ -158,13 +158,13 @@ function boundedBase64Content(content: string, maxBytes: number): string {
 
     encodedLength += 1;
     if (encodedLength === maxEncodedChars) {
-      chunks.push(content.slice(chunkStart, index + 1));
+      chunks[chunks.length] = content.slice(chunkStart, index + 1);
       chunkStart = index + 1;
     }
   }
 
   if (encodedLength < maxEncodedChars && chunkStart < content.length) {
-    chunks.push(content.slice(chunkStart));
+    chunks[chunks.length] = content.slice(chunkStart);
   }
 
   return chunks.join('');

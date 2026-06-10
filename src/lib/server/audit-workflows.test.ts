@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import {
   decodeGitHubContent,
   findActionUses,
@@ -10,6 +10,41 @@ import {
   MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH,
   shouldRequireShaPin
 } from './audit-workflows';
+
+const originalArrayPush = Array.prototype.push;
+
+afterEach(() => {
+  restoreArrayPush();
+});
+
+function restoreArrayPush(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
+  });
+}
+
+function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      pushCalls
+    };
+  } finally {
+    restoreArrayPush();
+  }
+}
 
 test('findActionUses parses bare and quoted action references', () => {
   const uses = findActionUses(`
@@ -118,6 +153,31 @@ jobs:
   assert.deepEqual(references[1], { workflow: 'zig-release.yml', ref: 'refs/heads/main' });
 });
 
+test('workflow reference parsers collect matches without global array push hooks', () => {
+  const actionContent = `
+steps:
+  - uses: actions/checkout@v4
+  - uses: owner/action@0123456789abcdef0123456789abcdef01234567
+`;
+  const workflowContent = `
+jobs:
+  ci:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@main
+`;
+
+  const { result, pushCalls } = withGuardedArrayPush(() => ({
+    actions: findActionUses(actionContent),
+    references: findNullbuilderWorkflowRefs(workflowContent)
+  }));
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(result.actions, [
+    { target: 'actions/checkout', ref: 'v4' },
+    { target: 'owner/action', ref: '0123456789abcdef0123456789abcdef01234567' }
+  ]);
+  assert.deepEqual(result.references, [{ workflow: 'zig-ci.yml', ref: 'main' }]);
+});
+
 test('shouldRequireShaPin ignores local docker and nullbuilder workflow references', () => {
   assert.equal(shouldRequireShaPin('./.github/actions/setup', 'v1'), false);
   assert.equal(shouldRequireShaPin('docker://alpine', '3.20'), false);
@@ -154,6 +214,19 @@ test('decodeGitHubContent strips wrapped base64 while applying the byte limit ea
   const wrapped = encoded.match(/.{1,2}/g)?.join('\r\n') ?? encoded;
 
   assert.equal(decodeGitHubContent({ encoding: 'base64', content: wrapped }, 9), content.slice(0, 9));
+});
+
+test('decodeGitHubContent strips wrapped base64 without global array push hooks', () => {
+  const content = 'abcdefghijklmnopqrstuvwxyz';
+  const encoded = Buffer.from(content, 'utf8').toString('base64');
+  const wrapped = encoded.match(/.{1,2}/g)?.join('\r\n') ?? encoded;
+
+  const { result, pushCalls } = withGuardedArrayPush(() =>
+    decodeGitHubContent({ encoding: 'base64', content: wrapped }, 9)
+  );
+
+  assert.equal(pushCalls, 0);
+  assert.equal(result, content.slice(0, 9));
 });
 
 test('decodeGitHubContent rejects malformed base64 before audit parsing', () => {
