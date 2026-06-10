@@ -1,3 +1,5 @@
+import { parseUtcTimestampMillis } from './date-safety';
+
 type WorkflowRunLike = {
   status: string;
   conclusion: string | null;
@@ -12,7 +14,6 @@ const dashboardDateFormatter = new Intl.DateTimeFormat('en', {
   minute: '2-digit'
 });
 const MAX_DASHBOARD_DATE_LENGTH = 64;
-const DATE_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 
 export function formatDashboardDate(value: string | null): string {
   const date = parseDashboardDate(value);
@@ -65,14 +66,6 @@ function isDisplayCount(value: number | null): value is number {
 }
 
 function parseDashboardDate(value: string | null): Date | null {
-  if (!value) {
-    return null;
-  }
-
-  if (value.length > MAX_DASHBOARD_DATE_LENGTH || DATE_CONTROL_CHARACTER_PATTERN.test(value)) {
-    return null;
-  }
-
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+  const timestamp = parseUtcTimestampMillis(value, { maxLength: MAX_DASHBOARD_DATE_LENGTH });
+  return timestamp === null ? null : new Date(timestamp);
 }

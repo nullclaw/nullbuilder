@@ -1,4 +1,4 @@
-import { readSafeTextInput } from '../text-safety';
+import { parseUtcTimestampMillis } from '../date-safety';
 import { isSafePositiveInteger } from './number-safety';
 
 export type WorkItemWithUpdatedAt = {
@@ -120,13 +120,7 @@ function compareRecentWorkItems<T extends WorkItemWithUpdatedAt>(
 }
 
 function updatedAtTimestamp(value: string): number {
-  const safeValue = readSafeTextInput(value, { maxLength: MAX_UPDATED_AT_LENGTH, trim: true });
-  if (!safeValue) {
-    return Number.NEGATIVE_INFINITY;
-  }
-
-  const timestamp = Date.parse(safeValue);
-  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+  return parseUtcTimestampMillis(value, { maxLength: MAX_UPDATED_AT_LENGTH }) ?? Number.NEGATIVE_INFINITY;
 }
 
 function nextOrdinal(value: number): number {

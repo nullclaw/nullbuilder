@@ -44,6 +44,21 @@ test('format helpers bound and sanitize date inputs before parsing', () => {
   assert.equal(formatDashboardDateOnly('2026-06-02T12:34:56Z\x85hidden'), 'n/a');
 });
 
+test('format helpers accept only strict UTC dashboard dates', () => {
+  for (const value of [
+    '2026-06-02',
+    '2026-06-02 12:34:56',
+    '2026-06-02T12:34:56',
+    '2026-06-02T12:34:56+00:00',
+    '2026-02-29T00:00:00Z'
+  ]) {
+    assert.equal(formatDashboardDate(value), 'n/a');
+    assert.equal(formatDashboardDateOnly(value), 'n/a');
+  }
+
+  assert.equal(formatDashboardDateOnly('2026-06-02T12:34:56.789Z'), '2026-06-02');
+});
+
 test('format helpers treat unsafe numbers as unknown display values', () => {
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
     assert.equal(formatNullableNumber(value), 'unknown');

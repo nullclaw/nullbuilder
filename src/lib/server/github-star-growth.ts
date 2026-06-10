@@ -1,5 +1,5 @@
 import type { RepoSlug } from '../repositories';
-import { readSafeTextInput } from '../text-safety';
+import { parseUtcTimestampMillis } from '../date-safety';
 import type { NullbuilderConfig } from './config';
 import { githubRequest } from './github-client';
 import type { StarGrowthSummary } from './github-dashboard-types';
@@ -104,13 +104,8 @@ function starAgeMs(starredAt: unknown, now: number): number | null {
     return null;
   }
 
-  const safeStarredAt = readSafeTextInput(starredAt, { maxLength: MAX_STARGAZER_TIMESTAMP_LENGTH, trim: true });
-  if (!safeStarredAt) {
-    return null;
-  }
-
-  const timestamp = Date.parse(safeStarredAt);
-  if (!Number.isFinite(timestamp)) {
+  const timestamp = parseUtcTimestampMillis(starredAt, { maxLength: MAX_STARGAZER_TIMESTAMP_LENGTH });
+  if (timestamp === null) {
     return null;
   }
 
