@@ -26,6 +26,35 @@ test('parseCommandLine parses known commands through the command guard', () => {
   });
 });
 
+test('parseCommandLine avoids user-controlled argv array methods', () => {
+  const argv = ['repos', '--', '--literal'];
+  Object.defineProperty(argv, 'slice', {
+    value() {
+      throw new Error('slice should not be called');
+    }
+  });
+  Object.defineProperty(argv, 'every', {
+    value() {
+      throw new Error('every should not be called');
+    }
+  });
+
+  assert.deepEqual(parseCommandLine(argv), {
+    kind: 'command',
+    command: 'repos',
+    options: {
+      json: false,
+      discover: false,
+      confirm: false,
+      force: false,
+      allowDraft: false,
+      allowFork: false,
+      allowNonDefaultBase: false,
+      positionals: ['--literal']
+    }
+  });
+});
+
 test('parseCommandLine rejects unknown commands', () => {
   assert.throws(() => parseCommandLine(['unknown']), /^Error: Unknown command\.$/);
   assert.throws(() => parseCommandLine(['bad\x1b[31m\ncommand']), (error) => {

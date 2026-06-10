@@ -88,7 +88,7 @@ export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
   return {
     kind: 'command',
     command: rawCommand,
-    options: parseOptions(argv.slice(1))
+    options: parseOptions(readArgTail(argv, 1))
   };
 }
 
@@ -109,7 +109,7 @@ export function parseOptions(args: readonly string[]): CliOptions {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--') {
-      appendPositionals(options, args.slice(index + 1));
+      appendPositionalsFrom(options, args, index + 1);
       break;
     }
 
@@ -161,9 +161,20 @@ function assertCliArgVector(args: readonly unknown[]): asserts args is readonly 
     throw new Error('Too many CLI arguments.');
   }
 
-  if (!args.every((arg) => typeof arg === 'string')) {
-    throw new Error('Invalid CLI argument.');
+  for (let index = 0; index < args.length; index += 1) {
+    if (typeof args[index] !== 'string') {
+      throw new Error('Invalid CLI argument.');
+    }
   }
+}
+
+function readArgTail(args: readonly string[], start: number): string[] {
+  const tail: string[] = [];
+  for (let index = start; index < args.length; index += 1) {
+    tail.push(args[index]);
+  }
+
+  return tail;
 }
 
 function markOptionOnce(seenOptions: Set<string>, option: string): void {
@@ -174,9 +185,9 @@ function markOptionOnce(seenOptions: Set<string>, option: string): void {
   seenOptions.add(option);
 }
 
-function appendPositionals(options: CliOptions, values: readonly string[]): void {
-  for (const value of values) {
-    pushPositional(options, value);
+function appendPositionalsFrom(options: CliOptions, values: readonly string[], start: number): void {
+  for (let index = start; index < values.length; index += 1) {
+    pushPositional(options, values[index]);
   }
 }
 
