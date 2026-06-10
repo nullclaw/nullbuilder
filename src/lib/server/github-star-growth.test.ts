@@ -5,10 +5,12 @@ import { readConfig } from './config';
 import { getStarGrowth } from './github-star-growth';
 
 const originalFetch = globalThis.fetch;
+const originalDateParse = Date.parse;
 const REPO = 'nullclaw/nullbuilder' as RepoSlug;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  Date.parse = originalDateParse;
 });
 
 test('getStarGrowth scans recent stargazer pages and stops at old pages', async () => {
@@ -95,6 +97,40 @@ test('getStarGrowth treats unsafe current stars as unknown without fetching', as
     last30Days: null
   });
   assert.equal(requests, 0);
+});
+
+test('getStarGrowth rejects unsafe stargazer timestamps before date parsing', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://unsafe-star-dates.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const now = originalDateParse('2026-06-09T00:00:00Z');
+  const parsedDates: string[] = [];
+
+  globalThis.fetch = (async () =>
+    jsonResponse([
+      { starred_at: '2026-06-08T00:00:00Z' },
+      { starred_at: '2026-06-01T00:00:00Z\nhidden' },
+      { starred_at: '2026-06-02T00:00:00Z'.padEnd(128, 'x') },
+      { starred_at: 123 }
+    ])) as typeof fetch;
+
+  Date.parse = ((value: string) => {
+    parsedDates.push(value);
+    return originalDateParse(value);
+  }) as typeof Date.parse;
+  try {
+    assert.deepEqual(await getStarGrowth(config, REPO, 1, now), {
+      current: 1,
+      last7Days: 1,
+      last30Days: 1
+    });
+  } finally {
+    Date.parse = originalDateParse;
+  }
+
+  assert.deepEqual(parsedDates, ['2026-06-08T00:00:00Z']);
 });
 
 test('getStarGrowth preserves current stars and marks deltas unknown when GitHub fetch fails', async () => {

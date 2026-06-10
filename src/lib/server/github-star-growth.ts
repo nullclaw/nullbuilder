@@ -1,4 +1,5 @@
 import type { RepoSlug } from '../repositories';
+import { readSafeTextInput } from '../text-safety';
 import type { NullbuilderConfig } from './config';
 import { githubRequest } from './github-client';
 import type { StarGrowthSummary } from './github-dashboard-types';
@@ -6,6 +7,7 @@ import { safeNonNegativeInteger } from './number-safety';
 
 const STAR_PAGE_SIZE = 100;
 const MAX_STAR_PAGES_TO_SCAN = 10;
+const MAX_STARGAZER_TIMESTAMP_LENGTH = 64;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type GitHubStargazerResponse = {
@@ -97,12 +99,17 @@ async function fetchStarGrowth(
   };
 }
 
-function starAgeMs(starredAt: string | undefined, now: number): number | null {
-  if (!starredAt) {
+function starAgeMs(starredAt: unknown, now: number): number | null {
+  if (typeof starredAt !== 'string') {
     return null;
   }
 
-  const timestamp = Date.parse(starredAt);
+  const safeStarredAt = readSafeTextInput(starredAt, { maxLength: MAX_STARGAZER_TIMESTAMP_LENGTH, trim: true });
+  if (!safeStarredAt) {
+    return null;
+  }
+
+  const timestamp = Date.parse(safeStarredAt);
   if (!Number.isFinite(timestamp)) {
     return null;
   }
