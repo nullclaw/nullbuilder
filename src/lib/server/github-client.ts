@@ -48,6 +48,7 @@ export const GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES = 256;
 const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie', 'Proxy-Authorization'] as const;
 const ALLOWED_GITHUB_REQUEST_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
+const HEADERS_ENTRIES = Headers.prototype.entries;
 const PUBLIC_ERROR_MESSAGE_PREFIXES = [
   'Pull request is not trusted:',
   'Build PR tag must start with ',
@@ -266,9 +267,7 @@ function cloneGitHubRequestHeaders(value: HeadersInit | undefined): Headers {
   }
 
   if (value instanceof Headers) {
-    value.forEach((headerValue, headerName) => {
-      appendGitHubRequestHeader(headers, headerName, headerValue);
-    });
+    appendHeadersEntries(headers, value);
     return headers;
   }
 
@@ -305,6 +304,31 @@ function cloneGitHubRequestHeaders(value: HeadersInit | undefined): Headers {
   }
 
   return headers;
+}
+
+function appendHeadersEntries(headers: Headers, value: Headers): void {
+  let count = 0;
+  let entries: ReturnType<Headers['entries']>;
+
+  try {
+    entries = HEADERS_ENTRIES.call(value);
+  } catch {
+    throw new Error('Invalid GitHub request header.');
+  }
+
+  while (true) {
+    const entry = entries.next();
+    if (entry.done) {
+      break;
+    }
+
+    count += 1;
+    if (count > GITHUB_REQUEST_HEADER_MAX_ENTRIES) {
+      throw new Error('Invalid GitHub request header.');
+    }
+
+    appendGitHubRequestHeader(headers, entry.value[0], entry.value[1]);
+  }
 }
 
 function appendGitHubRequestHeader(headers: Headers, name: unknown, value: unknown): void {

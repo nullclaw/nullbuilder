@@ -679,6 +679,70 @@ test('githubRequest validates caller request headers before fetching GitHub', as
   assert.equal(fetched, false);
 });
 
+test('githubRequest clones Headers input without instance hooks and bounds entries', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://headers-instance.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const callerHeaders = new Headers({
+    Authorization: 'Bearer caller-token',
+    'X-Trace-Id': 'trace-1'
+  });
+  Object.defineProperty(callerHeaders, 'forEach', {
+    configurable: true,
+    value: () => {
+      throw new Error('instance headers forEach should not be called');
+    }
+  });
+  Object.defineProperty(callerHeaders, 'entries', {
+    configurable: true,
+    value: () => {
+      throw new Error('instance headers entries should not be called');
+    }
+  });
+
+  const requests: Array<{ authorization: string | null; traceId: string | null }> = [];
+  const response = new Response(JSON.stringify({ ok: true }));
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (!(init?.headers instanceof Headers)) {
+      throw new Error('expected normalized headers');
+    }
+
+    requests.push({
+      authorization: init.headers.get('Authorization'),
+      traceId: init.headers.get('X-Trace-Id')
+    });
+    return response;
+  }) as typeof fetch;
+
+  await githubRequest(config, '/repos/nullclaw/nullbuilder', { headers: callerHeaders });
+
+  assert.deepEqual(requests, [
+    {
+      authorization: null,
+      traceId: 'trace-1'
+    }
+  ]);
+
+  const tooManyHeaders = new Headers();
+  for (let index = 0; index <= GITHUB_REQUEST_HEADER_MAX_ENTRIES; index += 1) {
+    tooManyHeaders.set(`X-Test-${index}`, 'value');
+  }
+
+  let fetched = false;
+  globalThis.fetch = (async () => {
+    fetched = true;
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () => githubRequest(config, '/repos/nullclaw/nullbuilder', { headers: tooManyHeaders }),
+    /^Error: Invalid GitHub request header\.$/
+  );
+  assert.equal(fetched, false);
+});
+
 test('githubRequest validates custom accept headers before fetching GitHub', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
