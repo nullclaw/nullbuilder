@@ -1,6 +1,8 @@
 const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
 const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
+const MAX_TEXT_OPTION_VALUE_LENGTH = 512;
+const UNSAFE_TEXT_OPTION_VALUE_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 
 export type Command = (typeof COMMANDS)[number];
 
@@ -110,13 +112,13 @@ export function parseOptions(args: readonly string[]): CliOptions {
     } else if (arg === '--discover') {
       options.discover = true;
     } else if (arg === '--repo') {
-      options.repo = readValue(args, (index += 1), '--repo');
+      options.repo = readTextValue(args, (index += 1), '--repo');
     } else if (arg === '--pr') {
       options.pr = parsePositiveInteger(readValue(args, (index += 1), '--pr'), '--pr');
     } else if (arg === '--tag') {
-      options.tag = readValue(args, (index += 1), '--tag');
+      options.tag = readTextValue(args, (index += 1), '--tag');
     } else if (arg === '--ref') {
-      options.targetRef = readValue(args, (index += 1), '--ref');
+      options.targetRef = readTextValue(args, (index += 1), '--ref');
     } else if (arg === '--confirm') {
       options.confirm = true;
     } else if (arg === '--force') {
@@ -139,6 +141,14 @@ function readValue(args: readonly string[], index: number, option: string): stri
   const value = args[index];
   if (!value || value.startsWith('-')) {
     throw new Error(`${option} requires a value.`);
+  }
+  return value;
+}
+
+function readTextValue(args: readonly string[], index: number, option: string): string {
+  const value = readValue(args, index, option);
+  if (value.length > MAX_TEXT_OPTION_VALUE_LENGTH || UNSAFE_TEXT_OPTION_VALUE_PATTERN.test(value)) {
+    throw new Error(`${option} has invalid value.`);
   }
   return value;
 }

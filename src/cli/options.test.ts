@@ -61,6 +61,29 @@ test('parseOptions parses build tag flags', () => {
   });
 });
 
+test('parseOptions rejects unsafe text option values without echoing raw input', () => {
+  assert.throws(() => parseOptions(['--repo', 'x'.repeat(10_000)]), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, '--repo has invalid value.');
+    assert.doesNotMatch(error.message, /xxxxx/);
+    return true;
+  });
+
+  assert.throws(() => parseOptions(['--tag', 'build-pr\x1b[31m\nsecret']), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, '--tag has invalid value.');
+    assert.doesNotMatch(error.message, /\x1b|\n|secret/);
+    return true;
+  });
+
+  assert.throws(() => parseOptions(['--ref', 'release/v1\x85hidden']), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, '--ref has invalid value.');
+    assert.doesNotMatch(error.message, /\x85|hidden/);
+    return true;
+  });
+});
+
 test('parseOptions rejects partial numeric PR values', () => {
   assert.throws(() => parseOptions(['--pr', '17abc']), /--pr must be a positive number/);
   assert.throws(() => parseOptions(['--pr', '0']), /--pr must be a positive number/);
