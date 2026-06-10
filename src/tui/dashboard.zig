@@ -242,7 +242,7 @@ test "render prints repository rows recent work and load errors" {
         \\{
         \\  "items": [
         \\    {
-        \\      "slug": "alpha",
+        \\      "slug": "nullclaw/alpha",
         \\      "status": "ok",
         \\      "openIssues": 2,
         \\      "openPulls": 1,
@@ -252,11 +252,11 @@ test "render prints repository rows recent work and load errors" {
         \\        "nightly": {"status": "queued"},
         \\        "release": {"status": "completed", "conclusion": "cancelled"}
         \\      },
-        \\      "issues": [{"repo": "alpha", "number": 7, "title": "Fix build"}],
-        \\      "pullRequests": [{"repo": "alpha", "number": 9, "title": "Ship release"}]
+        \\      "issues": [{"repo": "nullclaw/alpha", "number": 7, "title": "Fix build"}],
+        \\      "pullRequests": [{"repo": "nullclaw/alpha", "number": 9, "title": "Ship release"}]
         \\    }
         \\  ],
-        \\  "errors": [{"repo": "beta", "error": "rate limited"}]
+        \\  "errors": [{"repo": "nullclaw/beta", "error": "rate limited"}]
         \\}
     ;
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -282,10 +282,10 @@ test "render caps numeric columns from external dashboard json" {
         \\{
         \\  "items": [
         \\    {
-        \\      "slug": "alpha",
+        \\      "slug": "nullclaw/alpha",
         \\      "openIssues": 1000000,
         \\      "openPulls": 9007199254740991,
-        \\      "issues": [{"repo": "alpha", "number": 100000, "title": "Large external number"}]
+        \\      "issues": [{"repo": "nullclaw/alpha", "number": 100000, "title": "Large external number"}]
         \\    }
         \\  ]
         \\}
@@ -305,7 +305,7 @@ test "render falls back for empty external status labels" {
         \\{
         \\  "items": [
         \\    {
-        \\      "slug": "alpha",
+        \\      "slug": "nullclaw/alpha",
         \\      "status": "",
         \\      "latestRuns": {
         \\        "ci": {"status": ""},
@@ -354,7 +354,7 @@ test "render bounds load error rows from external dashboard json" {
     try json.writer.writeAll("{\"errors\":[");
     for (0..max_rendered_load_errors + 2) |index| {
         if (index > 0) try json.writer.writeByte(',');
-        try json.writer.print("{{\"repo\":\"repo-{d}\",\"error\":\"error-{d}\"}}", .{ index, index });
+        try json.writer.print("{{\"repo\":\"nullclaw/repo-{d}\",\"error\":\"error-{d}\"}}", .{ index, index });
     }
     try json.writer.writeAll("]}");
 
@@ -381,7 +381,7 @@ test "render does not echo terminal control characters from external text" {
         \\{
         \\  "items": [
         \\    {
-        \\      "slug": "alpha\u001b[31mred\u001b[0m",
+        \\      "slug": "nullclaw/alpha\u001b[31mred\u001b[0m",
         \\      "status": "ok",
         \\      "openIssues": 1,
         \\      "openPulls": 0,
@@ -389,10 +389,10 @@ test "render does not echo terminal control characters from external text" {
         \\      "latestRuns": {
         \\        "ci": {"status": "completed", "conclusion": "success\u001b[2K"}
         \\      },
-        \\      "issues": [{"repo": "alpha\u001b[31mred\u001b[0m", "number": 7, "title": "Fix \u001b[31mred\u001b[0m\nnext\titem"}]
+        \\      "issues": [{"repo": "nullclaw/alpha\u001b[31mred\u001b[0m", "number": 7, "title": "Fix \u001b[31mred\u001b[0m\nnext\titem"}]
         \\    }
         \\  ],
-        \\  "errors": [{"repo": "beta\u001b]0;title\u0007", "error": "rate limited\rnow"}]
+        \\  "errors": [{"repo": "nullclaw/beta\u001b]0;title\u0007", "error": "rate limited\rnow"}]
         \\}
     ;
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -428,7 +428,7 @@ test "render rejects oversized json scalar values during parsing" {
     const json = try std.fmt.allocPrint(std.testing.allocator,
         \\{{
         \\  "items": [
-        \\    {{"slug": "alpha", "issues": [{{"number": 7, "title": "{s}"}}]}}
+        \\    {{"slug": "nullclaw/alpha", "issues": [{{"number": 7, "title": "{s}"}}]}}
         \\  ]
         \\}}
     , .{oversized[0..]});

@@ -8,7 +8,10 @@ const JsonObject = dashboard_json.JsonObject;
 
 const max_dashboard_repositories = 1000;
 const max_load_errors = 200;
-const max_repo_text_len = 256;
+const max_owner_segment_len = 39;
+const max_repo_segment_len = 100;
+const max_repo_slug_len = max_owner_segment_len + 1 + max_repo_segment_len;
+const max_text_field_len = 256;
 const max_work_items_per_repository = 100;
 const max_work_item_number = 999_999_999;
 const max_work_title_len = 1024;
@@ -150,9 +153,9 @@ pub fn repositoryFromValue(value: JsonValue) ?Repository {
 }
 
 fn repositoryFromObject(repo: JsonObject) Repository {
-    const status = dashboard_json.safeTextField(repo, "status", "ok", max_repo_text_len);
+    const status = dashboard_json.safeTextField(repo, "status", "ok", max_text_field_len);
     const latest = dashboard_json.objectField(repo, "latestRuns");
-    const slug = dashboard_json.requiredSafeTextField(repo, "slug", max_repo_text_len);
+    const slug = safeRepoSlugField(repo, "slug");
 
     return .{
         .slug = slug orelse "unknown",
@@ -197,13 +200,66 @@ fn loadErrorFromValue(value: JsonValue) ?LoadError {
 }
 
 fn loadErrorFromObject(load_error: JsonObject) ?LoadError {
-    const repo = dashboard_json.requiredSafeTextField(load_error, "repo", max_repo_text_len) orelse return null;
+    const repo = safeRepoSlugField(load_error, "repo") orelse return null;
     const message = dashboard_json.requiredSafeTextField(load_error, "error", max_error_message_len) orelse return null;
 
     return .{
         .repo = repo,
         .message = message,
     };
+}
+
+fn safeRepoSlugField(object: JsonObject, field_name: []const u8) ?[]const u8 {
+    const slug = dashboard_json.requiredSafeTextField(object, field_name, max_repo_slug_len) orelse return null;
+    return if (isSafeRepoSlug(slug)) slug else null;
+}
+
+fn isSafeRepoSlug(value: []const u8) bool {
+    const slash_index = std.mem.indexOfScalar(u8, value, '/') orelse return false;
+    if (slash_index == 0 or slash_index == value.len - 1) return false;
+    if (std.mem.indexOfScalar(u8, value[slash_index + 1 ..], '/') != null) return false;
+
+    return isSafeOwnerSegment(value[0..slash_index]) and isSafeRepoSegment(value[slash_index + 1 ..]);
+}
+
+fn isSafeOwnerSegment(value: []const u8) bool {
+    if (value.len == 0 or value.len > max_owner_segment_len) return false;
+
+    for (value, 0..) |byte, index| {
+        const is_alphanumeric = std.ascii.isAlphabetic(byte) or std.ascii.isDigit(byte);
+        if (!is_alphanumeric and byte != '-') return false;
+        if ((index == 0 or index == value.len - 1) and !is_alphanumeric) return false;
+    }
+
+    return true;
+}
+
+fn isSafeRepoSegment(value: []const u8) bool {
+    if (value.len == 0 or value.len > max_repo_segment_len) return false;
+    if (endsWithAsciiIgnoreCase(value, ".git")) return false;
+
+    var previous_dot = false;
+    for (value, 0..) |byte, index| {
+        const is_alphanumeric = std.ascii.isAlphabetic(byte) or std.ascii.isDigit(byte);
+        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
+        if (!is_alphanumeric and !is_safe_symbol) return false;
+        if (index == 0 and !is_alphanumeric) return false;
+        if (byte == '.' and previous_dot) return false;
+        previous_dot = byte == '.';
+    }
+
+    return !previous_dot;
+}
+
+fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
+    if (value.len < suffix.len) return false;
+
+    const tail = value[value.len - suffix.len ..];
+    for (tail, suffix) |left_byte, right_byte| {
+        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
+    }
+
+    return true;
 }
 
 fn saturatingAdd(a: u64, b: u64) u64 {
@@ -215,7 +271,7 @@ test "dashboard model collects repository totals and run statuses" {
         \\{
         \\  "items": [
         \\    {
-        \\      "slug": "alpha",
+        \\      "slug": "nullclaw/alpha",
         \\      "status": "ok",
         \\      "openIssues": 2,
         \\      "openPulls": 1,
@@ -226,14 +282,14 @@ test "dashboard model collects repository totals and run statuses" {
         \\      }
         \\    },
         \\    {
-        \\      "slug": "beta",
+        \\      "slug": "nullclaw/beta",
         \\      "status": "error",
         \\      "openIssues": 3,
         \\      "openPulls": 0,
         \\      "stars": 5
         \\    }
         \\  ],
-        \\  "errors": [{"repo": "beta", "error": "rate limited"}]
+        \\  "errors": [{"repo": "nullclaw/beta", "error": "rate limited"}]
         \\}
     , .{});
     defer parsed.deinit();
@@ -259,7 +315,7 @@ test "dashboard model collects repository totals and run statuses" {
 
     var errors = LoadErrorIterator.init(dashboard);
     const load_error = errors.next().?;
-    try std.testing.expectEqualStrings("beta", load_error.repo);
+    try std.testing.expectEqualStrings("nullclaw/beta", load_error.repo);
     try std.testing.expectEqualStrings("rate limited", load_error.message);
     try std.testing.expectEqual(null, errors.next());
 }
@@ -268,8 +324,8 @@ test "dashboard totals reject counters outside the safe JSON integer domain" {
     const json = try std.fmt.allocPrint(std.testing.allocator,
         \\{{
         \\  "items": [
-        \\    {{"slug": "alpha", "openIssues": {d}, "openPulls": {d}, "stars": {d}}},
-        \\    {{"slug": "beta", "openIssues": 10, "openPulls": 10, "stars": 10}}
+        \\    {{"slug": "nullclaw/alpha", "openIssues": {d}, "openPulls": {d}, "stars": {d}}},
+        \\    {{"slug": "nullclaw/beta", "openIssues": 10, "openPulls": 10, "stars": 10}}
         \\  ]
         \\}}
     , .{
@@ -290,13 +346,33 @@ test "dashboard totals reject counters outside the safe JSON integer domain" {
     try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.stars);
 }
 
+test "dashboard model validates repository slugs at the JSON boundary" {
+    try std.testing.expect(isSafeRepoSlug("nullclaw/nullbuilder"));
+    try std.testing.expect(isSafeRepoSlug("NullClaw/null_Pantry-2"));
+
+    try std.testing.expect(!isSafeRepoSlug("nullbuilder"));
+    try std.testing.expect(!isSafeRepoSlug("/nullbuilder"));
+    try std.testing.expect(!isSafeRepoSlug("nullclaw/"));
+    try std.testing.expect(!isSafeRepoSlug("nullclaw/nullbuilder/extra"));
+    try std.testing.expect(!isSafeRepoSlug("-owner/nullbuilder"));
+    try std.testing.expect(!isSafeRepoSlug("owner-/nullbuilder"));
+    try std.testing.expect(!isSafeRepoSlug("owner_name/nullbuilder"));
+    try std.testing.expect(!isSafeRepoSlug("nullclaw/.hidden"));
+    try std.testing.expect(!isSafeRepoSlug("nullclaw/trailing."));
+    try std.testing.expect(!isSafeRepoSlug("nullclaw/double..dot"));
+    try std.testing.expect(!isSafeRepoSlug("nullclaw/nullbuilder.git"));
+}
+
 test "dashboard totals ignore repositories without safe slugs" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
         \\  "items": [
         \\    {"openIssues": 99, "openPulls": 99, "stars": 99},
         \\    {"slug": "bad\nslug", "openIssues": 99, "openPulls": 99, "stars": 99},
-        \\    {"slug": "valid", "openIssues": 2, "openPulls": 1, "stars": 3, "latestRuns": {"ci": {"status": "completed", "conclusion": "failure"}}}
+        \\    {"slug": "unqualified", "openIssues": 99, "openPulls": 99, "stars": 99},
+        \\    {"slug": "bad_owner!/repo", "openIssues": 99, "openPulls": 99, "stars": 99},
+        \\    {"slug": "owner/repo.git", "openIssues": 99, "openPulls": 99, "stars": 99},
+        \\    {"slug": "nullclaw/valid", "openIssues": 2, "openPulls": 1, "stars": 3, "latestRuns": {"ci": {"status": "completed", "conclusion": "failure"}}}
         \\  ]
         \\}
     , .{});
@@ -319,7 +395,7 @@ test "dashboard model bounds external collection sizes" {
     try repos_json.writer.writeAll("{\"items\":[");
     for (0..max_dashboard_repositories + 1) |index| {
         if (index > 0) try repos_json.writer.writeByte(',');
-        try repos_json.writer.print("{{\"slug\":\"repo-{d}\"}}", .{index});
+        try repos_json.writer.print("{{\"slug\":\"nullclaw/repo-{d}\"}}", .{index});
     }
     try repos_json.writer.writeAll("]}");
 
@@ -332,20 +408,20 @@ test "dashboard model bounds external collection sizes" {
     var nested_json: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer nested_json.deinit();
 
-    try nested_json.writer.writeAll("{\"items\":[{\"slug\":\"alpha\",\"issues\":[");
+    try nested_json.writer.writeAll("{\"items\":[{\"slug\":\"nullclaw/alpha\",\"issues\":[");
     for (0..max_work_items_per_repository + 1) |index| {
         if (index > 0) try nested_json.writer.writeByte(',');
-        try nested_json.writer.print("{{\"repo\":\"alpha\",\"number\":{d},\"title\":\"issue-{d}\"}}", .{ index + 1, index + 1 });
+        try nested_json.writer.print("{{\"repo\":\"nullclaw/alpha\",\"number\":{d},\"title\":\"issue-{d}\"}}", .{ index + 1, index + 1 });
     }
     try nested_json.writer.writeAll("],\"pullRequests\":[");
     for (0..max_work_items_per_repository + 1) |index| {
         if (index > 0) try nested_json.writer.writeByte(',');
-        try nested_json.writer.print("{{\"repo\":\"alpha\",\"number\":{d},\"title\":\"pull-{d}\"}}", .{ index + 1, index + 1 });
+        try nested_json.writer.print("{{\"repo\":\"nullclaw/alpha\",\"number\":{d},\"title\":\"pull-{d}\"}}", .{ index + 1, index + 1 });
     }
     try nested_json.writer.writeAll("]}],\"errors\":[");
     for (0..max_load_errors + 1) |index| {
         if (index > 0) try nested_json.writer.writeByte(',');
-        try nested_json.writer.print("{{\"repo\":\"repo-{d}\",\"error\":\"error-{d}\"}}", .{ index, index });
+        try nested_json.writer.print("{{\"repo\":\"nullclaw/repo-{d}\",\"error\":\"error-{d}\"}}", .{ index, index });
     }
     try nested_json.writer.writeAll("]}");
 
@@ -372,8 +448,8 @@ test "dashboard model treats malformed collection fields as empty" {
     var malformed_nested = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
         \\  "items": [
-        \\    {"slug": "alpha", "issues": "not-array", "pullRequests": {"number": 7}},
-        \\    {"slug": "beta", "issues": [{"number": 8, "title": "Valid issue"}]}
+        \\    {"slug": "nullclaw/alpha", "issues": "not-array", "pullRequests": {"number": 7}},
+        \\    {"slug": "nullclaw/beta", "issues": [{"number": 8, "title": "Valid issue"}]}
         \\  ],
         \\  "errors": "not-array"
         \\}
@@ -388,7 +464,7 @@ test "dashboard model treats malformed collection fields as empty" {
 
     var issues = WorkItemIterator.init(dashboard, .issues);
     const issue = issues.next().?;
-    try std.testing.expectEqualStrings("beta", issue.repo);
+    try std.testing.expectEqualStrings("nullclaw/beta", issue.repo);
     try std.testing.expectEqual(@as(u64, 8), issue.number);
     try std.testing.expectEqual(null, issues.next());
 }
@@ -427,16 +503,16 @@ test "dashboard model rejects control-bearing external text fields" {
         \\{
         \\  "items": [
         \\    {
-        \\      "slug": "alpha\u001b[31m",
+        \\      "slug": "nullclaw/alpha\u001b[31m",
         \\      "status": "error\n",
         \\      "latestRuns": {
         \\        "ci": {"status": "completed", "conclusion": "success\u001b[2K"}
         \\      },
-        \\      "issues": [{"repo": "alpha\r", "number": 7, "title": "Fix\nbuild"}],
-        \\      "pullRequests": [{"repo": "alpha", "number": 8, "title": "Ship release"}]
+        \\      "issues": [{"repo": "nullclaw/alpha\r", "number": 7, "title": "Fix\nbuild"}],
+        \\      "pullRequests": [{"repo": "nullclaw/alpha", "number": 8, "title": "Ship release"}]
         \\    }
         \\  ],
-        \\  "errors": [{"repo": "beta\u0085", "error": "rate limited\rnow"}]
+        \\  "errors": [{"repo": "nullclaw/beta\u0085", "error": "rate limited\rnow"}]
         \\}
     , .{});
     defer parsed.deinit();
@@ -462,7 +538,7 @@ test "work item iterator skips invalid rows across repositories" {
         \\{
         \\  "items": [
         \\    "invalid",
-        \\    {"slug": "alpha", "issues": [
+        \\    {"slug": "nullclaw/alpha", "issues": [
         \\      "invalid",
         \\      {"repo": "alpha", "number": 0, "title": "Zero"},
         \\      {"repo": "alpha", "title": "Missing number"},
@@ -473,7 +549,7 @@ test "work item iterator skips invalid rows across repositories" {
         \\      {"repo": "alpha", "number": 1000000000, "title": "Huge number"},
         \\      {"repo": "alpha", "number": 7, "title": "Fix build"}
         \\    ]},
-        \\    {"slug": "beta", "issues": [
+        \\    {"slug": "nullclaw/beta", "issues": [
         \\      {"repo": "beta", "number": "8", "title": "String number"},
         \\      {"repo": "beta", "number": 8, "title": "Ship tag"}
         \\    ]}
@@ -486,12 +562,12 @@ test "work item iterator skips invalid rows across repositories" {
     var issues = WorkItemIterator.init(dashboard, .issues);
 
     const first = issues.next().?;
-    try std.testing.expectEqualStrings("alpha", first.repo);
+    try std.testing.expectEqualStrings("nullclaw/alpha", first.repo);
     try std.testing.expectEqual(@as(u64, 7), first.number);
     try std.testing.expectEqualStrings("Fix build", first.title);
 
     const second = issues.next().?;
-    try std.testing.expectEqualStrings("beta", second.repo);
+    try std.testing.expectEqualStrings("nullclaw/beta", second.repo);
     try std.testing.expectEqual(@as(u64, 8), second.number);
     try std.testing.expectEqualStrings("Ship tag", second.title);
     try std.testing.expectEqual(null, issues.next());
@@ -501,11 +577,11 @@ test "work item iterator binds item repos to the parent repository slug" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
         \\  "items": [
-        \\    {"slug": "alpha", "issues": [
+        \\    {"slug": "nullclaw/alpha", "issues": [
         \\      {"repo": "evil/repo", "number": 7, "title": "Spoofed repo"},
         \\      {"number": 8, "title": "Missing nested repo"}
         \\    ]},
-        \\    {"slug": "bad\u001b[31mrepo", "issues": [
+        \\    {"slug": "nullclaw/bad\u001b[31mrepo", "issues": [
         \\      {"repo": "safe", "number": 9, "title": "Unsafe parent"}
         \\    ]}
         \\  ]
@@ -517,12 +593,12 @@ test "work item iterator binds item repos to the parent repository slug" {
     var issues = WorkItemIterator.init(dashboard, .issues);
 
     const first = issues.next().?;
-    try std.testing.expectEqualStrings("alpha", first.repo);
+    try std.testing.expectEqualStrings("nullclaw/alpha", first.repo);
     try std.testing.expectEqual(@as(u64, 7), first.number);
     try std.testing.expectEqualStrings("Spoofed repo", first.title);
 
     const second = issues.next().?;
-    try std.testing.expectEqualStrings("alpha", second.repo);
+    try std.testing.expectEqualStrings("nullclaw/alpha", second.repo);
     try std.testing.expectEqual(@as(u64, 8), second.number);
     try std.testing.expectEqualStrings("Missing nested repo", second.title);
 
