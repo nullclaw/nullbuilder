@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const ascii_escape: u8 = 0x1b;
+pub const truncated_output_suffix = "\n[output truncated]\n";
 
 pub const SanitizeOptions = struct {
     preserve_newlines: bool = false,
@@ -27,6 +28,25 @@ pub fn writeSafe(out: *std.Io.Writer, value: []const u8, options: SanitizeOption
             try out.writeByte(byte);
         }
     }
+}
+
+pub fn writeSafeBounded(out: *std.Io.Writer, value: []const u8, max_bytes: usize, options: SanitizeOptions) !bool {
+    var index: usize = 0;
+    var written: usize = 0;
+
+    while (index < value.len) {
+        if (nextSanitizedByte(value, &index, options)) |byte| {
+            if (written >= max_bytes) {
+                try out.writeAll(truncated_output_suffix);
+                return true;
+            }
+
+            try out.writeByte(byte);
+            written += 1;
+        }
+    }
+
+    return false;
 }
 
 fn nextSanitizedByte(value: []const u8, index: *usize, options: SanitizeOptions) ?u8 {
@@ -106,4 +126,35 @@ test "terminal sanitizer can preserve newlines for child output" {
 
     try std.testing.expectEqualStrings("ok\nbadred text next rawdone", out.writer.buffered());
     try std.testing.expect(std.mem.indexOfScalar(u8, out.writer.buffered(), ascii_escape) == null);
+}
+
+test "bounded terminal writer limits sanitized output" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const truncated = try writeSafeBounded(
+        &out.writer,
+        "ab\x1b[31mcd\x1b[0mef",
+        4,
+        .{},
+    );
+
+    try std.testing.expect(truncated);
+    try std.testing.expectEqualStrings("abcd" ++ truncated_output_suffix, out.writer.buffered());
+    try std.testing.expect(std.mem.indexOfScalar(u8, out.writer.buffered(), ascii_escape) == null);
+}
+
+test "bounded terminal writer does not truncate removed escape bytes" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const truncated = try writeSafeBounded(
+        &out.writer,
+        "\x1b[31mok\x1b[0m",
+        2,
+        .{},
+    );
+
+    try std.testing.expect(!truncated);
+    try std.testing.expectEqualStrings("ok", out.writer.buffered());
 }

@@ -4,6 +4,7 @@ const terminal = @import("terminal.zig");
 
 const default_stdout_limit = 16 * 1024 * 1024;
 const default_stderr_limit = 4 * 1024 * 1024;
+const max_child_output_display_bytes = 64 * 1024;
 
 pub const OutputLimits = struct {
     stdout: usize = default_stdout_limit,
@@ -24,8 +25,8 @@ pub fn freeResult(gpa: std.mem.Allocator, result: std.process.RunResult) void {
 }
 
 pub fn writeCaptured(out: *std.Io.Writer, result: std.process.RunResult) !void {
-    if (result.stdout.len > 0) try terminal.writeSafe(out, result.stdout, .{ .preserve_newlines = true });
-    if (result.stderr.len > 0) try terminal.writeSafe(out, result.stderr, .{ .preserve_newlines = true });
+    if (result.stdout.len > 0) _ = try terminal.writeSafeBounded(out, result.stdout, max_child_output_display_bytes, .{ .preserve_newlines = true });
+    if (result.stderr.len > 0) _ = try terminal.writeSafeBounded(out, result.stderr, max_child_output_display_bytes, .{ .preserve_newlines = true });
 }
 
 pub fn exitCodeForFailure(
@@ -39,12 +40,12 @@ pub fn exitCodeForFailure(
                 return null;
             }
 
-            if (result.stderr.len > 0) try terminal.writeSafe(out, result.stderr, .{ .preserve_newlines = true });
-            if (result.stdout.len > 0) try terminal.writeSafe(out, result.stdout, .{ .preserve_newlines = true });
+            if (result.stderr.len > 0) _ = try terminal.writeSafeBounded(out, result.stderr, max_child_output_display_bytes, .{ .preserve_newlines = true });
+            if (result.stdout.len > 0) _ = try terminal.writeSafeBounded(out, result.stdout, max_child_output_display_bytes, .{ .preserve_newlines = true });
             return code;
         },
         else => {
-            if (result.stderr.len > 0) try terminal.writeSafe(out, result.stderr, .{ .preserve_newlines = true });
+            if (result.stderr.len > 0) _ = try terminal.writeSafeBounded(out, result.stderr, max_child_output_display_bytes, .{ .preserve_newlines = true });
             return error.ChildProcessFailed;
         },
     }
