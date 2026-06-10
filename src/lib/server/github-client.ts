@@ -28,6 +28,7 @@ export const GITHUB_LINK_HEADER_MAX_LENGTH = 16 * 1024;
 export const GITHUB_ERROR_MESSAGE_MAX_LENGTH = 512;
 export const GITHUB_STATUS_TEXT_MAX_LENGTH = 128;
 export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
+export const GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH = 32;
 
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie'] as const;
 const cache = new Map<string, CacheEntry<unknown>>();
@@ -250,11 +251,15 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
 }
 
 function contentLengthExceedsLimit(value: string, maxBytes: number): boolean {
-  if (!/^[0-9]+$/.test(value)) {
+  const safeValue = readSafeTextInput(value, {
+    maxLength: GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH,
+    trim: true
+  });
+  if (!safeValue || !/^[0-9]+$/.test(safeValue)) {
     return true;
   }
 
-  const parsed = Number(value);
+  const parsed = Number(safeValue);
   return !Number.isSafeInteger(parsed) || parsed > maxBytes;
 }
 

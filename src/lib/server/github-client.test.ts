@@ -3,6 +3,7 @@ import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
 import {
   GITHUB_ABSOLUTE_MAX_PAGES,
+  GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH,
   GITHUB_DEFAULT_MAX_PAGES,
   GITHUB_ERROR_MESSAGE_MAX_LENGTH,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
@@ -501,7 +502,14 @@ test('githubRequest rejects malformed content-length before parsing', async () =
     NULLBUILDER_CACHE_TTL_MS: '0'
   });
 
-  for (const contentLength of ['10junk', '1e9', '-1', '1.5', '9007199254740992']) {
+  for (const contentLength of [
+    '10junk',
+    '1e9',
+    '-1',
+    '1.5',
+    '9007199254740992',
+    '0'.repeat(GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH + 1)
+  ]) {
     globalThis.fetch = (async () =>
       new Response('{}', {
         headers: {
