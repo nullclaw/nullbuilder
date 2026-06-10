@@ -9,6 +9,8 @@ const max_cli_path_bytes = 4096;
 const max_forwarded_arg_count = 64;
 const max_forwarded_arg_bytes = 4096;
 const max_forwarded_args_total_bytes = 64 * 1024;
+const node_cli_prefix_arg_count = 2;
+const max_node_cli_arg_count = max_forwarded_arg_count + node_cli_prefix_arg_count;
 const max_app_arg_count = max_forwarded_arg_count + 1;
 const max_app_arg_bytes = max_forwarded_arg_bytes;
 const max_app_args_total_bytes = max_forwarded_args_total_bytes + max_cli_path_bytes;
@@ -57,7 +59,7 @@ pub fn run(
                 return 2;
             }
 
-            return forwardTagCommand(gpa, arena, io, out, cli_path, tag_args);
+            return forwardTagCommand(gpa, io, out, cli_path, tag_args);
         },
     }
 }
@@ -145,7 +147,6 @@ fn renderDashboard(
 
 fn forwardTagCommand(
     gpa: std.mem.Allocator,
-    arena: std.mem.Allocator,
     io: std.Io,
     out: *std.Io.Writer,
     cli_path: []const u8,
@@ -156,12 +157,13 @@ fn forwardTagCommand(
         return 2;
     }
 
-    var argv = std.array_list.Managed([]const u8).init(arena);
-    try argv.append("node");
-    try argv.append(cli_path);
-    try argv.appendSlice(args);
+    var argv_buffer: [max_node_cli_arg_count][]const u8 = undefined;
+    const argv = buildNodeCliArgv(&argv_buffer, cli_path, args) orelse {
+        try out.writeAll("invalid command arguments\n");
+        return 2;
+    };
 
-    const result = try cli.run(gpa, io, argv.items, .{});
+    const result = try cli.run(gpa, io, argv, .{});
     defer cli.freeResult(gpa, result);
 
     if (try cli.exitCodeForFailure(out, result, &.{0})) |exit_code| {
@@ -170,6 +172,23 @@ fn forwardTagCommand(
 
     try cli.writeCaptured(out, result);
     return null;
+}
+
+fn buildNodeCliArgv(
+    buffer: *[max_node_cli_arg_count][]const u8,
+    cli_path: []const u8,
+    args: []const []const u8,
+) ?[]const []const u8 {
+    if (args.len > max_forwarded_arg_count) return null;
+
+    buffer[0] = "node";
+    buffer[1] = cli_path;
+
+    for (args, 0..) |arg, index| {
+        buffer[node_cli_prefix_arg_count + index] = arg;
+    }
+
+    return buffer[0 .. node_cli_prefix_arg_count + args.len];
 }
 
 test "commands are classified without falling through to dashboard" {
@@ -235,6 +254,27 @@ test "forwarded tag arguments are bounded before spawning node" {
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "a", total_excess[0..] }));
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "bad\nrepo" }));
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "bad\xc2\x85repo" }));
+}
+
+test "node cli argv uses caller owned bounded storage" {
+    var buffer: [max_node_cli_arg_count][]const u8 = undefined;
+    const argv = buildNodeCliArgv(&buffer, "./bin/nullbuilder.js", &.{
+        "release-tag",
+        "nullclaw/nullbuilder",
+        "--tag",
+        "v1.2.3",
+    }) orelse return error.UnexpectedNull;
+
+    try std.testing.expectEqual(@as(usize, 6), argv.len);
+    try std.testing.expectEqualStrings("node", argv[0]);
+    try std.testing.expectEqualStrings("./bin/nullbuilder.js", argv[1]);
+    try std.testing.expectEqualStrings("release-tag", argv[2]);
+    try std.testing.expectEqualStrings("nullclaw/nullbuilder", argv[3]);
+    try std.testing.expectEqualStrings("--tag", argv[4]);
+    try std.testing.expectEqualStrings("v1.2.3", argv[5]);
+
+    const too_many_args = [_][]const u8{"--flag"} ** (max_forwarded_arg_count + 1);
+    try std.testing.expect(buildNodeCliArgv(&buffer, "./bin/nullbuilder.js", too_many_args[0..]) == null);
 }
 
 test "top-level app arguments are bounded before command classification" {
