@@ -9,6 +9,9 @@ const max_cli_path_bytes = 4096;
 const max_forwarded_arg_count = 64;
 const max_forwarded_arg_bytes = 4096;
 const max_forwarded_args_total_bytes = 64 * 1024;
+const max_app_arg_count = max_forwarded_arg_count + 1;
+const max_app_arg_bytes = max_forwarded_arg_bytes;
+const max_app_args_total_bytes = max_forwarded_args_total_bytes + max_cli_path_bytes;
 
 const Command = union(enum) {
     dashboard,
@@ -26,6 +29,11 @@ pub fn run(
     no_color: bool,
     args: []const []const u8,
 ) !?u8 {
+    if (!isSafeAppArgs(args)) {
+        try out.writeAll("invalid command arguments\n");
+        return 2;
+    }
+
     const command = classifyCommand(args);
     switch (command) {
         .help => {
@@ -79,6 +87,14 @@ fn isSafeForwardedArgs(args: []const []const u8) bool {
         .max_arg_bytes = max_forwarded_arg_bytes,
         .max_total_bytes = max_forwarded_args_total_bytes,
         .allow_empty = false,
+    }, hasArgumentControl);
+}
+
+fn isSafeAppArgs(args: []const []const u8) bool {
+    return arg_safety.isSafeArgVector(args, .{
+        .max_count = max_app_arg_count,
+        .max_arg_bytes = max_app_arg_bytes,
+        .max_total_bytes = max_app_args_total_bytes,
     }, hasArgumentControl);
 }
 
@@ -215,4 +231,42 @@ test "forwarded tag arguments are bounded before spawning node" {
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "a", total_excess[0..] }));
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "bad\nrepo" }));
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "bad\xc2\x85repo" }));
+}
+
+test "top-level app arguments are bounded before command classification" {
+    const max_arg = [_]u8{'a'} ** max_app_arg_bytes;
+    const oversized_arg = [_]u8{'a'} ** (max_app_arg_bytes + 1);
+    const total_excess = [_]u8{'b'} ** (max_app_args_total_bytes - max_app_arg_bytes + 1);
+    const too_many_args = [_][]const u8{"--flag"} ** (max_app_arg_count + 1);
+
+    try std.testing.expect(isSafeAppArgs(&.{}));
+    try std.testing.expect(isSafeAppArgs(&.{"nullbuilder-tui"}));
+    try std.testing.expect(isSafeAppArgs(&.{ "nullbuilder-tui", "--help" }));
+    try std.testing.expect(isSafeAppArgs(&.{ "nullbuilder-tui", "build-pr", "nullclaw/nullbuilder", "--pr", "7" }));
+    try std.testing.expect(isSafeAppArgs(&.{ "nullbuilder-tui", "release-tag", "nullclaw/nullbuilder", "--ref", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c" }));
+
+    try std.testing.expect(!isSafeAppArgs(too_many_args[0..]));
+    try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", oversized_arg[0..] }));
+    try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", max_arg[0..], total_excess[0..] }));
+    try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\ncommand" }));
+    try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\xc2\x85command" }));
+    try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\xe2\x80\xaecommand" }));
+}
+
+test "run rejects unsafe top-level arguments before command handling" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const exit_code = try run(
+        std.testing.allocator,
+        std.testing.allocator,
+        undefined,
+        &out.writer,
+        "./bin/nullbuilder.js",
+        true,
+        &.{ "nullbuilder-tui", "--help\nhidden" },
+    );
+
+    try std.testing.expectEqual(@as(?u8, 2), exit_code);
+    try std.testing.expectEqualStrings("invalid command arguments\n", out.writer.buffered());
 }
