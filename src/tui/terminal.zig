@@ -92,6 +92,7 @@ pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
         const byte = value[index];
         if (byte == ascii_escape or
             text_safety.isUtf8C1Control(value, index) or
+            text_safety.utf8BidiControlSequenceLength(value, index) != null or
             text_safety.isInvalidUtf8SequenceStart(value, index) or
             isUnsafeTerminalControlByte(byte, options))
         {
@@ -116,6 +117,12 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
 
     if (text_safety.isUtf8C1Control(value, index.*)) {
         index.* += 2;
+        buffer[0] = ' ';
+        return buffer[0..1];
+    }
+
+    if (text_safety.utf8BidiControlSequenceLength(value, index.*)) |sequence_len| {
+        index.* += sequence_len;
         buffer[0] = ' ';
         return buffer[0..1];
     }
@@ -194,6 +201,8 @@ test "terminal control detector skips safe UTF-8 sequences" {
     try std.testing.expect(hasUnsafeControl("bad\x85value", .{}));
     try std.testing.expect(hasUnsafeControl("bad\xc0\x85value", .{}));
     try std.testing.expect(hasUnsafeControl("bad\xe2\x82value", .{}));
+    try std.testing.expect(hasUnsafeControl("bad\xe2\x80\xaevalue", .{}));
+    try std.testing.expect(hasUnsafeControl("bad\xe2\x81\xa6value", .{}));
 }
 
 test "terminal sanitizer borrows already safe text" {
@@ -227,6 +236,13 @@ test "terminal sanitizer replaces malformed UTF-8 bytes" {
     defer std.testing.allocator.free(safe);
 
     try std.testing.expectEqualStrings("bad  next  done", safe);
+}
+
+test "terminal sanitizer replaces bidi controls" {
+    const safe = try sanitizeAlloc(std.testing.allocator, "bad\xe2\x80\xaespoof\xe2\x81\xa9done", .{});
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("bad spoof done", safe);
 }
 
 test "terminal sanitizer can preserve newlines for child output" {

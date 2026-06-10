@@ -20,6 +20,14 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
+        if (utf8BidiControlSequenceLength(value, index)) |sequence_len| {
+            if (written >= buffer.len) break;
+            buffer[written] = ' ';
+            index += sequence_len;
+            written += 1;
+            continue;
+        }
+
         if (isControlByte(byte)) {
             if (written >= buffer.len) break;
             buffer[written] = ' ';
@@ -50,7 +58,11 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
 pub fn hasControl(value: []const u8) bool {
     var index: usize = 0;
     while (index < value.len) {
-        if (isControlByte(value[index]) or isUtf8C1Control(value, index) or isInvalidUtf8SequenceStart(value, index)) {
+        if (isControlByte(value[index]) or
+            isUtf8C1Control(value, index) or
+            utf8BidiControlSequenceLength(value, index) != null or
+            isInvalidUtf8SequenceStart(value, index))
+        {
             return true;
         }
         index += utf8SequenceLength(value, index);
@@ -68,6 +80,22 @@ pub fn isControlByte(byte: u8) bool {
 
 pub fn isUtf8C1Control(value: []const u8, index: usize) bool {
     return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+}
+
+fn utf8BidiControlSequenceLength(value: []const u8, index: usize) ?usize {
+    if (index + 1 < value.len and value[index] == 0xd8 and value[index + 1] == 0x9c) return 2;
+    if (index + 2 >= value.len or value[index] != 0xe2) return null;
+
+    if (value[index + 1] == 0x80) {
+        const marker = value[index + 2];
+        if (marker == 0x8e or marker == 0x8f or (marker >= 0xaa and marker <= 0xae)) return 3;
+    }
+    if (value[index + 1] == 0x81) {
+        const marker = value[index + 2];
+        if (marker >= 0xa6 and marker <= 0xa9) return 3;
+    }
+
+    return null;
 }
 
 fn utf8SequenceLength(value: []const u8, index: usize) usize {
@@ -155,6 +183,9 @@ test "action text detects ASCII and UTF-8 encoded control characters" {
     try std.testing.expect(hasControl("truncated\xe2\x82"));
     try std.testing.expect(hasControl("surrogate\xed\xa0\x80"));
     try std.testing.expect(hasControl("too-large\xf4\x90\x80\x80"));
+    try std.testing.expect(hasControl("bidi\xe2\x80\xaecontrol"));
+    try std.testing.expect(hasControl("bidi\xe2\x81\xa6control"));
+    try std.testing.expect(hasControl("bidi\xd8\x9ccontrol"));
 }
 
 test "action text sanitizes diagnostic tokens without echoing controls" {
@@ -180,6 +211,12 @@ test "action text sanitizes diagnostic tokens without echoing controls" {
     try std.testing.expectEqualStrings(
         "bad  done",
         sanitizeDiagnosticToken("bad\xc0\x85done", &invalid_utf8_buffer),
+    );
+
+    var bidi_buffer: [32]u8 = undefined;
+    try std.testing.expectEqualStrings(
+        "bad spoof done",
+        sanitizeDiagnosticToken("bad\xe2\x80\xaespoof\xe2\x81\xa9done", &bidi_buffer),
     );
 
     var short_buffer: [4]u8 = undefined;

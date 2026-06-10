@@ -1,4 +1,6 @@
 const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\|$)|[@-Z\\-_])/g;
+const BIDI_FORMAT_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const BIDI_FORMAT_CONTROL_TEST_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
 const CONTROL_CHARACTER_TEST_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 const POSITIVE_INTEGER_TEXT_PATTERN = /^[1-9]\d*$/;
@@ -26,7 +28,7 @@ export function readSafeTextInput(value: string, options: SafeTextInputOptions =
     return null;
   }
 
-  if (CONTROL_CHARACTER_TEST_PATTERN.test(value)) {
+  if (CONTROL_CHARACTER_TEST_PATTERN.test(value) || BIDI_FORMAT_CONTROL_TEST_PATTERN.test(value)) {
     return null;
   }
 
@@ -44,7 +46,7 @@ export function parsePositiveIntegerText(value: string): number | null {
 
 export function sanitizeText(value: string, options: SafeTextOptions): string {
   const sanitized = truncateText(
-    value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' '),
+    value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' ').replace(BIDI_FORMAT_CONTROL_PATTERN, ' '),
     options.maxLength,
     options.suffix ?? ''
   );
