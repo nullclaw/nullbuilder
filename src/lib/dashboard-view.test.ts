@@ -16,6 +16,8 @@ import {
   visibleAuditFindings
 } from './dashboard-view';
 
+const originalArrayPush = Array.prototype.push;
+
 test('dashboardOwner falls back to the default owner', () => {
   assert.equal(dashboardOwner({ owner: 'octo' }), 'octo');
   assert.equal(dashboardOwner(null), 'nullclaw');
@@ -73,6 +75,29 @@ test('visibleAuditFindings avoids user-controlled array slice methods', () => {
   const findings = new UnsafeSliceArray(1, 2, 3);
 
   assert.deepEqual(visibleAuditFindings(findings, 2), [1, 2]);
+});
+
+test('visibleAuditFindings avoids global array push hooks', () => {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    assert.deepEqual(visibleAuditFindings([1, 2, 3], 2), [1, 2]);
+    assert.equal(pushCalls, 0);
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalArrayPush
+    });
+  }
 });
 
 test('dashboard view helpers avoid user-controlled array traversal methods', () => {
