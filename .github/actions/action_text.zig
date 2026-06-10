@@ -7,71 +7,13 @@ pub const ascii_escape: u8 = text_safety.ascii_escape;
 pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
     var written: usize = 0;
     var index: usize = 0;
+    var slice_buffer: [4]u8 = undefined;
     while (index < value.len) {
-        const byte = value[index];
-        if (byte == ascii_escape) {
-            index = text_safety.skipAnsiEscape(value, index);
-            continue;
-        }
+        const slice = text_safety.nextSanitizedSlice(value, &index, .{}, &slice_buffer) orelse continue;
+        if (slice.len > buffer.len - written) break;
 
-        if (text_safety.isRawAnsiControlSequence(byte)) {
-            index = text_safety.skipAnsiControlSequence(value, index + 1);
-            continue;
-        }
-
-        if (text_safety.isUtf8AnsiControlSequence(value, index)) {
-            index = text_safety.skipAnsiControlSequence(value, index + 2);
-            continue;
-        }
-
-        if (text_safety.isRawAnsiStringControl(byte)) {
-            index = text_safety.skipAnsiStringControl(value, index + 1);
-            continue;
-        }
-
-        if (text_safety.isUtf8AnsiStringControl(value, index)) {
-            index = text_safety.skipAnsiStringControl(value, index + 2);
-            continue;
-        }
-
-        if (text_safety.isUtf8C1Control(value, index)) {
-            if (written >= buffer.len) break;
-            buffer[written] = ' ';
-            index += 2;
-            written += 1;
-            continue;
-        }
-
-        if (text_safety.utf8BidiControlSequenceLength(value, index)) |sequence_len| {
-            if (written >= buffer.len) break;
-            buffer[written] = ' ';
-            index += sequence_len;
-            written += 1;
-            continue;
-        }
-
-        if (text_safety.isControlByte(byte)) {
-            if (written >= buffer.len) break;
-            buffer[written] = ' ';
-            index += 1;
-            written += 1;
-            continue;
-        }
-
-        if (text_safety.isInvalidUtf8SequenceStart(value, index)) {
-            if (written >= buffer.len) break;
-            buffer[written] = ' ';
-            index += 1;
-            written += 1;
-            continue;
-        }
-
-        const sequence_len = text_safety.utf8SequenceLength(value, index);
-        if (sequence_len > buffer.len - written) break;
-
-        @memcpy(buffer[written..][0..sequence_len], value[index..][0..sequence_len]);
-        written += sequence_len;
-        index += sequence_len;
+        @memcpy(buffer[written..][0..slice.len], slice);
+        written += slice.len;
     }
 
     return buffer[0..written];

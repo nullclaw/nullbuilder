@@ -5,9 +5,7 @@ const text_safety = @import("text_safety");
 pub const ascii_escape: u8 = text_safety.ascii_escape;
 pub const truncated_output_suffix = "\n[output truncated]\n";
 
-pub const SanitizeOptions = struct {
-    preserve_newlines: bool = false,
-};
+pub const SanitizeOptions = text_safety.SanitizeOptions;
 
 pub const OutputBudget = struct {
     remaining: usize,
@@ -24,7 +22,7 @@ pub const SanitizedText = struct {
 };
 
 pub fn sanitizeMaybeAlloc(allocator: std.mem.Allocator, value: []const u8, options: SanitizeOptions) !SanitizedText {
-    const unsafe_index = firstUnsafeControlIndex(value, options) orelse return .{ .value = value };
+    const unsafe_index = text_safety.firstSanitizableIndex(value, options) orelse return .{ .value = value };
 
     return .{
         .value = try sanitizeAllocFrom(allocator, value, options, unsafe_index),
@@ -53,7 +51,7 @@ fn sanitizeAllocFrom(
     var index: usize = start_index;
     var buffer: [4]u8 = undefined;
     while (index < value.len) {
-        if (nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
+        if (text_safety.nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
             try sanitized.appendSlice(slice);
         }
     }
@@ -65,7 +63,7 @@ pub fn writeSafe(out: *std.Io.Writer, value: []const u8, options: SanitizeOption
     var index: usize = 0;
     var buffer: [4]u8 = undefined;
     while (index < value.len) {
-        if (nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
+        if (text_safety.nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
             try out.writeAll(slice);
         }
     }
@@ -83,7 +81,7 @@ pub fn writeSafeBudgeted(out: *std.Io.Writer, value: []const u8, budget: *Output
     var buffer: [4]u8 = undefined;
 
     while (index < value.len) {
-        if (nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
+        if (text_safety.nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
             if (budget.remaining == 0 or slice.len > budget.remaining) {
                 try out.writeAll(truncated_output_suffix);
                 budget.remaining = 0;
@@ -115,87 +113,7 @@ pub fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
 }
 
 pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
-    return firstUnsafeControlIndex(value, options) != null;
-}
-
-fn firstUnsafeControlIndex(value: []const u8, options: SanitizeOptions) ?usize {
-    var index: usize = 0;
-    while (index < value.len) {
-        const byte = value[index];
-        if (byte == ascii_escape or
-            text_safety.isUtf8C1Control(value, index) or
-            text_safety.utf8BidiControlSequenceLength(value, index) != null or
-            text_safety.isInvalidUtf8SequenceStart(value, index) or
-            isUnsafeTerminalControlByte(byte, options))
-        {
-            return index;
-        }
-        index += text_safety.utf8SequenceLength(value, index);
-    }
-
-    return null;
-}
-
-fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions, buffer: *[4]u8) ?[]const u8 {
-    const byte = value[index.*];
-    if (byte == ascii_escape) {
-        index.* = text_safety.skipAnsiEscape(value, index.*);
-        return null;
-    }
-
-    if (text_safety.isRawAnsiControlSequence(byte)) {
-        index.* = text_safety.skipAnsiControlSequence(value, index.* + 1);
-        return null;
-    }
-
-    if (text_safety.isUtf8AnsiControlSequence(value, index.*)) {
-        index.* = text_safety.skipAnsiControlSequence(value, index.* + 2);
-        return null;
-    }
-
-    if (text_safety.isRawAnsiStringControl(byte)) {
-        index.* = text_safety.skipAnsiStringControl(value, index.* + 1);
-        return null;
-    }
-
-    if (text_safety.isUtf8AnsiStringControl(value, index.*)) {
-        index.* = text_safety.skipAnsiStringControl(value, index.* + 2);
-        return null;
-    }
-
-    if (text_safety.isUtf8C1Control(value, index.*)) {
-        index.* += 2;
-        buffer[0] = ' ';
-        return buffer[0..1];
-    }
-
-    if (text_safety.utf8BidiControlSequenceLength(value, index.*)) |sequence_len| {
-        index.* += sequence_len;
-        buffer[0] = ' ';
-        return buffer[0..1];
-    }
-
-    if (isUnsafeTerminalControlByte(byte, options)) {
-        index.* += 1;
-        buffer[0] = ' ';
-        return buffer[0..1];
-    }
-
-    if (text_safety.isInvalidUtf8SequenceStart(value, index.*)) {
-        index.* += 1;
-        buffer[0] = ' ';
-        return buffer[0..1];
-    }
-
-    const start = index.*;
-    const sequence_len = text_safety.utf8SequenceLength(value, start);
-    index.* += sequence_len;
-    return value[start..index.*];
-}
-
-fn isUnsafeTerminalControlByte(byte: u8, options: SanitizeOptions) bool {
-    if (options.preserve_newlines and byte == '\n') return false;
-    return text_safety.isControlByte(byte);
+    return text_safety.firstSanitizableIndex(value, options) != null;
 }
 
 test "terminal sanitizer strips escape sequences and controls" {

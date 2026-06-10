@@ -2,6 +2,10 @@ const std = @import("std");
 
 pub const ascii_escape: u8 = 0x1b;
 
+pub const SanitizeOptions = struct {
+    preserve_newlines: bool = false,
+};
+
 pub fn hasControl(value: []const u8) bool {
     var index: usize = 0;
     while (index < value.len) {
@@ -15,6 +19,86 @@ pub fn hasControl(value: []const u8) bool {
         index += utf8SequenceLength(value, index);
     }
     return false;
+}
+
+pub fn firstSanitizableIndex(value: []const u8, options: SanitizeOptions) ?usize {
+    var index: usize = 0;
+    while (index < value.len) {
+        const byte = value[index];
+        if (byte == ascii_escape or
+            isUtf8C1Control(value, index) or
+            utf8BidiControlSequenceLength(value, index) != null or
+            isInvalidUtf8SequenceStart(value, index) or
+            isSanitizableControlByte(byte, options))
+        {
+            return index;
+        }
+        index += utf8SequenceLength(value, index);
+    }
+
+    return null;
+}
+
+pub fn nextSanitizedSlice(
+    value: []const u8,
+    index: *usize,
+    options: SanitizeOptions,
+    buffer: *[4]u8,
+) ?[]const u8 {
+    const byte = value[index.*];
+    if (byte == ascii_escape) {
+        index.* = skipAnsiEscape(value, index.*);
+        return null;
+    }
+
+    if (isRawAnsiControlSequence(byte)) {
+        index.* = skipAnsiControlSequence(value, index.* + 1);
+        return null;
+    }
+
+    if (isUtf8AnsiControlSequence(value, index.*)) {
+        index.* = skipAnsiControlSequence(value, index.* + 2);
+        return null;
+    }
+
+    if (isRawAnsiStringControl(byte)) {
+        index.* = skipAnsiStringControl(value, index.* + 1);
+        return null;
+    }
+
+    if (isUtf8AnsiStringControl(value, index.*)) {
+        index.* = skipAnsiStringControl(value, index.* + 2);
+        return null;
+    }
+
+    if (isUtf8C1Control(value, index.*)) {
+        index.* += 2;
+        buffer[0] = ' ';
+        return buffer[0..1];
+    }
+
+    if (utf8BidiControlSequenceLength(value, index.*)) |sequence_len| {
+        index.* += sequence_len;
+        buffer[0] = ' ';
+        return buffer[0..1];
+    }
+
+    if (isSanitizableControlByte(byte, options)) {
+        index.* += 1;
+        buffer[0] = ' ';
+        return buffer[0..1];
+    }
+
+    if (isInvalidUtf8SequenceStart(value, index.*)) {
+        index.* += 1;
+        buffer[0] = ' ';
+        return buffer[0..1];
+    }
+
+    const start = index.*;
+    const sequence_len = utf8SequenceLength(value, start);
+    index.* += sequence_len;
+    return value[start..index.*];
 }
 
 pub fn isControlByte(byte: u8) bool {
@@ -161,6 +245,11 @@ fn hasValidUtf8ScalarRange(sequence: []const u8) bool {
     };
 }
 
+fn isSanitizableControlByte(byte: u8, options: SanitizeOptions) bool {
+    if (options.preserve_newlines and byte == '\n') return false;
+    return isControlByte(byte);
+}
+
 test "text safety detects ASCII and UTF-8 encoded control characters" {
     try std.testing.expect(!hasControl("safe value"));
     try std.testing.expect(!hasControl("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb5\xd1\x82-\xf0\x9f\x99\x82"));
@@ -246,4 +335,42 @@ test "text safety skips ANSI escape sequences" {
     try std.testing.expectEqual(@as(usize, 1), skipAnsiEscape("\x1b", 0));
     try std.testing.expectEqual(@as(usize, 2), skipAnsiEscape("\x1bc", 0));
     try std.testing.expectEqual(@as(usize, 4), skipAnsiEscape("\x1b[31", 0));
+}
+
+test "text safety emits sanitized slices from one shared scanner" {
+    var buffer: [4]u8 = undefined;
+    var index: usize = 0;
+    const value = "ok\nbad\x1b[31mred\x1b[0m\xc2\x85raw\x85done";
+
+    try std.testing.expectEqualStrings("o", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("k", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings(" ", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("b", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("a", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("d", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expect(nextSanitizedSlice(value, &index, .{}, &buffer) == null);
+    try std.testing.expectEqualStrings("r", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("e", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("d", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expect(nextSanitizedSlice(value, &index, .{}, &buffer) == null);
+    try std.testing.expectEqualStrings(" ", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("r", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("a", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("w", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings(" ", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("d", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("o", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("n", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("e", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqual(value.len, index);
+}
+
+test "text safety shared scanner can preserve newlines" {
+    try std.testing.expectEqual(@as(?usize, 2), firstSanitizableIndex("ok\nbad", .{}));
+    try std.testing.expectEqual(@as(?usize, null), firstSanitizableIndex("ok\nbad", .{ .preserve_newlines = true }));
+
+    var buffer: [4]u8 = undefined;
+    var index: usize = 2;
+    try std.testing.expectEqualStrings("\n", nextSanitizedSlice("ok\nbad", &index, .{ .preserve_newlines = true }, &buffer).?);
+    try std.testing.expectEqual(@as(usize, 3), index);
 }
