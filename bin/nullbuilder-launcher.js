@@ -27,8 +27,8 @@ export function buildChildArgs(paths, userArgs, bundledExists = existsSync(paths
   }
 
   return bundledExists
-    ? [paths.bundledCli, ...userArgs]
-    : ['--import', 'tsx', paths.sourceCli, ...userArgs];
+    ? prefixedArgs([paths.bundledCli], userArgs)
+    : prefixedArgs(['--import', 'tsx', paths.sourceCli], userArgs);
 }
 
 export function runLauncher({
@@ -41,7 +41,8 @@ export function runLauncher({
   exists = existsSync
 }) {
   const paths = resolveLauncherPaths(moduleUrl);
-  const childArgs = buildChildArgs(paths, argv.slice(2), exists(paths.bundledCli));
+  const userArgs = readArgTail(argv, 2);
+  const childArgs = userArgs === null ? null : buildChildArgs(paths, userArgs, exists(paths.bundledCli));
 
   if (!childArgs) {
     stderr.write('Invalid command arguments.\n');
@@ -67,12 +68,17 @@ export function runLauncher({
 }
 
 function isSafeForwardedArgs(args) {
+  if (!Array.isArray(args)) {
+    return false;
+  }
+
   if (args.length > MAX_FORWARDED_ARG_COUNT) {
     return false;
   }
 
   let totalBytes = 0;
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
     if (typeof arg !== 'string') {
       return false;
     }
@@ -94,6 +100,31 @@ function isSafeForwardedArgs(args) {
   }
 
   return true;
+}
+
+function readArgTail(args, start) {
+  if (!Array.isArray(args)) {
+    return null;
+  }
+
+  const tail = [];
+  for (let index = start; index < args.length; index += 1) {
+    tail.push(args[index]);
+  }
+
+  return tail;
+}
+
+function prefixedArgs(prefix, userArgs) {
+  const args = [];
+  for (let index = 0; index < prefix.length; index += 1) {
+    args.push(prefix[index]);
+  }
+  for (let index = 0; index < userArgs.length; index += 1) {
+    args.push(userArgs[index]);
+  }
+
+  return args;
 }
 
 function fitsTotalByteBudget(usedBytes, nextBytes, maxBytes) {

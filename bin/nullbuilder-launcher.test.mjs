@@ -51,6 +51,21 @@ test('buildChildArgs rejects unsafe forwarded arguments before spawning', () => 
   assert.equal(buildChildArgs(paths, Array.from({ length: 129 }, (_, index) => `arg-${index}`), true), null);
 });
 
+test('buildChildArgs avoids user-controlled forwarded argument iterators', () => {
+  const paths = {
+    bundledCli: '/repo/dist/cli/nullbuilder.js',
+    sourceCli: '/repo/src/cli/nullbuilder.ts'
+  };
+  const args = ['repos', '--json'];
+  Object.defineProperty(args, Symbol.iterator, {
+    value() {
+      throw new Error('iterator should not be called');
+    }
+  });
+
+  assert.deepEqual(buildChildArgs(paths, args, true), ['/repo/dist/cli/nullbuilder.js', 'repos', '--json']);
+});
+
 test('buildChildArgs rejects unsafe cli paths before spawning', () => {
   assert.equal(
     buildChildArgs(
@@ -110,6 +125,32 @@ test('runLauncher returns child status and forwards current working directory', 
     cwd: '/worktree',
     stdio: 'inherit'
   });
+});
+
+test('runLauncher avoids user-controlled argv slice before spawning', () => {
+  const argv = ['node', 'bin/nullbuilder.js', 'repos'];
+  Object.defineProperty(argv, 'slice', {
+    value() {
+      throw new Error('slice should not be called');
+    }
+  });
+  const spawned = [];
+  const status = runLauncher({
+    argv,
+    cwd: '/worktree',
+    execPath: '/usr/bin/node',
+    moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+    exists: () => true,
+    stderr: writableBuffer(),
+    spawn: (execPath, args, options) => {
+      spawned.push({ execPath, args, options });
+      return { status: 0 };
+    }
+  });
+
+  assert.equal(status, 0);
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].args.at(-1), 'repos');
 });
 
 test('runLauncher rejects invalid argv without spawning', () => {
