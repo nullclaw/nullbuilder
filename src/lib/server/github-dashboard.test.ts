@@ -137,7 +137,7 @@ test('mapRepositorySummary tolerates malformed nested GitHub payloads', () => {
         title: 7 as unknown as string,
         html_url: 42 as unknown as string,
         user: 7 as unknown as GitHubIssueResponse['user'],
-        labels: [null, 42, {}, { name: 123, color: 123 }, ' bug '] as unknown as GitHubIssueResponse['labels'],
+        labels: [null, 42, [], {}, { name: 123, color: 123 }, ' bug '] as unknown as GitHubIssueResponse['labels'],
         created_at: 42 as unknown as string
       })
     ],

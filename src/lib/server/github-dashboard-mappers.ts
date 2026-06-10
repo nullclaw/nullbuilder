@@ -1,5 +1,6 @@
 import type { RepoSlug } from '../repositories';
 import { safeUtcTimestampText } from '../date-safety';
+import { readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
 import type {
   GitHubLabel,
@@ -139,7 +140,7 @@ function mapLatestRunsForRepository(
 }
 
 function mapIssue(repo: RepoSlug, value: unknown, urlContext: GitHubWebUrlContext): IssueSummary | null {
-  const issue = objectRecord(value);
+  const issue = readObjectRecord(value);
   if (!issue || issue.pull_request) {
     return null;
   }
@@ -172,7 +173,7 @@ function mapPullRequest(
   value: unknown,
   urlContext: GitHubWebUrlContext
 ): PullRequestSummary | null {
-  const pull = objectRecord(value);
+  const pull = readObjectRecord(value);
   if (!pull) {
     return null;
   }
@@ -224,7 +225,7 @@ function mapLabels(labels: unknown): GitHubLabel[] {
       continue;
     }
 
-    const labelObject = objectRecord(label);
+    const labelObject = readObjectRecord(label);
     if (!labelObject) {
       continue;
     }
@@ -314,7 +315,7 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
   const runCount = Math.min(runs.length, MAX_WORKFLOW_RUNS_PER_REPOSITORY);
 
   for (let index = 0; index < runCount; index += 1) {
-    const runObject = objectRecord(runs[index]);
+    const runObject = readObjectRecord(runs[index]);
     if (!runObject) {
       continue;
     }
@@ -353,7 +354,7 @@ function matchesRun(
 }
 
 function mapRun(value: unknown, urlContext: GitHubWebUrlContext): WorkflowRunSummary | null {
-  const run = objectRecord(value);
+  const run = readObjectRecord(value);
   if (!run) {
     return null;
   }
@@ -383,11 +384,7 @@ function safeArray(value: unknown): unknown[] {
 }
 
 function safeObjectText(value: unknown, key: string, fallback: string): string {
-  return safeDashboardText(objectRecord(value)?.[key], fallback);
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  return safeDashboardText(readObjectRecord(value)?.[key], fallback);
 }
 
 function safeString(value: unknown): string {

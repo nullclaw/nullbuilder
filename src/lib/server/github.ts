@@ -1,4 +1,5 @@
 import { MAX_REPOSITORY_LIST_ENTRIES, normalizeRepoSlug, type RepoSlug } from '../repositories';
+import { readObjectRecord } from '../record-safety';
 import type { NullbuilderConfig } from './config';
 import { mapWithConcurrency } from './concurrency';
 import {
@@ -93,11 +94,11 @@ function safeDiscoveredRepository(value: unknown): {
   language: string | null;
   archived: boolean;
 } | null {
-  if (!value || typeof value !== 'object') {
+  const repo = readObjectRecord(value);
+  if (!repo) {
     return null;
   }
 
-  const repo = value as Record<string, unknown>;
   if (typeof repo.name !== 'string' || typeof repo.full_name !== 'string') {
     return null;
   }
@@ -139,10 +140,11 @@ export async function getRepositorySummary(config: NullbuilderConfig, repo: Repo
 }
 
 function safeWorkflowRunsPayload(value: unknown): unknown[] {
-  if (!value || typeof value !== 'object') {
+  const payload = readObjectRecord(value);
+  if (!payload) {
     return [];
   }
 
-  const workflowRuns = (value as Record<string, unknown>).workflow_runs;
+  const workflowRuns = payload.workflow_runs;
   return Array.isArray(workflowRuns) ? workflowRuns : [];
 }

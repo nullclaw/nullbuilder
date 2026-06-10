@@ -1,4 +1,5 @@
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
+import { readObjectRecord } from '../record-safety';
 import { readSafeTextInput } from '../text-safety';
 import type { NullbuilderConfig } from './config';
 import { buildAuditTotals, collectAuditFindings, scoreFindings, sortFindings } from './audit-summary';
@@ -206,11 +207,11 @@ function collectWorkflowDirectoryItems(items: unknown[]): SafeWorkflowDirectoryI
 }
 
 function safeWorkflowDirectoryItem(item: unknown): SafeWorkflowDirectoryItem | null {
-  if (!item || typeof item !== 'object') {
+  const contentItem = readObjectRecord(item);
+  if (!contentItem) {
     return null;
   }
 
-  const contentItem = item as Record<string, unknown>;
   if (contentItem.type !== 'file') {
     return null;
   }

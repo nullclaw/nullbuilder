@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { normalizeBoundedNonNegativeInteger } from '../number-safety';
+import { readObjectRecord } from '../record-safety';
 import { readSafeTextInput } from '../text-safety';
 import { hasEncodedTextControlCharacter } from '../url-safety';
 import type { NullbuilderConfig } from './config';
@@ -348,11 +349,7 @@ function contentLengthExceedsLimit(value: string, maxBytes: number): boolean {
 }
 
 function isGitHubErrorPayload(value: unknown): value is { message: string } {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  return typeof (value as Record<string, unknown>).message === 'string';
+  return typeof readObjectRecord(value)?.message === 'string';
 }
 
 function safeGitHubErrorText(value: string, maxLength: number): string {
