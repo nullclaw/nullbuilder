@@ -7,7 +7,7 @@ import {
 import { readObjectRecord } from '../record-safety';
 import { readSafeTextInput } from '../text-safety';
 import { hasEncodedTextControlCharacter } from '../url-safety';
-import { readBoundedByteStream } from './byte-stream';
+import { contentLengthExceedsByteLimit, readBoundedByteStream } from './byte-stream';
 import type { NullbuilderConfig } from './config';
 
 export type GitHubRequestOptions = RequestInit & {
@@ -408,16 +408,7 @@ function decodeUtf8Response(bytes: Uint8Array): string {
 }
 
 function contentLengthExceedsLimit(value: string, maxBytes: number): boolean {
-  const safeValue = readSafeTextInput(value, {
-    maxLength: GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH,
-    trim: true
-  });
-  if (!safeValue || !/^[0-9]+$/.test(safeValue)) {
-    return true;
-  }
-
-  const parsed = Number(safeValue);
-  return !Number.isSafeInteger(parsed) || parsed > maxBytes;
+  return contentLengthExceedsByteLimit(value, maxBytes, GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH);
 }
 
 function isGitHubErrorPayload(value: unknown): value is { message: string } {

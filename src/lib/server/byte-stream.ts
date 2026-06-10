@@ -1,3 +1,5 @@
+import { readSafeTextInput } from '../text-safety';
+
 export type BoundedByteStreamResult =
   | {
       ok: true;
@@ -9,6 +11,23 @@ export type BoundedByteStreamResult =
     };
 
 const EMPTY_BYTES = new Uint8Array();
+
+export function contentLengthExceedsByteLimit(value: string, maxBytes: number, maxHeaderLength: number): boolean {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    return true;
+  }
+
+  const safeValue = readSafeTextInput(value, {
+    maxLength: maxHeaderLength,
+    trim: true
+  });
+  if (!safeValue || !/^[0-9]+$/.test(safeValue)) {
+    return true;
+  }
+
+  const parsed = Number(safeValue);
+  return !Number.isSafeInteger(parsed) || parsed > maxBytes;
+}
 
 export async function readBoundedByteStream(
   stream: ReadableStream<Uint8Array> | null,

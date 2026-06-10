@@ -5,7 +5,7 @@ import {
   resolveAuthContext,
   type LoginRateLimiter
 } from './auth';
-import { arrayBufferFromBytes, readBoundedByteStream } from './byte-stream';
+import { arrayBufferFromBytes, contentLengthExceedsByteLimit, readBoundedByteStream } from './byte-stream';
 import type { NullbuilderConfig } from './config';
 import { sanitizeGitTargetRef } from './git-refs';
 import { sanitizeBuildPrTagName, sanitizeReleaseTagName } from './tags';
@@ -603,16 +603,7 @@ function isCsrfTokenValueMatch(value: FormDataEntryValue | null, expected: strin
 }
 
 function contentLengthExceedsWebActionLimit(value: string): boolean {
-  const safeValue = readSafeTextInput(value, {
-    maxLength: MAX_WEB_ACTION_CONTENT_LENGTH_HEADER,
-    trim: true
-  });
-  if (!safeValue || !/^[0-9]+$/.test(safeValue)) {
-    return true;
-  }
-
-  const parsed = Number(safeValue);
-  return !Number.isSafeInteger(parsed) || parsed > MAX_WEB_ACTION_FORM_BYTES;
+  return contentLengthExceedsByteLimit(value, MAX_WEB_ACTION_FORM_BYTES, MAX_WEB_ACTION_CONTENT_LENGTH_HEADER);
 }
 
 function webActionMethodFailure(request: Request): WebActionMethodFailure | null {

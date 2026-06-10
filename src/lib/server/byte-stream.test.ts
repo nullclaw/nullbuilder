@@ -1,8 +1,24 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { arrayBufferFromBytes, readBoundedByteStream } from './byte-stream';
+import { arrayBufferFromBytes, contentLengthExceedsByteLimit, readBoundedByteStream } from './byte-stream';
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
+
+test('contentLengthExceedsByteLimit accepts only bounded decimal byte counts', () => {
+  assert.equal(contentLengthExceedsByteLimit('0', 4, 8), false);
+  assert.equal(contentLengthExceedsByteLimit('4', 4, 8), false);
+  assert.equal(contentLengthExceedsByteLimit(' 4 ', 4, 8), false);
+
+  for (const contentLength of ['5', '10junk', '1e9', '-1', '1.5', '', '9007199254740992', '1'.repeat(9)]) {
+    assert.equal(contentLengthExceedsByteLimit(contentLength, 4, 8), true);
+  }
+});
+
+test('contentLengthExceedsByteLimit rejects unsafe limit options', () => {
+  assert.equal(contentLengthExceedsByteLimit('0', Number.NaN, 8), true);
+  assert.equal(contentLengthExceedsByteLimit('0', -1, 8), true);
+  assert.equal(contentLengthExceedsByteLimit('0', 4, Number.NaN), true);
+});
 
 test('readBoundedByteStream returns empty bytes for absent and empty streams', async () => {
   assert.deepEqual(await readBoundedByteStream(null, 16), {
