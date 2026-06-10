@@ -5,6 +5,7 @@ import {
   resolveAuthContext,
   type LoginRateLimiter
 } from './auth';
+import { arrayBufferFromBytes, readBoundedByteStream } from './byte-stream';
 import type { NullbuilderConfig } from './config';
 import { sanitizeGitTargetRef } from './git-refs';
 import { sanitizeBuildPrTagName, sanitizeReleaseTagName } from './tags';
@@ -608,65 +609,8 @@ function isWebActionFormContentType(value: string | null): boolean {
 }
 
 async function readBoundedWebActionBody(request: Request): Promise<WebActionRequestBodySuccess | WebActionBodyLimitFailure> {
-  if (!request.body) {
-    return {
-      ok: true,
-      bytes: new Uint8Array()
-    };
-  }
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      if (value.byteLength === 0) {
-        continue;
-      }
-
-      if (value.byteLength > MAX_WEB_ACTION_FORM_BYTES - totalBytes) {
-        await reader.cancel().catch(() => undefined);
-        return webActionBodyTooLargeFailure();
-      }
-
-      totalBytes += value.byteLength;
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  return {
-    ok: true,
-    bytes: joinBodyChunks(chunks, totalBytes)
-  };
-}
-
-function joinBodyChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
-  if (chunks.length === 1 && chunks[0].byteLength === totalBytes) {
-    return chunks[0];
-  }
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return bytes;
-}
-
-function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  return buffer;
+  const body = await readBoundedByteStream(request.body, MAX_WEB_ACTION_FORM_BYTES);
+  return body.ok ? body : webActionBodyTooLargeFailure();
 }
 
 function webActionBodyTooLargeFailure(): WebActionBodyLimitFailure {

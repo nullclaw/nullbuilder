@@ -3,6 +3,7 @@ import { normalizeBoundedNonNegativeInteger } from '../number-safety';
 import { readObjectRecord } from '../record-safety';
 import { readSafeTextInput } from '../text-safety';
 import { hasEncodedTextControlCharacter } from '../url-safety';
+import { readBoundedByteStream } from './byte-stream';
 import type { NullbuilderConfig } from './config';
 
 export type GitHubRequestOptions = RequestInit & {
@@ -282,53 +283,12 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
     throw new Error('GitHub response body is too large.');
   }
 
-  if (!response.body) {
-    return '';
+  const body = await readBoundedByteStream(response.body, maxBytes);
+  if (!body.ok) {
+    throw new Error('GitHub response body is too large.');
   }
 
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      if (value.byteLength === 0) {
-        continue;
-      }
-
-      if (value.byteLength > maxBytes - totalBytes) {
-        await reader.cancel().catch(() => undefined);
-        throw new Error('GitHub response body is too large.');
-      }
-
-      totalBytes += value.byteLength;
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  return decodeUtf8Response(joinResponseChunks(chunks, totalBytes));
-}
-
-function joinResponseChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
-  if (chunks.length === 1 && chunks[0].byteLength === totalBytes) {
-    return chunks[0];
-  }
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return bytes;
+  return decodeUtf8Response(body.bytes);
 }
 
 function decodeUtf8Response(bytes: Uint8Array): string {
