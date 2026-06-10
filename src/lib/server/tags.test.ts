@@ -17,10 +17,21 @@ test('sanitizeReleaseTagName accepts only v-prefixed release tags', () => {
 });
 
 test('tag sanitizers reject unsafe git ref fragments', () => {
-  assert.throws(() => sanitizeBuildPrTagName('build-pr-bad..tag'), /Invalid tag name/);
-  assert.throws(() => sanitizeBuildPrTagName('build-pr-bad/tag'), /Invalid tag name/);
-  assert.throws(() => sanitizeBuildPrTagName('build-pr-17.lock'), /Invalid tag name/);
-  assert.throws(() => sanitizeReleaseTagName('v1.2.3.'), /Invalid tag name/);
-  assert.throws(() => sanitizeReleaseTagName('v1.2.3.lock'), /Invalid tag name/);
-  assert.throws(() => sanitizeReleaseTagName(`v${'a'.repeat(121)}`), /Invalid tag name/);
+  assert.throws(() => sanitizeBuildPrTagName('build-pr-bad..tag'), /^Error: Invalid tag name\.$/);
+  assert.throws(() => sanitizeBuildPrTagName('build-pr-bad/tag'), /^Error: Invalid tag name\.$/);
+  assert.throws(() => sanitizeBuildPrTagName('build-pr-17.lock'), /^Error: Invalid tag name\.$/);
+  assert.throws(() => sanitizeReleaseTagName('v1.2.3.'), /^Error: Invalid tag name\.$/);
+  assert.throws(() => sanitizeReleaseTagName('v1.2.3.lock'), /^Error: Invalid tag name\.$/);
+  assert.throws(() => sanitizeReleaseTagName(`v${'a'.repeat(121)}`), /^Error: Invalid tag name\.$/);
+});
+
+test('tag sanitizers do not echo unsafe tag input in errors', () => {
+  assert.throws(
+    () => sanitizeBuildPrTagName('build-pr-\x1b[31mred'),
+    (error: unknown) => error instanceof Error && error.message === 'Invalid tag name.'
+  );
+  assert.throws(
+    () => sanitizeReleaseTagName('v1.2.3\ninjected'),
+    (error: unknown) => error instanceof Error && error.message === 'Invalid tag name.'
+  );
 });

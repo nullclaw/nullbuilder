@@ -19,7 +19,7 @@ export function sanitizeBuildPrTagName(value: string): string {
   }
 
   if (!isSafeTagName(tagName)) {
-    throw new Error(`Invalid tag name: ${value}`);
+    throw new Error('Invalid tag name.');
   }
 
   return tagName;
@@ -37,7 +37,7 @@ export function sanitizeReleaseTagName(value: string): string {
   }
 
   if (!isSafeTagName(tagName)) {
-    throw new Error(`Invalid tag name: ${value}`);
+    throw new Error('Invalid tag name.');
   }
 
   return tagName;
