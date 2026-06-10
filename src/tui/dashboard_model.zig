@@ -14,6 +14,7 @@ const max_work_items_per_repository = 100;
 const max_work_item_number = 999_999_999;
 const max_work_title_len = 1024;
 const max_error_message_len = 2048;
+const ok_status = "ok";
 
 pub const Dashboard = struct {
     items: []const JsonValue,
@@ -33,6 +34,7 @@ pub const Dashboard = struct {
             const repo = repositoryFromValue(item) orelse continue;
             if (!repo.valid_slug) continue;
             result.repositories += 1;
+            if (!repo.loaded) continue;
             result.issues = saturatingAdd(result.issues, repo.open_issues);
             result.pull_requests = saturatingAdd(result.pull_requests, repo.open_pulls);
             result.stars = saturatingAdd(result.stars, repo.stars);
@@ -46,6 +48,7 @@ pub const Dashboard = struct {
 pub const Repository = struct {
     slug: []const u8,
     valid_slug: bool,
+    loaded: bool,
     open_issues: u64,
     open_pulls: u64,
     stars: u64,
@@ -97,6 +100,11 @@ pub const WorkItemIterator = struct {
                 continue;
             };
             if (!repo.valid_slug) {
+                self.repo_index += 1;
+                self.item_index = 0;
+                continue;
+            }
+            if (!repo.loaded) {
                 self.repo_index += 1;
                 self.item_index = 0;
                 continue;
@@ -158,6 +166,7 @@ fn repositoryFromObject(repo: JsonObject) Repository {
     return .{
         .slug = slug orelse "unknown",
         .valid_slug = slug != null,
+        .loaded = repositoryIsLoaded(status),
         .open_issues = dashboard_json.safeIntegerField(repo, "openIssues"),
         .open_pulls = dashboard_json.safeIntegerField(repo, "openPulls"),
         .stars = dashboard_json.safeIntegerField(repo, "stars"),
@@ -166,6 +175,10 @@ fn repositoryFromObject(repo: JsonObject) Repository {
         .issues = dashboard_json.boundedArrayFieldOrEmpty(repo, "issues", max_work_items_per_repository),
         .pull_requests = dashboard_json.boundedArrayFieldOrEmpty(repo, "pullRequests", max_work_items_per_repository),
     };
+}
+
+fn repositoryIsLoaded(status: []const u8) bool {
+    return std.mem.eql(u8, status, ok_status);
 }
 
 fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
@@ -252,17 +265,19 @@ test "dashboard model collects repository totals and run statuses" {
     const totals = dashboard.totals();
 
     try std.testing.expectEqual(@as(u64, 2), totals.repositories);
-    try std.testing.expectEqual(@as(u64, 5), totals.issues);
+    try std.testing.expectEqual(@as(u64, 2), totals.issues);
     try std.testing.expectEqual(@as(u64, 1), totals.pull_requests);
-    try std.testing.expectEqual(@as(u64, 15), totals.stars);
+    try std.testing.expectEqual(@as(u64, 10), totals.stars);
     try std.testing.expectEqual(@as(u64, 1), totals.failing);
 
     const alpha = repositoryFromValue(dashboard.items[0]).?;
+    try std.testing.expect(alpha.loaded);
     try std.testing.expectEqualStrings("failure", alpha.runs.ci);
     try std.testing.expectEqualStrings("in_progress", alpha.runs.nightly);
     try std.testing.expectEqualStrings("n/a", alpha.runs.release);
 
     const beta = repositoryFromValue(dashboard.items[1]).?;
+    try std.testing.expect(!beta.loaded);
     try std.testing.expectEqualStrings("error", beta.runs.ci);
     try std.testing.expectEqualStrings("error", beta.runs.nightly);
     try std.testing.expectEqualStrings("error", beta.runs.release);
@@ -323,6 +338,58 @@ test "dashboard totals ignore repositories without safe slugs" {
     try std.testing.expectEqual(@as(u64, 1), totals.pull_requests);
     try std.testing.expectEqual(@as(u64, 3), totals.stars);
     try std.testing.expectEqual(@as(u64, 1), totals.failing);
+}
+
+test "dashboard totals and work iterators ignore errored repository payload counters" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    {
+        \\      "slug": "nullclaw/errored",
+        \\      "status": "error",
+        \\      "openIssues": 99,
+        \\      "openPulls": 99,
+        \\      "stars": 99,
+        \\      "latestRuns": {"ci": {"status": "completed", "conclusion": "failure"}},
+        \\      "issues": [{"number": 7, "title": "Hidden issue"}],
+        \\      "pullRequests": [{"number": 8, "title": "Hidden PR"}]
+        \\    },
+        \\    {
+        \\      "slug": "nullclaw/loaded",
+        \\      "status": "ok",
+        \\      "openIssues": 2,
+        \\      "openPulls": 1,
+        \\      "stars": 3,
+        \\      "issues": [{"number": 9, "title": "Visible issue"}],
+        \\      "pullRequests": [{"number": 10, "title": "Visible PR"}]
+        \\    }
+        \\  ]
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const dashboard = Dashboard.init(parsed.value.object);
+    const totals = dashboard.totals();
+
+    try std.testing.expectEqual(@as(u64, 2), totals.repositories);
+    try std.testing.expectEqual(@as(u64, 2), totals.issues);
+    try std.testing.expectEqual(@as(u64, 1), totals.pull_requests);
+    try std.testing.expectEqual(@as(u64, 3), totals.stars);
+    try std.testing.expectEqual(@as(u64, 0), totals.failing);
+
+    var issues = WorkItemIterator.init(dashboard, .issues);
+    const issue = issues.next().?;
+    try std.testing.expectEqualStrings("nullclaw/loaded", issue.repo);
+    try std.testing.expectEqual(@as(u64, 9), issue.number);
+    try std.testing.expectEqualStrings("Visible issue", issue.title);
+    try std.testing.expectEqual(null, issues.next());
+
+    var pulls = WorkItemIterator.init(dashboard, .pull_requests);
+    const pull = pulls.next().?;
+    try std.testing.expectEqualStrings("nullclaw/loaded", pull.repo);
+    try std.testing.expectEqual(@as(u64, 10), pull.number);
+    try std.testing.expectEqualStrings("Visible PR", pull.title);
+    try std.testing.expectEqual(null, pulls.next());
 }
 
 test "dashboard model bounds external collection sizes" {
