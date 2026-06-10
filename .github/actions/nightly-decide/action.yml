@@ -47,6 +47,9 @@ runs:
         DECIDE_WORKFLOW_NAME: ${{ inputs.workflow_name }}
         FORCE_NIGHTLY: ${{ inputs.force }}
       run: |
+        decision_file="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nightly-decision.XXXXXX")"
+        trap 'rm -f "${decision_file}"' EXIT
+
         force_args=()
         if [ "${FORCE_NIGHTLY}" = "true" ]; then
           force_args+=(--force)
@@ -65,14 +68,19 @@ runs:
           --current-run-id "${DECIDE_CURRENT_RUN_ID}" \
           --head-sha "${DECIDE_HEAD_SHA}" \
           --workflow-name "${DECIDE_WORKFLOW_NAME}" \
-          "${force_args[@]}" > nightly-decision.env
+          "${force_args[@]}" > "${decision_file}"
 
-        cat nightly-decision.env
-        cat nightly-decision.env >> "$GITHUB_OUTPUT"
+        cat "${decision_file}"
+        for key in should_build reason matched_run_id matched_run_url; do
+          line="$(grep -m1 "^${key}=" "${decision_file}" || true)"
+          if [ -n "${line}" ]; then
+            printf '%s\n' "${line}" >> "$GITHUB_OUTPUT"
+          fi
+        done
 
-        reason="$(grep '^reason=' nightly-decision.env | cut -d= -f2-)"
-        should_build="$(grep '^should_build=' nightly-decision.env | cut -d= -f2-)"
-        matched_url="$(grep '^matched_run_url=' nightly-decision.env | cut -d= -f2- || true)"
+        reason="$(grep -m1 '^reason=' "${decision_file}" | cut -d= -f2-)"
+        should_build="$(grep -m1 '^should_build=' "${decision_file}" | cut -d= -f2-)"
+        matched_url="$(grep -m1 '^matched_run_url=' "${decision_file}" | cut -d= -f2- || true)"
         {
           echo "## Nightly preflight"
           echo ""
