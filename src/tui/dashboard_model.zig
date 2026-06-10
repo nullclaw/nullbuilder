@@ -172,12 +172,19 @@ fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
 
 fn workItemFromValue(value: JsonValue) ?WorkItem {
     return switch (value) {
-        .object => |work| .{
-            .repo = dashboard_json.boundedStringField(work, "repo", "", max_repo_text_len),
-            .number = dashboard_json.intField(work, "number"),
-            .title = dashboard_json.boundedStringField(work, "title", "", max_work_title_len),
-        },
+        .object => |work| workItemFromObject(work),
         else => null,
+    };
+}
+
+fn workItemFromObject(work: JsonObject) ?WorkItem {
+    const number = dashboard_json.intField(work, "number");
+    if (number == 0) return null;
+
+    return .{
+        .repo = dashboard_json.boundedStringField(work, "repo", "", max_repo_text_len),
+        .number = number,
+        .title = dashboard_json.boundedStringField(work, "title", "", max_work_title_len),
     };
 }
 
@@ -359,8 +366,16 @@ test "work item iterator skips invalid rows across repositories" {
         \\{
         \\  "items": [
         \\    "invalid",
-        \\    {"slug": "alpha", "issues": ["invalid", {"repo": "alpha", "number": 7, "title": "Fix build"}]},
-        \\    {"slug": "beta", "issues": [{"repo": "beta", "number": 8, "title": "Ship tag"}]}
+        \\    {"slug": "alpha", "issues": [
+        \\      "invalid",
+        \\      {"repo": "alpha", "number": 0, "title": "Zero"},
+        \\      {"repo": "alpha", "title": "Missing number"},
+        \\      {"repo": "alpha", "number": 7, "title": "Fix build"}
+        \\    ]},
+        \\    {"slug": "beta", "issues": [
+        \\      {"repo": "beta", "number": "8", "title": "String number"},
+        \\      {"repo": "beta", "number": 8, "title": "Ship tag"}
+        \\    ]}
         \\  ]
         \\}
     , .{});
