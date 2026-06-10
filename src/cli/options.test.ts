@@ -48,6 +48,7 @@ test('parseOptions parses build tag flags', () => {
 test('parseOptions rejects partial numeric PR values', () => {
   assert.throws(() => parseOptions(['--pr', '17abc']), /--pr must be a positive number/);
   assert.throws(() => parseOptions(['--pr', '0']), /--pr must be a positive number/);
+  assert.throws(() => parseOptions(['--pr', '1'.repeat(100_000)]), /--pr must be a positive number/);
 });
 
 test('parseOptions stops option parsing after delimiter', () => {

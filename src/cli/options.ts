@@ -1,5 +1,6 @@
 const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
+const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
 
 export type Command = (typeof COMMANDS)[number];
 
@@ -143,6 +144,10 @@ function readValue(args: readonly string[], index: number, option: string): stri
 }
 
 function parsePositiveInteger(value: string, option: string): number {
+  if (value.length > MAX_SAFE_INTEGER_DIGITS) {
+    throw new Error(`${option} must be a positive number.`);
+  }
+
   if (!/^[1-9]\d*$/.test(value)) {
     throw new Error(`${option} must be a positive number.`);
   }
