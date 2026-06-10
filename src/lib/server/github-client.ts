@@ -294,16 +294,24 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
         break;
       }
 
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
+      if (value.byteLength > maxBytes - totalBytes) {
         await reader.cancel().catch(() => undefined);
         throw new Error('GitHub response body is too large.');
       }
 
+      totalBytes += value.byteLength;
       chunks.push(value);
     }
   } finally {
     reader.releaseLock();
+  }
+
+  return decodeUtf8Response(joinResponseChunks(chunks, totalBytes));
+}
+
+function joinResponseChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
+  if (chunks.length === 1 && chunks[0].byteLength === totalBytes) {
+    return chunks[0];
   }
 
   const bytes = new Uint8Array(totalBytes);
@@ -313,7 +321,7 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
     offset += chunk.byteLength;
   }
 
-  return decodeUtf8Response(bytes);
+  return bytes;
 }
 
 function decodeUtf8Response(bytes: Uint8Array): string {

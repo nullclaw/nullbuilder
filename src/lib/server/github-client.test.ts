@@ -708,6 +708,31 @@ test('githubRequest bounds streamed JSON responses without content-length', asyn
   );
 });
 
+test('githubRequest rejects streamed responses that exceed the limit across chunk boundaries', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://chunk-boundary-json.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const maxSizeChunk = new Uint8Array(GITHUB_JSON_RESPONSE_MAX_BYTES);
+  const overflowChunk = new Uint8Array(1);
+
+  globalThis.fetch = (async () =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(maxSizeChunk);
+          controller.enqueue(overflowChunk);
+        }
+      })
+    )) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) => error instanceof Error && error.message === 'GitHub response body is too large.'
+  );
+});
+
 test('githubRequest keeps stream cancel errors from masking oversized responses', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
