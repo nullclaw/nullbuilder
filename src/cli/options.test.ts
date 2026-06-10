@@ -46,6 +46,18 @@ test('parseOptions rejects unknown options without echoing raw input', () => {
   });
 });
 
+test('parseOptions rejects duplicate options without overwriting earlier values', () => {
+  assert.throws(() => parseOptions(['--repo', 'nullbuilder', '--repo', 'other']), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Duplicate option.');
+    assert.doesNotMatch(error.message, /nullbuilder|other/);
+    return true;
+  });
+
+  assert.throws(() => parseOptions(['--json', '--json']), /^Error: Duplicate option\.$/);
+  assert.throws(() => parseOptions(['--force', '--force']), /^Error: Duplicate option\.$/);
+});
+
 test('parseOptions parses build tag flags', () => {
   assert.deepEqual(parseOptions(['repo-name', '--pr', '17', '--tag', 'build-pr-17', '--confirm', '--force']), {
     json: false,

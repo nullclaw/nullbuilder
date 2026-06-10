@@ -97,6 +97,7 @@ export function parseOptions(args: readonly string[]): CliOptions {
     allowNonDefaultBase: false,
     positionals: []
   };
+  const seenOptions = new Set<string>();
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -108,26 +109,37 @@ export function parseOptions(args: readonly string[]): CliOptions {
     if (!arg.startsWith('-')) {
       pushPositional(options, arg);
     } else if (arg === '--json') {
+      markOptionOnce(seenOptions, arg);
       options.json = true;
     } else if (arg === '--discover') {
+      markOptionOnce(seenOptions, arg);
       options.discover = true;
     } else if (arg === '--repo') {
+      markOptionOnce(seenOptions, arg);
       options.repo = readTextValue(args, (index += 1), '--repo');
     } else if (arg === '--pr') {
+      markOptionOnce(seenOptions, arg);
       options.pr = parsePositiveInteger(readValue(args, (index += 1), '--pr'), '--pr');
     } else if (arg === '--tag') {
+      markOptionOnce(seenOptions, arg);
       options.tag = readTextValue(args, (index += 1), '--tag');
     } else if (arg === '--ref') {
+      markOptionOnce(seenOptions, arg);
       options.targetRef = readTextValue(args, (index += 1), '--ref');
     } else if (arg === '--confirm') {
+      markOptionOnce(seenOptions, arg);
       options.confirm = true;
     } else if (arg === '--force') {
+      markOptionOnce(seenOptions, arg);
       options.force = true;
     } else if (arg === '--allow-draft') {
+      markOptionOnce(seenOptions, arg);
       options.allowDraft = true;
     } else if (arg === '--allow-fork') {
+      markOptionOnce(seenOptions, arg);
       options.allowFork = true;
     } else if (arg === '--allow-non-default-base') {
+      markOptionOnce(seenOptions, arg);
       options.allowNonDefaultBase = true;
     } else {
       throw new Error('Unknown option.');
@@ -135,6 +147,14 @@ export function parseOptions(args: readonly string[]): CliOptions {
   }
 
   return options;
+}
+
+function markOptionOnce(seenOptions: Set<string>, option: string): void {
+  if (seenOptions.has(option)) {
+    throw new Error('Duplicate option.');
+  }
+
+  seenOptions.add(option);
 }
 
 function appendPositionals(options: CliOptions, values: readonly string[]): void {
