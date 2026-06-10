@@ -7,7 +7,10 @@ const JsonValue = dashboard_json.JsonValue;
 const JsonObject = dashboard_json.JsonObject;
 
 const empty_values = [_]JsonValue{};
+const max_dashboard_repositories = 1000;
+const max_load_errors = 200;
 const max_repo_text_len = 256;
+const max_work_items_per_repository = 100;
 const max_work_title_len = 1024;
 const max_error_message_len = 2048;
 
@@ -16,8 +19,8 @@ pub const Dashboard = struct {
     errors: []const JsonValue,
 
     pub fn init(root: JsonObject) !Dashboard {
-        const items = dashboard_json.arrayField(root, "items") orelse return error.InvalidDashboardJson;
-        const errors = dashboard_json.arrayField(root, "errors") orelse emptyJsonValues();
+        const items = dashboard_json.boundedArrayField(root, "items", max_dashboard_repositories) orelse return error.InvalidDashboardJson;
+        const errors = dashboard_json.boundedArrayField(root, "errors", max_load_errors) orelse emptyJsonValues();
 
         return .{
             .items = items,
@@ -155,8 +158,8 @@ fn repositoryFromObject(repo: JsonObject) Repository {
         .stars = dashboard_json.intField(repo, "stars"),
         .runs = dashboard_runs.repositoryRunStatuses(status, latest),
         .has_failure = dashboard_runs.repositoryHasFailure(latest),
-        .issues = dashboard_json.arrayField(repo, "issues") orelse emptyJsonValues(),
-        .pull_requests = dashboard_json.arrayField(repo, "pullRequests") orelse emptyJsonValues(),
+        .issues = dashboard_json.boundedArrayField(repo, "issues", max_work_items_per_repository) orelse emptyJsonValues(),
+        .pull_requests = dashboard_json.boundedArrayField(repo, "pullRequests", max_work_items_per_repository) orelse emptyJsonValues(),
     };
 }
 
@@ -268,6 +271,53 @@ test "dashboard totals saturate untrusted counters" {
     try std.testing.expectEqual(std.math.maxInt(u64), totals.issues);
     try std.testing.expectEqual(std.math.maxInt(u64), totals.pull_requests);
     try std.testing.expectEqual(std.math.maxInt(u64), totals.stars);
+}
+
+test "dashboard model bounds external collection sizes" {
+    var repos_json: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer repos_json.deinit();
+
+    try repos_json.writer.writeAll("{\"items\":[");
+    for (0..max_dashboard_repositories + 1) |index| {
+        if (index > 0) try repos_json.writer.writeByte(',');
+        try repos_json.writer.print("{{\"slug\":\"repo-{d}\"}}", .{index});
+    }
+    try repos_json.writer.writeAll("]}");
+
+    var parsed_repos = try std.json.parseFromSlice(JsonValue, std.testing.allocator, repos_json.writer.buffered(), .{});
+    defer parsed_repos.deinit();
+
+    const bounded_dashboard = try Dashboard.init(parsed_repos.value.object);
+    try std.testing.expectEqual(@as(usize, max_dashboard_repositories), bounded_dashboard.items.len);
+
+    var nested_json: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer nested_json.deinit();
+
+    try nested_json.writer.writeAll("{\"items\":[{\"slug\":\"alpha\",\"issues\":[");
+    for (0..max_work_items_per_repository + 1) |index| {
+        if (index > 0) try nested_json.writer.writeByte(',');
+        try nested_json.writer.print("{{\"repo\":\"alpha\",\"number\":{d},\"title\":\"issue-{d}\"}}", .{ index + 1, index + 1 });
+    }
+    try nested_json.writer.writeAll("],\"pullRequests\":[");
+    for (0..max_work_items_per_repository + 1) |index| {
+        if (index > 0) try nested_json.writer.writeByte(',');
+        try nested_json.writer.print("{{\"repo\":\"alpha\",\"number\":{d},\"title\":\"pull-{d}\"}}", .{ index + 1, index + 1 });
+    }
+    try nested_json.writer.writeAll("]}],\"errors\":[");
+    for (0..max_load_errors + 1) |index| {
+        if (index > 0) try nested_json.writer.writeByte(',');
+        try nested_json.writer.print("{{\"repo\":\"repo-{d}\",\"error\":\"error-{d}\"}}", .{ index, index });
+    }
+    try nested_json.writer.writeAll("]}");
+
+    var parsed_nested = try std.json.parseFromSlice(JsonValue, std.testing.allocator, nested_json.writer.buffered(), .{});
+    defer parsed_nested.deinit();
+
+    const nested_dashboard = try Dashboard.init(parsed_nested.value.object);
+    const repo = repositoryFromValue(nested_dashboard.items[0]).?;
+    try std.testing.expectEqual(@as(usize, max_work_items_per_repository), repo.issues.len);
+    try std.testing.expectEqual(@as(usize, max_work_items_per_repository), repo.pull_requests.len);
+    try std.testing.expectEqual(@as(usize, max_load_errors), nested_dashboard.errors.len);
 }
 
 test "dashboard model rejects oversized external text fields" {
