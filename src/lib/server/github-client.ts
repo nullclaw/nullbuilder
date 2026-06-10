@@ -538,13 +538,13 @@ function normalizeGitHubApiUrl(config: NullbuilderConfig, url: URL, errorMessage
     url.origin !== base.origin ||
     url.username !== '' ||
     url.password !== '' ||
+    url.hash !== '' ||
     (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) ||
     hasUnsafeApiPathControl(`${url.pathname}${url.search}`)
   ) {
     throw new Error(errorMessage);
   }
 
-  url.hash = '';
   return url.toString();
 }
 
