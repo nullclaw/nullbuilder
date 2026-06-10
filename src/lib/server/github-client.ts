@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import { normalizeBoundedNonNegativeInteger } from '../number-safety';
+import {
+  isSafeNonNegativeInteger,
+  normalizeBoundedNonNegativeInteger,
+  saturatingSafeIntegerAdd
+} from '../number-safety';
 import { readObjectRecord } from '../record-safety';
 import { readSafeTextInput } from '../text-safety';
 import { hasEncodedTextControlCharacter } from '../url-safety';
@@ -109,9 +113,9 @@ async function githubFetchJson<T>(
   const shouldCoalesce = shouldCache && !requestInit.signal;
   const key = shouldCache ? cacheKey(config, url, accept) : '';
   const cached = shouldCache ? readCacheEntry<T>(key) : undefined;
-  const now = Date.now();
+  const now = shouldCache ? safeCacheClockMillis() : null;
 
-  if (cached && cached.expiresAt > now) {
+  if (cached && now !== null && cached.expiresAt > now) {
     touchCacheEntry(key, cached);
     return resultFromCacheEntry(cached);
   }
@@ -205,8 +209,11 @@ async function requestGitHubJson<T>(
   });
 
   if (response.status === 304 && cached) {
-    cached.expiresAt = Date.now() + config.cacheTtlMs;
-    touchCacheEntry(key, cached);
+    const now = safeCacheClockMillis();
+    if (now !== null) {
+      cached.expiresAt = cacheExpiresAt(now, config.cacheTtlMs);
+      touchCacheEntry(key, cached);
+    }
     return resultFromCacheEntry(cached);
   }
 
@@ -218,12 +225,19 @@ async function requestGitHubJson<T>(
   const data = await readResponseJson<T>(response);
 
   if (shouldCache) {
-    writeCacheEntry(key, {
-      data,
-      next,
-      etag: response.headers.get('ETag') ?? undefined,
-      expiresAt: Date.now() + config.cacheTtlMs
-    });
+    const now = safeCacheClockMillis();
+    if (now !== null) {
+      writeCacheEntry(
+        key,
+        {
+          data,
+          next,
+          etag: response.headers.get('ETag') ?? undefined,
+          expiresAt: cacheExpiresAt(now, config.cacheTtlMs)
+        },
+        now
+      );
+    }
   }
 
   return {
@@ -566,9 +580,9 @@ function touchCacheEntry<T>(key: string, entry: CacheEntry<T>): void {
   cache.set(key, entry);
 }
 
-function writeCacheEntry<T>(key: string, entry: CacheEntry<T>): void {
+function writeCacheEntry<T>(key: string, entry: CacheEntry<T>, now: number): void {
   touchCacheEntry(key, entry);
-  pruneCache(Date.now());
+  pruneCache(now);
 }
 
 function readCacheEntry<T>(key: string): CacheEntry<T> | undefined {
@@ -580,6 +594,15 @@ function resultFromCacheEntry<T>(entry: CacheEntry<T>): GitHubFetchResult<T> {
     data: entry.data,
     next: entry.next
   };
+}
+
+function safeCacheClockMillis(): number | null {
+  const timestamp = Math.floor(Date.now());
+  return isSafeNonNegativeInteger(timestamp) ? timestamp : null;
+}
+
+function cacheExpiresAt(now: number, ttlMs: number): number {
+  return saturatingSafeIntegerAdd(now, ttlMs);
 }
 
 function appendPageValues<T>(values: T[], page: unknown, maxItems: number): void {

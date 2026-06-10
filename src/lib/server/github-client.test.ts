@@ -269,6 +269,37 @@ test('githubRequest reuses fresh cached GET responses', async () => {
   assert.deepEqual(requests, ['https://cache.example.test/repos/nullclaw/nullbuilder']);
 });
 
+test('githubRequest bypasses cache writes and fresh hits while cache clock is unsafe', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://unsafe-cache-clock.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+  let now = 10_000;
+  Date.now = () => now;
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify({ id: requests.length }));
+  }) as typeof fetch;
+
+  const first = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  Date.now = () => Number.MAX_SAFE_INTEGER + 1;
+  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  now += 1;
+  Date.now = () => now;
+  const third = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.deepEqual(first, { id: 1 });
+  assert.deepEqual(second, { id: 2 });
+  assert.deepEqual(third, { id: 1 });
+  assert.deepEqual(requests, [
+    'https://unsafe-cache-clock.example.test/repos/nullclaw/nullbuilder',
+    'https://unsafe-cache-clock.example.test/repos/nullclaw/nullbuilder'
+  ]);
+});
+
 test('githubRequest keeps cached responses isolated by GitHub token', async () => {
   const baseEnv = {
     NULLBUILDER_REPOS: 'nullbuilder',
