@@ -6,6 +6,7 @@ import {
   GITHUB_ACCEPT_HEADER_MAX_LENGTH,
   GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH,
   GITHUB_DEFAULT_MAX_PAGES,
+  GITHUB_ERROR_RESPONSE_MAX_BYTES,
   GITHUB_ERROR_MESSAGE_MAX_LENGTH,
   GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
@@ -883,6 +884,34 @@ test('githubRequest keeps oversized error bodies from masking API status', async
       error instanceof GitHubApiError &&
       error.status === 500 &&
       error.message === 'GitHub 500 Server Error'
+  );
+});
+
+test('githubRequest bounds error detail bodies below successful JSON bodies', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://bounded-error-body.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  assert.equal(GITHUB_ERROR_RESPONSE_MAX_BYTES < GITHUB_JSON_RESPONSE_MAX_BYTES, true);
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ message: 'private upstream detail' }), {
+      status: 500,
+      statusText: 'Server Error',
+      headers: {
+        'Content-Length': String(GITHUB_ERROR_RESPONSE_MAX_BYTES + 1)
+      }
+    })) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof GitHubApiError &&
+      error.status === 500 &&
+      error.message === 'GitHub 500 Server Error' &&
+      !error.message.includes('private upstream detail')
   );
 });
 

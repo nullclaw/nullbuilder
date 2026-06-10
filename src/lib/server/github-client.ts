@@ -25,6 +25,7 @@ type CacheEntry<T> = {
 
 export const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 256;
 export const GITHUB_JSON_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
+export const GITHUB_ERROR_RESPONSE_MAX_BYTES = 64 * 1024;
 export const GITHUB_DEFAULT_MAX_PAGES = 20;
 export const GITHUB_ABSOLUTE_MAX_PAGES = 100;
 export const GITHUB_PAGINATED_ITEMS_MAX = GITHUB_ABSOLUTE_MAX_PAGES * 100;
@@ -265,7 +266,7 @@ function parseGitHubResponseJson<T>(body: string): T {
 
 async function readErrorDetail(response: Response): Promise<string> {
   try {
-    const body: unknown = JSON.parse(await readBoundedResponseText(response, GITHUB_JSON_RESPONSE_MAX_BYTES));
+    const body: unknown = JSON.parse(await readBoundedResponseText(response, GITHUB_ERROR_RESPONSE_MAX_BYTES));
     if (!isGitHubErrorPayload(body)) {
       return '';
     }
