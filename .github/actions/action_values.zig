@@ -1,6 +1,8 @@
 const std = @import("std");
 
 const max_decimal_id_digits = "18446744073709551615".len;
+const max_host_bytes = 253;
+const max_host_label_bytes = 63;
 
 pub fn isDecimalId(value: []const u8) bool {
     if (value.len == 0 or value.len > max_decimal_id_digits) return false;
@@ -70,23 +72,29 @@ fn splitHostPort(authority: []const u8) HostPort {
 }
 
 fn isSafeHost(host: []const u8) bool {
-    if (host.len == 0) return false;
+    if (host.len == 0 or host.len > max_host_bytes) return false;
 
-    var has_hostname_char = false;
-    var previous_dot = false;
-    for (host, 0..) |byte, index| {
-        const is_alpha = std.ascii.isAlphabetic(byte);
-        const is_digit = std.ascii.isDigit(byte);
-        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
-
-        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
-        if (index == 0 and !is_alpha and !is_digit) return false;
-        if (byte == '.' and previous_dot) return false;
-        if (is_alpha or is_digit) has_hostname_char = true;
-        previous_dot = byte == '.';
+    var labels = std.mem.splitScalar(u8, host, '.');
+    while (labels.next()) |label| {
+        if (!isSafeHostLabel(label)) return false;
     }
 
-    return has_hostname_char and !previous_dot;
+    return true;
+}
+
+fn isSafeHostLabel(label: []const u8) bool {
+    if (label.len == 0 or label.len > max_host_label_bytes) return false;
+
+    for (label, 0..) |byte, index| {
+        const is_alpha = std.ascii.isAlphabetic(byte);
+        const is_digit = std.ascii.isDigit(byte);
+        const is_hyphen = byte == '-';
+
+        if (!is_alpha and !is_digit and !is_hyphen) return false;
+        if ((index == 0 or index == label.len - 1) and !is_alpha and !is_digit) return false;
+    }
+
+    return true;
 }
 
 fn isSafePort(port: []const u8) bool {
@@ -206,6 +214,11 @@ test "action values validate URL bases and metadata" {
     try std.testing.expect(!isHttpUrlBase("github.com"));
     try std.testing.expect(!isHttpUrlBase("https://."));
     try std.testing.expect(!isHttpUrlBase("https://github.com."));
+    try std.testing.expect(!isHttpUrlBase("https://github..com"));
+    try std.testing.expect(!isHttpUrlBase("https://github_.com"));
+    try std.testing.expect(!isHttpUrlBase("https://-github.com"));
+    try std.testing.expect(!isHttpUrlBase("https://github-.com"));
+    try std.testing.expect(!isHttpUrlBase("https://" ++ ("a" ** 64) ++ ".com"));
     try std.testing.expect(!isHttpUrlBase("https://github.com/path"));
     try std.testing.expect(!isHttpUrlBase("https://github.com?query=1"));
     try std.testing.expect(!isHttpUrlBase("https://github.com\n"));
