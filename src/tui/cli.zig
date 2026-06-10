@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const arg_safety = @import("arg_safety");
 const terminal = @import("terminal.zig");
 
 const default_stdout_limit = 16 * 1024 * 1024;
@@ -7,6 +8,9 @@ const default_stderr_limit = 4 * 1024 * 1024;
 const max_stdout_limit = default_stdout_limit;
 const max_stderr_limit = default_stderr_limit;
 const max_child_output_display_bytes = 64 * 1024;
+const max_child_arg_count = 128;
+const max_child_arg_bytes = 4096;
+const max_child_args_total_bytes = max_child_arg_count * max_child_arg_bytes;
 
 pub const OutputLimits = struct {
     stdout: usize = default_stdout_limit,
@@ -14,6 +18,7 @@ pub const OutputLimits = struct {
 };
 
 pub fn run(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8, limits: OutputLimits) !std.process.RunResult {
+    if (!isSafeChildArgv(argv)) return error.InvalidChildArguments;
     const bounded_limits = normalizeOutputLimits(limits);
 
     return std.process.run(gpa, io, .{
@@ -86,6 +91,19 @@ fn isAllowedExitCode(code: u8, allowed_exit_codes: []const u8) bool {
     return false;
 }
 
+fn isSafeChildArgv(argv: []const []const u8) bool {
+    return arg_safety.isSafeArgVector(argv, .{
+        .max_count = max_child_arg_count,
+        .max_arg_bytes = max_child_arg_bytes,
+        .max_total_bytes = max_child_args_total_bytes,
+        .allow_empty_vector = false,
+    }, hasUnsafeChildArgText);
+}
+
+fn hasUnsafeChildArgText(value: []const u8) bool {
+    return terminal.hasUnsafeControl(value, .{});
+}
+
 fn normalizeOutputLimits(limits: OutputLimits) OutputLimits {
     return .{
         .stdout = normalizeOutputLimit(limits.stdout, default_stdout_limit, max_stdout_limit),
@@ -113,6 +131,42 @@ test "output limits reject zero and cap oversized values" {
     });
     try std.testing.expectEqual(max_stdout_limit, capped.stdout);
     try std.testing.expectEqual(max_stderr_limit, capped.stderr);
+}
+
+test "child process argv is bounded before spawning" {
+    const max_arg = [_]u8{'a'} ** max_child_arg_bytes;
+    const oversized_arg = [_]u8{'a'} ** (max_child_arg_bytes + 1);
+    const total_excess = [_]u8{'b'} ** (max_child_args_total_bytes - max_child_arg_bytes + 1);
+    const too_many_args = [_][]const u8{"--flag"} ** (max_child_arg_count + 1);
+
+    try std.testing.expect(isSafeChildArgv(&.{ "node", "./bin/nullbuilder.js", "repos", "--json" }));
+    try std.testing.expect(isSafeChildArgv(&.{ "node", "./bin/nullbuilder.js", max_arg[0..] }));
+    try std.testing.expect(isSafeChildArgv(&.{ "node", "./bin/\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c/nullbuilder.js" }));
+
+    try std.testing.expect(!isSafeChildArgv(&.{}));
+    try std.testing.expect(!isSafeChildArgv(&.{""}));
+    try std.testing.expect(!isSafeChildArgv(too_many_args[0..]));
+    try std.testing.expect(!isSafeChildArgv(&.{ "node", oversized_arg[0..] }));
+    try std.testing.expect(!isSafeChildArgv(&.{ "node", max_arg[0..], total_excess[0..] }));
+    try std.testing.expect(!isSafeChildArgv(&.{ "node", "bad\narg" }));
+    try std.testing.expect(!isSafeChildArgv(&.{ "node", "bad\xc2\x85arg" }));
+    try std.testing.expect(!isSafeChildArgv(&.{ "node", "bad\xe2\x80\xaearg" }));
+    try std.testing.expect(!isSafeChildArgv(&.{ "node", "bad\xc0\x85arg" }));
+}
+
+test "child process runner rejects invalid argv before spawning" {
+    try std.testing.expectError(error.InvalidChildArguments, run(
+        std.testing.allocator,
+        undefined,
+        &.{},
+        .{},
+    ));
+    try std.testing.expectError(error.InvalidChildArguments, run(
+        std.testing.allocator,
+        undefined,
+        &.{ "node", "bad\narg" },
+        .{},
+    ));
 }
 
 test "exit code allow-list accepts only configured codes" {
