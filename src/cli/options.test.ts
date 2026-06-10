@@ -53,6 +53,12 @@ test('parseCommandLine rejects malformed runtime argument vectors', () => {
     assert.equal(error.message, 'Invalid CLI argument.');
     return true;
   });
+
+  assert.throws(() => parseCommandLine(['']), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid CLI argument.');
+    return true;
+  });
 });
 
 test('parseOptions rejects unknown options without echoing raw input', () => {
@@ -149,6 +155,9 @@ test('parseOptions stops option parsing after delimiter', () => {
 });
 
 test('parseOptions validates positional arguments without echoing raw input', () => {
+  assert.throws(() => parseOptions(['']), /^Error: Invalid positional argument\.$/);
+  assert.throws(() => parseOptions(['--', '']), /^Error: Invalid positional argument\.$/);
+
   assert.throws(() => parseOptions(['bad\x1b[31m\nrepo']), (error) => {
     assert(error instanceof Error);
     assert.equal(error.message, 'Invalid positional argument.');

@@ -77,6 +77,10 @@ export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
     return { kind: 'help' };
   }
 
+  if (rawCommand.length === 0) {
+    throw new Error('Invalid CLI argument.');
+  }
+
   if (!isCommand(rawCommand)) {
     throw new Error('Unknown command.');
   }
@@ -182,7 +186,7 @@ function pushPositional(options: CliOptions, value: string): void {
   }
 
   const safe = readSafeTextInput(value);
-  if (safe === null) {
+  if (safe === null || safe.length === 0) {
     throw new Error('Invalid positional argument.');
   }
 

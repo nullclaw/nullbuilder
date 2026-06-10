@@ -40,6 +40,7 @@ test('buildChildArgs rejects unsafe forwarded arguments before spawning', () => 
   const maxTotalArgs = Array.from({ length: 32 }, () => 'x'.repeat(4096));
   const overTotalArgs = [...maxTotalArgs, 'x'];
 
+  assert.equal(buildChildArgs(paths, [''], true), null);
   assert.equal(buildChildArgs(paths, ['bad\nrepo'], true), null);
   assert.equal(buildChildArgs(paths, ['bad\u202erepo'], true), null);
   assert.equal(buildChildArgs(paths, ['bad\uD800repo'], true), null);

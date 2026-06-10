@@ -78,7 +78,11 @@ function isSafeForwardedArgs(args) {
     }
 
     const bytes = Buffer.byteLength(arg);
-    if (bytes > MAX_FORWARDED_ARG_BYTES || !fitsTotalByteBudget(totalBytes, bytes, MAX_FORWARDED_ARGS_TOTAL_BYTES)) {
+    if (
+      bytes === 0 ||
+      bytes > MAX_FORWARDED_ARG_BYTES ||
+      !fitsTotalByteBudget(totalBytes, bytes, MAX_FORWARDED_ARGS_TOTAL_BYTES)
+    ) {
       return false;
     }
 
