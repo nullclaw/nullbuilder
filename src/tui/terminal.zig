@@ -100,12 +100,15 @@ pub fn writeSafeBudgeted(out: *std.Io.Writer, value: []const u8, budget: *Output
 }
 
 pub fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
-    if (value.len <= max_len) return value;
     if (max_len == 0) return "";
 
-    var end = max_len;
-    while (end > 0 and text_safety.isUtf8ContinuationByte(value[end])) {
-        end -= 1;
+    const limit = @min(value.len, max_len);
+    var end: usize = 0;
+    while (end < limit) {
+        const sequence_len = text_safety.utf8SequenceLength(value, end);
+        if (sequence_len == 1 and value[end] >= 0x80) break;
+        if (sequence_len > limit - end) break;
+        end += sequence_len;
     }
 
     return value[0..end];
@@ -342,6 +345,13 @@ test "clipUtf8 does not split multibyte sequences" {
     try std.testing.expectEqualStrings("repo-", clipUtf8(text, 6));
     try std.testing.expectEqualStrings("repo-\xd0\xbf", clipUtf8(text, 7));
     try std.testing.expectEqualStrings("", clipUtf8(text, 0));
+}
+
+test "clipUtf8 stops before malformed UTF-8 starts" {
+    const malformed = "repo-\xf0x-tail";
+
+    try std.testing.expectEqualStrings("repo-", clipUtf8(malformed, 6));
+    try std.testing.expectEqualStrings("repo-", clipUtf8(malformed, malformed.len));
 }
 
 test "bounded terminal writer limits sanitized output" {
