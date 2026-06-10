@@ -6,6 +6,8 @@ const action_values = @import("action_values");
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 const MAX_MANIFEST_URL_BYTES = 4096;
+const SHA256_READ_BUFFER_BYTES = 64 * 1024;
+const Sha256Digest = [std.crypto.hash.sha2.Sha256.digest_length]u8;
 
 const PackageOptions = struct {
     binary_path: []const u8,
@@ -58,10 +60,39 @@ fn artifactNameFromPath(binary_path: []const u8) ArtifactNameError![]const u8 {
     return std.Io.Dir.path.basename(binary_path);
 }
 
-fn formatSha256Line(allocator: std.mem.Allocator, bytes: []const u8, binary_path: []const u8) ![]u8 {
-    const name = try artifactNameFromPath(binary_path);
-    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+fn hashBytesSha256(bytes: []const u8) Sha256Digest {
+    var digest: Sha256Digest = undefined;
     std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
+    return digest;
+}
+
+fn hashArtifactFileSha256(io: std.Io, dir: std.Io.Dir, binary_path: []const u8) !Sha256Digest {
+    var file = try dir.openFile(io, binary_path, .{ .allow_directory = false });
+    defer file.close(io);
+
+    const stat = try file.stat(io);
+    if (stat.size > MAX_BINARY_BYTES) return error.StreamTooLong;
+
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    var buffer: [SHA256_READ_BUFFER_BYTES]u8 = undefined;
+    var offset: u64 = 0;
+
+    while (offset < stat.size) {
+        const chunk_len: usize = @intCast(@min(stat.size - offset, buffer.len));
+        const bytes_read = try file.readPositionalAll(io, buffer[0..chunk_len], offset);
+        if (bytes_read == 0) return error.EndOfStream;
+
+        hasher.update(buffer[0..bytes_read]);
+        offset += bytes_read;
+    }
+
+    var digest: Sha256Digest = undefined;
+    hasher.final(&digest);
+    return digest;
+}
+
+fn formatSha256Line(allocator: std.mem.Allocator, digest: Sha256Digest, binary_path: []const u8) ![]u8 {
+    const name = try artifactNameFromPath(binary_path);
     const hex_buf = std.fmt.bytesToHex(digest, .lower);
     return try std.fmt.allocPrint(allocator, "{s}  {s}\n", .{ hex_buf[0..], name });
 }
@@ -298,15 +329,8 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
     };
     defer output_plan.deinit(allocator);
 
-    const binary_bytes = try std.Io.Dir.cwd().readFileAlloc(
-        io,
-        options.binary_path,
-        allocator,
-        .limited(MAX_BINARY_BYTES),
-    );
-    defer allocator.free(binary_bytes);
-
-    const sha_text = try formatSha256Line(allocator, binary_bytes, options.binary_path);
+    const digest = try hashArtifactFileSha256(io, std.Io.Dir.cwd(), options.binary_path);
+    const sha_text = try formatSha256Line(allocator, digest, options.binary_path);
     defer allocator.free(sha_text);
 
     try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = output_plan.sha_path, .data = sha_text });
@@ -331,7 +355,8 @@ pub fn main(init: std.process.Init) !u8 {
 }
 
 test "package artifact formats sha256 line" {
-    const line = try formatSha256Line(std.testing.allocator, "", "nightly-artifacts/empty.bin");
+    const digest = hashBytesSha256("");
+    const line = try formatSha256Line(std.testing.allocator, digest, "nightly-artifacts/empty.bin");
     defer std.testing.allocator.free(line);
 
     try std.testing.expectEqualStrings(
@@ -341,12 +366,28 @@ test "package artifact formats sha256 line" {
 }
 
 test "package artifact rejects unsafe checksum artifact paths" {
+    const digest = hashBytesSha256("");
+
     try std.testing.expectEqualStrings(
         "empty.bin",
         try artifactNameFromPath("nightly-artifacts/empty.bin"),
     );
     try std.testing.expectError(error.InvalidArtifactBinaryPath, artifactNameFromPath("../empty.bin"));
-    try std.testing.expectError(error.InvalidArtifactBinaryPath, formatSha256Line(std.testing.allocator, "", "../empty.bin"));
+    try std.testing.expectError(error.InvalidArtifactBinaryPath, formatSha256Line(std.testing.allocator, digest, "../empty.bin"));
+}
+
+test "package artifact hashes binary files with bounded stack memory" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "artifact.bin",
+        .data = "streamed bytes",
+    });
+
+    const expected = hashBytesSha256("streamed bytes");
+    const actual = try hashArtifactFileSha256(std.testing.io, tmp.dir, "artifact.bin");
+    try std.testing.expectEqualSlices(u8, expected[0..], actual[0..]);
 }
 
 test "package artifact builds parseable manifest" {
