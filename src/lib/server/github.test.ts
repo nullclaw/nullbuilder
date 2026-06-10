@@ -43,7 +43,9 @@ test('resolveGitHubApiUrl validates relative paths before URL normalization', ()
     '/repos\nsecret',
     '/repos/%0asecret',
     '/repos/%7Fsecret',
-    '/repos/%C2%85secret'
+    '/repos/%C2%85secret',
+    '/repos/%e2%80%aesecret',
+    '/repos/%E2%81%A6secret'
   ]) {
     assert.throws(
       () => resolveGitHubApiUrl(config, path),
@@ -73,7 +75,9 @@ test('resolveGitHubApiUrl rejects cross-origin absolute next URLs', () => {
     'https://user:token@api.github.com/repos/nullclaw/nullbuilder',
     'https://api.github.com/repos/nullclaw/nullbuilder#ignored',
     'https://api.github.com/repos/nullclaw/nullbuilder/%0asecret',
-    'https://api.github.com/repos/nullclaw/nullbuilder/%C2%85secret'
+    'https://api.github.com/repos/nullclaw/nullbuilder/%C2%85secret',
+    'https://api.github.com/repos/nullclaw/nullbuilder/%e2%80%aesecret',
+    'https://api.github.com/repos/nullclaw/nullbuilder/%E2%81%A6secret'
   ]) {
     assert.throws(
       () => resolveGitHubApiUrl(config, url),

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { normalizeBoundedNonNegativeInteger } from '../number-safety';
 import { readSafeTextInput } from '../text-safety';
+import { hasEncodedTextControlCharacter } from '../url-safety';
 import type { NullbuilderConfig } from './config';
 
 export type GitHubRequestOptions = RequestInit & {
@@ -550,11 +551,7 @@ function normalizeGitHubApiUrl(config: NullbuilderConfig, url: URL, errorMessage
 }
 
 function hasUnsafeApiPathControl(value: string): boolean {
-  return (
-    /[\u0000-\u001f\u007f-\u009f]/.test(value) ||
-    /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value) ||
-    /%c2%(?:8[0-9a-f]|9[0-9a-f])/i.test(value)
-  );
+  return /[\u0000-\u001f\u007f-\u009f]/.test(value) || hasEncodedTextControlCharacter(value);
 }
 
 export function publicErrorMessage(error: unknown): string {
