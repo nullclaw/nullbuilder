@@ -41,7 +41,7 @@ export async function readBoundedByteStream(
       }
 
       if (value.byteLength > maxBytes - totalBytes) {
-        await reader.cancel().catch(() => undefined);
+        cancelReader(reader);
         return {
           ok: false,
           reason: 'too-large'
@@ -59,6 +59,10 @@ export async function readBoundedByteStream(
     ok: true,
     bytes: joinByteChunks(chunks, totalBytes)
   };
+}
+
+function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): void {
+  void reader.cancel().catch(() => undefined);
 }
 
 export function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {

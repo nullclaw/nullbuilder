@@ -57,6 +57,25 @@ test('readBoundedByteStream cancels over-limit streams without exposing cancel e
   assert.equal(stream.locked, false);
 });
 
+test('readBoundedByteStream does not wait for stalled stream cancellation', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(5));
+    },
+    cancel() {
+      return new Promise<void>(() => undefined);
+    }
+  });
+
+  const result = await withTimeout(readBoundedByteStream(stream, 4), 100);
+
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'too-large'
+  });
+  assert.equal(stream.locked, false);
+});
+
 test('readBoundedByteStream rejects unsafe byte limits before reading', async () => {
   const stream = byteStream([new Uint8Array(1)]);
 
@@ -73,6 +92,21 @@ test('arrayBufferFromBytes returns an isolated exact-length buffer', () => {
   bytes[0] = 9;
   assert.deepEqual(copied, new Uint8Array([1, 2, 3]));
 });
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error('Timed out waiting for bounded stream read.')), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 function byteStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
