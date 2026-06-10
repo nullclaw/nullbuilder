@@ -27,9 +27,11 @@ pub fn build(b: *std.Build) void {
     };
 
     const arg_safety_module = createModule(b, options, "src/zig/arg_safety.zig");
+    const repository_safety_module = createModule(b, options, "src/zig/repository_safety.zig");
     const text_safety_module = createModule(b, options, "src/zig/text_safety.zig");
     const tui_module = createModule(b, options, "src/tui/main.zig");
     tui_module.addImport("arg_safety", arg_safety_module);
+    tui_module.addImport("repository_safety", repository_safety_module);
     tui_module.addImport("text_safety", text_safety_module);
     const tui = b.addExecutable(.{
         .name = "nullbuilder-tui",
@@ -54,6 +56,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run Zig tests");
     addModuleTest(b, test_step, createModule(b, options, "build.zig"));
     addModuleTest(b, test_step, arg_safety_module);
+    addModuleTest(b, test_step, repository_safety_module);
     addModuleTest(b, test_step, text_safety_module);
     addModuleTest(b, test_step, tui_module);
 
@@ -61,6 +64,7 @@ pub fn build(b: *std.Build) void {
     action_text_module.addImport("text_safety", text_safety_module);
     const action_values_module = createModule(b, options, ".github/actions/action_values.zig");
     action_values_module.addImport("action_text", action_text_module);
+    action_values_module.addImport("repository_safety", repository_safety_module);
     const action_json_module = createModule(b, options, ".github/actions/action_json.zig");
     action_json_module.addImport("action_values", action_values_module);
     const action_modules = SharedActionModules{

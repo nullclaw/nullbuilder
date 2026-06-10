@@ -1,12 +1,12 @@
 const std = @import("std");
 const action_text = @import("action_text");
+const repository_safety = @import("repository_safety");
 
 const max_decimal_id_digits = "18446744073709551615".len;
 const full_sha_bytes = 40;
 const max_host_bytes = 253;
 const max_host_label_bytes = 63;
 const max_port_digits = "65535".len;
-const max_repo_segment_bytes = 100;
 
 const HttpScheme = enum {
     http,
@@ -36,12 +36,7 @@ pub fn isFullHexSha(value: []const u8) bool {
 }
 
 pub fn isRepositorySlug(value: []const u8) bool {
-    var segments = std.mem.splitScalar(u8, value, '/');
-    const owner = segments.next() orelse return false;
-    const repo = segments.next() orelse return false;
-    if (segments.next() != null) return false;
-
-    return isSafeOwnerSegment(owner) and isSafeRepoSegment(repo);
+    return repository_safety.isRepositorySlug(value);
 }
 
 pub fn isHttpUrlBase(value: []const u8) bool {
@@ -349,51 +344,6 @@ fn isLeapYear(year: u16) bool {
 fn decimalValue(byte: u8) ?u8 {
     if (!std.ascii.isDigit(byte)) return null;
     return byte - '0';
-}
-
-fn isSafeOwnerSegment(value: []const u8) bool {
-    if (value.len == 0 or value.len > 39) return false;
-
-    for (value, 0..) |byte, index| {
-        const is_alpha = std.ascii.isAlphabetic(byte);
-        const is_digit = std.ascii.isDigit(byte);
-        const is_hyphen = byte == '-';
-
-        if (!is_alpha and !is_digit and !is_hyphen) return false;
-        if ((index == 0 or index == value.len - 1) and !is_alpha and !is_digit) return false;
-    }
-
-    return true;
-}
-
-fn isSafeRepoSegment(value: []const u8) bool {
-    if (value.len == 0 or value.len > max_repo_segment_bytes) return false;
-    if (endsWithAsciiIgnoreCase(value, ".git")) return false;
-
-    var previous_dot = false;
-    for (value, 0..) |byte, index| {
-        const is_alpha = std.ascii.isAlphabetic(byte);
-        const is_digit = std.ascii.isDigit(byte);
-        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
-
-        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
-        if (index == 0 and !is_alpha and !is_digit) return false;
-        if (byte == '.' and previous_dot) return false;
-        previous_dot = byte == '.';
-    }
-
-    return !previous_dot;
-}
-
-fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
-    if (value.len < suffix.len) return false;
-    const tail = value[value.len - suffix.len ..];
-
-    for (tail, suffix) |left_byte, right_byte| {
-        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
-    }
-
-    return true;
 }
 
 test "action values validate decimal ids and full shas" {

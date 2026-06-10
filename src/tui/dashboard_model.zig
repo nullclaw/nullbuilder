@@ -2,15 +2,13 @@ const std = @import("std");
 
 const dashboard_json = @import("dashboard_json.zig");
 const dashboard_runs = @import("dashboard_runs.zig");
+const repository_safety = @import("repository_safety");
 
 const JsonValue = dashboard_json.JsonValue;
 const JsonObject = dashboard_json.JsonObject;
 
 const max_dashboard_repositories = 1000;
 const max_load_errors = 200;
-const max_owner_segment_len = 39;
-const max_repo_segment_len = 100;
-const max_repo_slug_len = max_owner_segment_len + 1 + max_repo_segment_len;
 const max_text_field_len = 256;
 const max_work_items_per_repository = 100;
 const max_work_item_number = 999_999_999;
@@ -210,56 +208,12 @@ fn loadErrorFromObject(load_error: JsonObject) ?LoadError {
 }
 
 fn safeRepoSlugField(object: JsonObject, field_name: []const u8) ?[]const u8 {
-    const slug = dashboard_json.requiredSafeTextField(object, field_name, max_repo_slug_len) orelse return null;
-    return if (isSafeRepoSlug(slug)) slug else null;
-}
-
-fn isSafeRepoSlug(value: []const u8) bool {
-    const slash_index = std.mem.indexOfScalar(u8, value, '/') orelse return false;
-    if (slash_index == 0 or slash_index == value.len - 1) return false;
-    if (std.mem.indexOfScalar(u8, value[slash_index + 1 ..], '/') != null) return false;
-
-    return isSafeOwnerSegment(value[0..slash_index]) and isSafeRepoSegment(value[slash_index + 1 ..]);
-}
-
-fn isSafeOwnerSegment(value: []const u8) bool {
-    if (value.len == 0 or value.len > max_owner_segment_len) return false;
-
-    for (value, 0..) |byte, index| {
-        const is_alphanumeric = std.ascii.isAlphabetic(byte) or std.ascii.isDigit(byte);
-        if (!is_alphanumeric and byte != '-') return false;
-        if ((index == 0 or index == value.len - 1) and !is_alphanumeric) return false;
-    }
-
-    return true;
-}
-
-fn isSafeRepoSegment(value: []const u8) bool {
-    if (value.len == 0 or value.len > max_repo_segment_len) return false;
-    if (endsWithAsciiIgnoreCase(value, ".git")) return false;
-
-    var previous_dot = false;
-    for (value, 0..) |byte, index| {
-        const is_alphanumeric = std.ascii.isAlphabetic(byte) or std.ascii.isDigit(byte);
-        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
-        if (!is_alphanumeric and !is_safe_symbol) return false;
-        if (index == 0 and !is_alphanumeric) return false;
-        if (byte == '.' and previous_dot) return false;
-        previous_dot = byte == '.';
-    }
-
-    return !previous_dot;
-}
-
-fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
-    if (value.len < suffix.len) return false;
-
-    const tail = value[value.len - suffix.len ..];
-    for (tail, suffix) |left_byte, right_byte| {
-        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
-    }
-
-    return true;
+    const slug = dashboard_json.requiredSafeTextField(
+        object,
+        field_name,
+        repository_safety.max_repository_slug_bytes,
+    ) orelse return null;
+    return if (repository_safety.isRepositorySlug(slug)) slug else null;
 }
 
 fn saturatingAdd(a: u64, b: u64) u64 {
@@ -344,23 +298,6 @@ test "dashboard totals reject counters outside the safe JSON integer domain" {
     try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.issues);
     try std.testing.expectEqual(@as(u64, 10), totals.pull_requests);
     try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.stars);
-}
-
-test "dashboard model validates repository slugs at the JSON boundary" {
-    try std.testing.expect(isSafeRepoSlug("nullclaw/nullbuilder"));
-    try std.testing.expect(isSafeRepoSlug("NullClaw/null_Pantry-2"));
-
-    try std.testing.expect(!isSafeRepoSlug("nullbuilder"));
-    try std.testing.expect(!isSafeRepoSlug("/nullbuilder"));
-    try std.testing.expect(!isSafeRepoSlug("nullclaw/"));
-    try std.testing.expect(!isSafeRepoSlug("nullclaw/nullbuilder/extra"));
-    try std.testing.expect(!isSafeRepoSlug("-owner/nullbuilder"));
-    try std.testing.expect(!isSafeRepoSlug("owner-/nullbuilder"));
-    try std.testing.expect(!isSafeRepoSlug("owner_name/nullbuilder"));
-    try std.testing.expect(!isSafeRepoSlug("nullclaw/.hidden"));
-    try std.testing.expect(!isSafeRepoSlug("nullclaw/trailing."));
-    try std.testing.expect(!isSafeRepoSlug("nullclaw/double..dot"));
-    try std.testing.expect(!isSafeRepoSlug("nullclaw/nullbuilder.git"));
 }
 
 test "dashboard totals ignore repositories without safe slugs" {
