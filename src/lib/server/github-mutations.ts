@@ -92,6 +92,8 @@ export async function buildPrTag(
     allowNonDefaultBase?: boolean;
   }
 ): Promise<BuildPrResult> {
+  const confirm = optionEnabled(options.confirm);
+  const force = optionEnabled(options.force);
   const prNumber = assertPositivePrNumber(options.prNumber);
   const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
   const requestedTagName = options.tagName ? sanitizeBuildPrTagName(options.tagName) : undefined;
@@ -121,16 +123,16 @@ export async function buildPrTag(
     tagUrl,
     workflowUrl,
     workflowTagPattern: `${BUILD_PR_TAG_PREFIX}*`,
-    dryRun: !options.confirm,
+    dryRun: !confirm,
     created: false,
     forced: false
   };
 
-  if (!options.confirm) {
+  if (!confirm) {
     return result;
   }
 
-  const tagState = await createOrMoveTagRef(config, repo, tagName, headSha, Boolean(options.force));
+  const tagState = await createOrMoveTagRef(config, repo, tagName, headSha, force);
 
   return {
     ...result,
@@ -150,6 +152,8 @@ export async function createReleaseTag(
     force?: boolean;
   }
 ): Promise<ReleaseTagResult> {
+  const confirm = optionEnabled(options.confirm);
+  const force = optionEnabled(options.force);
   const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
   const tagName = sanitizeReleaseTagName(options.tagName);
   const requestedTargetRef = options.targetRef?.trim();
@@ -171,16 +175,16 @@ export async function createReleaseTag(
     tagUrl,
     workflowUrl,
     workflowTagPattern: 'v*',
-    dryRun: !options.confirm,
+    dryRun: !confirm,
     created: false,
     forced: false
   };
 
-  if (!options.confirm) {
+  if (!confirm) {
     return result;
   }
 
-  const tagState = await createOrMoveTagRef(config, repo, tagName, targetSha, Boolean(options.force));
+  const tagState = await createOrMoveTagRef(config, repo, tagName, targetSha, force);
 
   return {
     ...result,
@@ -212,15 +216,15 @@ function assertTrustedPullRequest(
   const reasons: string[] = [];
   const headRepo = pull.head.repo?.full_name;
 
-  if (pull.draft && !options.allowDraft) {
+  if (pull.draft === true && !optionEnabled(options.allowDraft)) {
     reasons.push('draft PRs are rejected by default');
   }
 
-  if (pull.base.ref !== defaultBranch && !options.allowNonDefaultBase) {
+  if (pull.base.ref !== defaultBranch && !optionEnabled(options.allowNonDefaultBase)) {
     reasons.push(`base branch must be ${defaultBranch}`);
   }
 
-  if ((!headRepo || headRepo.toLowerCase() !== repo.toLowerCase()) && !options.allowFork) {
+  if ((!headRepo || headRepo.toLowerCase() !== repo.toLowerCase()) && !optionEnabled(options.allowFork)) {
     reasons.push('fork PRs are rejected by default');
   }
 
@@ -302,6 +306,10 @@ function assertPositivePrNumber(value: number): number {
   }
 
   return value;
+}
+
+function optionEnabled(value: unknown): boolean {
+  return value === true;
 }
 
 function sanitizeResultText(value: string, maxLength: number, fallback: string): string {

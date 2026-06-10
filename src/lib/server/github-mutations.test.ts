@@ -41,6 +41,39 @@ test('buildPrTag rejects untrusted PRs before creating tag refs', async () => {
   assert.equal(requests.some((request) => request.method !== 'GET'), false);
 });
 
+test('buildPrTag treats only literal true allow flags as trust bypasses', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse({
+        draft: true,
+        baseRef: 'develop',
+        headRepo: 'external/nullbuilder'
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  await assert.rejects(
+    () =>
+      buildPrTag(config, {
+        repo: 'nullbuilder',
+        prNumber: 7,
+        confirm: true,
+        allowDraft: 'true' as unknown as boolean,
+        allowFork: 1 as unknown as boolean,
+        allowNonDefaultBase: 'yes' as unknown as boolean
+      }),
+    /draft PRs are rejected by default; base branch must be main; fork PRs are rejected by default/
+  );
+  assert.equal(requests.some((request) => request.method !== 'GET'), false);
+});
+
 test('buildPrTag returns dry-run metadata without mutating refs', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
@@ -100,6 +133,34 @@ test('buildPrTag bounds and sanitizes API result metadata', async () => {
   assert.equal(result.prTitle.length <= 1024, true);
   assert.equal(result.headBranch.includes('\x1b'), false);
   assert.equal(result.headBranch.length <= 255, true);
+});
+
+test('buildPrTag treats only literal true confirm flags as write requests', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse();
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  const result = await buildPrTag(config, {
+    repo: 'nullbuilder',
+    prNumber: 7,
+    confirm: 'true' as unknown as boolean,
+    force: 'true' as unknown as boolean
+  });
+
+  assert.equal(result.dryRun, true);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder', 'GET /repos/nullclaw/nullbuilder/pulls/7']
+  );
 });
 
 test('buildPrTag rejects unsafe API head SHAs before creating tag refs', async () => {
@@ -236,6 +297,39 @@ test('createReleaseTag reports forced tag moves separately from creation', async
       'GET /repos/nullclaw/nullbuilder/git/ref/tags/v1.2.3',
       'PATCH /repos/nullclaw/nullbuilder/git/refs/tags/v1.2.3'
     ]
+  );
+});
+
+test('createReleaseTag treats only literal true confirm flags as write requests', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/branches/main') {
+      return {
+        name: 'main',
+        commit: {
+          sha: targetSha
+        }
+      };
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  const result = await createReleaseTag(config, {
+    repo: 'nullbuilder',
+    tagName: 'v1.2.3',
+    confirm: 'true' as unknown as boolean,
+    force: 'true' as unknown as boolean
+  });
+
+  assert.equal(result.dryRun, true);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder', 'GET /repos/nullclaw/nullbuilder/branches/main']
   );
 });
 
