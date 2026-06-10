@@ -101,6 +101,40 @@ test('buildPrTag rejects unsafe API head SHAs before creating tag refs', async (
   );
 });
 
+test('buildPrTag rejects unsafe API default branches before trust messages', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse({
+        defaultBranch: 'main\ninjected'
+      });
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse({
+        baseRef: 'develop'
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  await assert.rejects(
+    () =>
+      buildPrTag(config, {
+        repo: 'nullbuilder',
+        prNumber: 7,
+        confirm: true
+      }),
+    (error: unknown) =>
+      error instanceof Error && error.message === 'Invalid default branch.' && !error.message.includes('injected')
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder', 'GET /repos/nullclaw/nullbuilder/pulls/7']
+  );
+});
+
 test('createReleaseTag reports forced tag moves separately from creation', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
@@ -150,6 +184,34 @@ test('createReleaseTag reports forced tag moves separately from creation', async
       'GET /repos/nullclaw/nullbuilder/git/ref/tags/v1.2.3',
       'PATCH /repos/nullclaw/nullbuilder/git/refs/tags/v1.2.3'
     ]
+  );
+});
+
+test('createReleaseTag rejects unsafe API default branches before creating tag refs', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse({
+        defaultBranch: 'main\ninjected'
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  await assert.rejects(
+    () =>
+      createReleaseTag(config, {
+        repo: 'nullbuilder',
+        tagName: 'v1.2.3',
+        confirm: true
+      }),
+    (error: unknown) =>
+      error instanceof Error && error.message === 'Invalid default branch.' && !error.message.includes('injected')
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder']
   );
 });
 
@@ -276,13 +338,13 @@ function responseJson(value: unknown, status = 200): Response {
   });
 }
 
-function repositoryResponse() {
+function repositoryResponse({ defaultBranch = 'main' }: { defaultBranch?: string } = {}) {
   return {
     name: 'nullbuilder',
     full_name: 'nullclaw/nullbuilder',
     html_url: 'https://github.example.test/nullclaw/nullbuilder',
     description: null,
-    default_branch: 'main',
+    default_branch: defaultBranch,
     language: 'Zig',
     private: false,
     archived: false,

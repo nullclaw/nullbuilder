@@ -89,7 +89,8 @@ export async function buildPrTag(
       useCache: false
     })
   ]);
-  assertTrustedPullRequest(repo, repository.default_branch, pull, options);
+  const defaultBranch = sanitizeReleaseTargetRef(repository.default_branch, 'default branch');
+  assertTrustedPullRequest(repo, defaultBranch, pull, options);
   const headSha = assertFullSha(pull.head.sha, 'pull request head SHA');
   const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(options.prNumber, headSha));
   const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
@@ -141,7 +142,7 @@ export async function createReleaseTag(
   const repository = await githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`, {
     useCache: false
   });
-  const targetRef = targetRefOverride ?? sanitizeReleaseTargetRef(repository.default_branch);
+  const targetRef = targetRefOverride ?? sanitizeReleaseTargetRef(repository.default_branch, 'default branch');
   const targetSha = await resolveTargetSha(config, repo, targetRef);
   const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
   const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
@@ -228,11 +229,11 @@ async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targe
   return assertFullSha(branch.commit.sha, 'branch commit SHA');
 }
 
-function sanitizeReleaseTargetRef(value: string): string {
+function sanitizeReleaseTargetRef(value: string, label = 'target ref'): string {
   const targetRef = value.trim();
 
   if (!isSafeReleaseTargetRef(targetRef)) {
-    throw new Error(`Invalid target ref: ${value}`);
+    throw new Error(`Invalid ${label}.`);
   }
 
   return targetRef;
