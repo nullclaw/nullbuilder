@@ -1,4 +1,5 @@
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
+import { readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
 import type { NullbuilderConfig } from './config';
 import {
@@ -54,21 +55,7 @@ type GitHubRepositoryResponse = {
   default_branch: string;
 };
 
-type GitHubPullDetailResponse = {
-  number: number;
-  title: string;
-  draft: boolean;
-  base: {
-    ref: string;
-  };
-  head: {
-    ref: string;
-    sha: string;
-    repo?: {
-      full_name: string;
-    } | null;
-  };
-};
+type GitHubPullDetailResponse = unknown;
 
 type GitHubBranchResponse = {
   commit: {
@@ -107,7 +94,7 @@ export async function buildPrTag(
   ]);
   const defaultBranch = sanitizeGitBranchName(repository.default_branch, 'default branch');
   assertTrustedPullRequest(repo, defaultBranch, pull, options);
-  const headSha = assertFullGitSha(pull.head.sha, 'pull request head SHA');
+  const headSha = assertFullGitSha(pullHeadSha(pull), 'pull request head SHA');
   const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(prNumber, headSha));
   const urlContext = githubRepositoryUrlContext(config.webBaseUrl, repo);
   const tagUrl = githubReleaseTagUrl(urlContext, tagName);
@@ -116,9 +103,9 @@ export async function buildPrTag(
   const result: BuildPrResult = {
     repo,
     prNumber,
-    prTitle: sanitizeResultText(pull.title, MAX_PULL_TITLE_LENGTH, 'Untitled PR'),
+    prTitle: sanitizeResultText(pullField(pull, 'title'), MAX_PULL_TITLE_LENGTH, 'Untitled PR'),
     headSha,
-    headBranch: sanitizeResultText(pull.head.ref, MAX_HEAD_BRANCH_LENGTH, 'unknown'),
+    headBranch: sanitizeResultText(pullHeadRef(pull), MAX_HEAD_BRANCH_LENGTH, 'unknown'),
     tagName,
     tagUrl,
     workflowUrl,
@@ -214,13 +201,13 @@ function assertTrustedPullRequest(
   }
 ): void {
   const reasons: string[] = [];
-  const headRepo = pull.head.repo?.full_name;
+  const headRepo = pullHeadRepository(pull);
 
-  if (pull.draft === true && !optionEnabled(options.allowDraft)) {
+  if (pullDraft(pull) !== false && !optionEnabled(options.allowDraft)) {
     reasons.push('draft PRs are rejected by default');
   }
 
-  if (pull.base.ref !== defaultBranch && !optionEnabled(options.allowNonDefaultBase)) {
+  if (pullBaseRef(pull) !== defaultBranch && !optionEnabled(options.allowNonDefaultBase)) {
     reasons.push(`base branch must be ${defaultBranch}`);
   }
 
@@ -231,6 +218,38 @@ function assertTrustedPullRequest(
   if (reasons.length > 0) {
     throw new Error(`Pull request is not trusted: ${reasons.join('; ')}.`);
   }
+}
+
+function pullField(pull: GitHubPullDetailResponse, field: string): unknown {
+  return readObjectRecord(pull)?.[field];
+}
+
+function pullBaseRef(pull: GitHubPullDetailResponse): string {
+  const value = readObjectRecord(pullField(pull, 'base'))?.ref;
+  return typeof value === 'string' ? value : '';
+}
+
+function pullDraft(pull: GitHubPullDetailResponse): boolean | null {
+  const value = pullField(pull, 'draft');
+  return typeof value === 'boolean' ? value : null;
+}
+
+function pullHeadObject(pull: GitHubPullDetailResponse): Record<string, unknown> | null {
+  return readObjectRecord(pullField(pull, 'head'));
+}
+
+function pullHeadRef(pull: GitHubPullDetailResponse): unknown {
+  return pullHeadObject(pull)?.ref;
+}
+
+function pullHeadSha(pull: GitHubPullDetailResponse): unknown {
+  return pullHeadObject(pull)?.sha;
+}
+
+function pullHeadRepository(pull: GitHubPullDetailResponse): string {
+  const repo = readObjectRecord(pullHeadObject(pull)?.repo);
+  const value = repo?.full_name;
+  return typeof value === 'string' ? value : '';
 }
 
 async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targetRef: string): Promise<string> {
