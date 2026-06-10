@@ -24,7 +24,7 @@ export async function mapWithConcurrency<T, R>(
   const workers: Promise<void>[] = [];
 
   for (let index = 0; index < workerCount; index += 1) {
-    workers.push(runMapWorker(values, results, state, mapper));
+    workers[index] = runMapWorker(values, results, state, mapper);
   }
 
   await settleStarted(workers);

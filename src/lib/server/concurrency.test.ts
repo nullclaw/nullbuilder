@@ -54,6 +54,34 @@ test('mapWithConcurrency caps high concurrency to a bounded worker count', async
   assert.equal(maxActive, MAX_MAP_CONCURRENCY);
 });
 
+test('mapWithConcurrency starts workers without global array push hooks', async () => {
+  const originalPush = Array.prototype.push;
+  let pushCalls = 0;
+  let mapped: number[] | undefined;
+
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    mapped = await mapWithConcurrency([1, 2, 3, 4], 3, async (value) => value * 2);
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalPush
+    });
+  }
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(mapped, [2, 4, 6, 8]);
+});
+
 test('mapWithConcurrency accepts inputs at the configured item cap', async () => {
   const values = Array.from({ length: MAX_MAP_ITEMS }, (_, index) => index);
   const mapped = await mapWithConcurrency(values, MAX_MAP_CONCURRENCY, async (value) => value + 1);
