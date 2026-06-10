@@ -6,6 +6,7 @@ import {
   buildAuditTotals,
   checkStatus,
   collectAuditFindings,
+  collectCheckFindings,
   countFindings,
   MAX_AUDIT_REPORT_FINDINGS,
   scoreFindings,
@@ -50,6 +51,37 @@ test('sortFindings orders by severity repository and title', () => {
       'critical:nullclaw/zeta:Beta',
       'warning:nullclaw/alpha:Alpha',
       'info:nullclaw/zeta:Zeta'
+    ]
+  );
+});
+
+test('collectCheckFindings flattens checks into sorted repository findings', () => {
+  const collected = collectCheckFindings([
+    {
+      id: 'info-check',
+      title: 'Info check',
+      area: 'workflow',
+      status: 'info',
+      findings: [finding('info', 'nullclaw/zeta', 'Info')]
+    },
+    {
+      id: 'critical-check',
+      title: 'Critical check',
+      area: 'security',
+      status: 'critical',
+      findings: [
+        finding('critical', 'nullclaw/zeta', 'Beta'),
+        finding('critical', 'nullclaw/alpha', 'Alpha')
+      ]
+    }
+  ]);
+
+  assert.deepEqual(
+    collected.map((item) => `${item.severity}:${item.repo}:${item.title}`),
+    [
+      'critical:nullclaw/alpha:Alpha',
+      'critical:nullclaw/zeta:Beta',
+      'info:nullclaw/zeta:Info'
     ]
   );
 });

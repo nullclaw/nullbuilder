@@ -1,4 +1,11 @@
-import type { AuditFinding, AuditReport, AuditRepositoryResult, AuditSeverity, AuditStatus } from './audit-types';
+import type {
+  AuditCheckResult,
+  AuditFinding,
+  AuditReport,
+  AuditRepositoryResult,
+  AuditSeverity,
+  AuditStatus
+} from './audit-types';
 import { isSafePositiveInteger, saturatingSafeIntegerAdd } from '../number-safety';
 
 const SEVERITY_ORDER: Record<AuditSeverity, number> = {
@@ -57,6 +64,19 @@ export function sortFindings(left: AuditFinding, right: AuditFinding): number {
     left.repo.localeCompare(right.repo) ||
     left.title.localeCompare(right.title)
   );
+}
+
+export function collectCheckFindings(checks: readonly AuditCheckResult[]): AuditFinding[] {
+  const findings: AuditFinding[] = [];
+
+  for (const check of checks) {
+    for (const finding of check.findings) {
+      findings.push(finding);
+    }
+  }
+
+  findings.sort(sortFindings);
+  return findings;
 }
 
 export function collectAuditFindings(

@@ -2,7 +2,7 @@ import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import { readObjectRecord } from '../record-safety';
 import { readSafeTextInput } from '../text-safety';
 import type { NullbuilderConfig } from './config';
-import { buildAuditTotals, collectAuditFindings, scoreFindings, sortFindings } from './audit-summary';
+import { buildAuditTotals, collectAuditFindings, collectCheckFindings, scoreFindings } from './audit-summary';
 import type { AuditReport, AuditRepositoryResult } from './audit-types';
 import {
   evaluateAuditChecks,
@@ -113,7 +113,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
       githubCodeowners
     };
     const checks = evaluateAuditChecks(context);
-    const findings = checks.flatMap((check) => check.findings).sort(sortFindings);
+    const findings = collectCheckFindings(checks);
 
     return {
       repo: normalizedRepo,
@@ -160,8 +160,10 @@ async function loadWorkflowFiles(
 
   const workflowItems = collectWorkflowDirectoryItems(workflowDirectory.data);
 
-  return (
-    await mapWithConcurrency(workflowItems, Math.min(config.concurrency, 4), async (item) => {
+  const loadedWorkflowFiles = await mapWithConcurrency(
+    workflowItems,
+    Math.min(config.concurrency, 4),
+    async (item) => {
       const file = await probeGitHub<GitHubContentFile>(
         config,
         `/repos/${repo}/contents/${encodeGitHubPath(item.path)}`
@@ -182,8 +184,17 @@ async function loadWorkflowFiles(
         ),
         content: decodeGitHubContent(file.data)
       };
-    })
-  ).filter((file): file is WorkflowFile => file !== null);
+    }
+  );
+
+  const workflowFiles: WorkflowFile[] = [];
+  for (const file of loadedWorkflowFiles) {
+    if (file !== null) {
+      workflowFiles.push(file);
+    }
+  }
+
+  return workflowFiles;
 }
 
 type SafeWorkflowDirectoryItem = Pick<GitHubContentItem, 'name' | 'path' | 'html_url'>;
