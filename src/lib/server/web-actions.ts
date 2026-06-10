@@ -511,9 +511,17 @@ function optionalTargetRef(value: string | undefined): string | undefined | null
 
 function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>): Map<string, FormDataEntryValue> {
   const fields = new Map<string, FormDataEntryValue>();
+  const entries = formDataEntries(formData);
   let fieldCount = 0;
 
-  for (const [field, value] of formDataEntries(formData)) {
+  while (true) {
+    const entry = nextFormDataEntry(entries);
+    if (entry.done) {
+      break;
+    }
+
+    const field = entry.value[0];
+    const value = entry.value[1];
     fieldCount += 1;
     if (fieldCount > MAX_WEB_ACTION_FORM_FIELDS) {
       throw new Error(TOO_MANY_FORM_FIELDS_MESSAGE);
@@ -537,10 +545,18 @@ function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>):
 }
 
 function singleFormValue(formData: FormData, field: string): FormDataEntryValue | null {
+  const entries = formDataEntries(formData);
   let value: FormDataEntryValue | null = null;
   let fieldCount = 0;
 
-  for (const [entryField, entryValue] of formDataEntries(formData)) {
+  while (true) {
+    const entry = nextFormDataEntry(entries);
+    if (entry.done) {
+      break;
+    }
+
+    const entryField = entry.value[0];
+    const entryValue = entry.value[1];
     fieldCount += 1;
     if (fieldCount > MAX_WEB_ACTION_FORM_FIELDS) {
       return value;
@@ -562,6 +578,12 @@ function singleFormValue(formData: FormData, field: string): FormDataEntryValue 
 
 function formDataEntries(formData: FormData): ReturnType<FormData['entries']> {
   return FORM_DATA_ENTRIES.call(formData);
+}
+
+function nextFormDataEntry(
+  entries: ReturnType<FormData['entries']>
+): IteratorResult<[string, FormDataEntryValue]> {
+  return entries.next();
 }
 
 function isInvalidFormShapeError(error: unknown): boolean {

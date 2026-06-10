@@ -273,6 +273,30 @@ test('web action form parsers avoid instance form data entry hooks', () => {
   assert.equal(runLoginWebAction(config, testLoginRateLimiter(), 'client', loginFormData).ok, true);
 });
 
+test('web action form parsers avoid form data iterator protocol hooks', () => {
+  withGuardedFormDataIteratorProtocol(() => {
+    const buildFormData = formDataWithGuardedEntryMethods();
+    buildFormData.set('repo', 'nullbuilder');
+    buildFormData.set('prNumber', '17');
+    buildFormData.set('tagName', 'build-pr-17');
+
+    assert.deepEqual(parseBuildPrMutationForm(buildFormData), {
+      repo: 'nullbuilder',
+      prNumber: 17,
+      tagName: 'build-pr-17',
+      confirm: false,
+      force: false
+    });
+
+    const releaseFormData = formDataWithGuardedEntryMethods();
+    releaseFormData.set('repo', 'nullbuilder');
+    releaseFormData.set('tagName', 'v1.2.3');
+    releaseFormData.append('tagName', 'v2.0.0');
+
+    assert.throws(() => parseReleaseTagMutationForm(releaseFormData), /^Error: Duplicate form field\.$/);
+  });
+});
+
 test('mutation form parsers reject oversized field counts without getAll allocations', () => {
   const formData = formDataWithoutGetAll();
   formData.set('csrfToken', 'token');
@@ -1050,6 +1074,31 @@ function formDataWithGuardedEntryMethods(): FormData {
   };
 
   return formData;
+}
+
+function withGuardedFormDataIteratorProtocol<T>(callback: () => T): T {
+  const prototype = Object.getPrototypeOf(FormData.prototype.entries.call(new FormData())) as Record<
+    PropertyKey,
+    unknown
+  >;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, Symbol.iterator);
+
+  Object.defineProperty(prototype, Symbol.iterator, {
+    configurable: true,
+    value: () => {
+      throw new Error('form data iterator protocol should not be called.');
+    }
+  });
+
+  try {
+    return callback();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(prototype, Symbol.iterator, descriptor);
+    } else {
+      delete prototype[Symbol.iterator];
+    }
+  }
 }
 
 function webFormRequest(body: string, headers: HeadersInit = {}): Request {
