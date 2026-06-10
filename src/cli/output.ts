@@ -6,7 +6,7 @@ import {
   type DashboardData,
   type ReleaseTagResult
 } from '../lib/server/github';
-import { formatGrowth, formatNullableNumber, workflowRunLabel } from '../lib/dashboard-format';
+import { formatDashboardDateOnly, formatGrowth, formatNullableNumber, workflowRunLabel } from '../lib/dashboard-format';
 import { sanitizeTerminalCell, sanitizeTerminalLine } from '../lib/text-safety';
 import type { Command } from './options';
 
@@ -281,7 +281,7 @@ function columnWidths(rows: Array<Record<string, string>>, columns: string[]): n
 }
 
 function formatDate(value: string): string {
-  return value.slice(0, 10);
+  return formatDashboardDateOnly(value);
 }
 
 function sanitizeRows(rows: Array<Record<string, string>>, columns: string[]): Array<Record<string, string>> {

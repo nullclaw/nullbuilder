@@ -115,6 +115,33 @@ test('formatters bound terminal output from external text', () => {
   assert.match(output, /x{20}\.\.\./);
 });
 
+test('formatDashboard validates dates before rendering CLI tables', () => {
+  const base = dashboardFixture();
+  const dashboard = dashboardFixture({
+    issues: [{ ...base.issues[0], updatedAt: 'not-a-date-with-prefix' }],
+    pullRequests: [{ ...base.pullRequests[0], updatedAt: 'also-not-a-date' }],
+    repositories: [
+      {
+        ...base.repositories[0],
+        latestRuns: {
+          ...base.repositories[0].latestRuns,
+          ci: base.repositories[0].latestRuns.ci
+            ? { ...base.repositories[0].latestRuns.ci, updatedAt: 'invalid-run-date' }
+            : null
+        }
+      },
+      base.repositories[1]
+    ]
+  });
+
+  assert.match(formatDashboard('issues', dashboard), /\bn\/a\b/);
+  assert.doesNotMatch(formatDashboard('issues', dashboard), /not-a-date/);
+  assert.match(formatDashboard('prs', dashboard), /\bn\/a\b/);
+  assert.doesNotMatch(formatDashboard('prs', dashboard), /also-not/);
+  assert.match(formatDashboard('runs', dashboard), /\bn\/a\b/);
+  assert.doesNotMatch(formatDashboard('runs', dashboard), /invalid-run/);
+});
+
 test('formatDashboard formats large tables without spreading row widths', () => {
   const issueCount = 150_000;
   const baseIssue = dashboardFixture().issues[0];

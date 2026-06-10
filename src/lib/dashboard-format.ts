@@ -21,6 +21,11 @@ export function formatDashboardDate(value: string | null): string {
   return dashboardDateFormatter.format(date);
 }
 
+export function formatDashboardDateOnly(value: string | null): string {
+  const date = parseDashboardDate(value);
+  return date ? date.toISOString().slice(0, 10) : 'n/a';
+}
+
 export function workflowRunLabel(run: WorkflowRunLike): string {
   if (!run) {
     return 'n/a';

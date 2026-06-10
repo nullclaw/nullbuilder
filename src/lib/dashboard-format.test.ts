@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   formatDashboardDate,
+  formatDashboardDateOnly,
   formatGrowth,
   formatNullableNumber,
   workflowRunClass,
@@ -29,6 +30,9 @@ test('format helpers keep null values explicit', () => {
   assert.equal(formatGrowth(7), '+7');
   assert.equal(formatDashboardDate(null), 'n/a');
   assert.equal(formatDashboardDate('not-a-date'), 'n/a');
+  assert.equal(formatDashboardDateOnly(null), 'n/a');
+  assert.equal(formatDashboardDateOnly('not-a-date'), 'n/a');
+  assert.equal(formatDashboardDateOnly('2026-06-02T12:34:56Z'), '2026-06-02');
 });
 
 test('format helpers treat unsafe numbers as unknown display values', () => {
