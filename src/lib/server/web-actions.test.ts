@@ -22,6 +22,7 @@ test('parsePositiveFormInteger accepts only safe positive base-10 integers', () 
   assert.equal(parsePositiveFormInteger(' 42 '), null);
   assert.equal(parsePositiveFormInteger('1.5'), null);
   assert.equal(parsePositiveFormInteger('9007199254740992'), null);
+  assert.equal(parsePositiveFormInteger('1'.repeat(100_000)), null);
   assert.equal(parsePositiveFormInteger(null), null);
 });
 

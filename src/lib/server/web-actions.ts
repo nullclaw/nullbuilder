@@ -8,6 +8,8 @@ import {
 } from './auth';
 import type { NullbuilderConfig } from './config';
 
+const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
+
 export type WebMutationOperation = 'build-pr' | 'release-tag';
 
 export type WebAuthFailure = {
@@ -215,6 +217,10 @@ export function parseReleaseTagMutationForm(formData: FormData): ReleaseTagMutat
 
 export function parsePositiveFormInteger(value: FormDataEntryValue | null): number | null {
   if (typeof value !== 'string') {
+    return null;
+  }
+
+  if (value.length > MAX_SAFE_INTEGER_DIGITS) {
     return null;
   }
 
