@@ -12,6 +12,7 @@ import {
   isAuthenticated,
   isCsrfTokenMatch,
   isSessionTokenMatch,
+  isTokenMatch,
   LoginRateLimiter
 } from './auth';
 
@@ -88,6 +89,14 @@ test('csrf token is tied to a valid session cookie', () => {
   assert.equal(typeof csrfToken, 'string');
   assert.equal(isCsrfTokenMatch(csrfToken, cookies, config), true);
   assert.equal(isCsrfTokenMatch('bad-token', cookies, config), false);
+});
+
+test('token comparison rejects malformed values before constant-time comparison', () => {
+  const expected = 'a'.repeat(64);
+
+  assert.equal(isTokenMatch('a'.repeat(65), expected), false);
+  assert.equal(isTokenMatch(`${'a'.repeat(63)}é`, expected), false);
+  assert.equal(isTokenMatch('b'.repeat(64), expected), false);
 });
 
 test('login rate limiter blocks repeated failures and prunes old attempts', () => {

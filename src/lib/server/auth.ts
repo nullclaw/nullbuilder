@@ -152,6 +152,10 @@ export function isCsrfTokenMatch(value: FormDataEntryValue | null, cookies: Cook
 }
 
 export function isTokenMatch(value: string, expected: string): boolean {
+  if (value.length !== expected.length) {
+    return false;
+  }
+
   const left = Buffer.from(value);
   const right = Buffer.from(expected);
 
