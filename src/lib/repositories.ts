@@ -38,21 +38,21 @@ export function normalizeRepoSlug(value: string, defaultOwner = DEFAULT_OWNER): 
   if (trimmed.includes('/')) {
     const parts = trimmed.split('/');
     if (parts.length !== 2) {
-      throw new Error(`Invalid repository slug: ${value}`);
+      throw new Error('Invalid repository slug.');
     }
     const [owner, repo] = parts;
-    validateOwner(owner, value);
-    validateRepo(repo, value);
+    validateOwner(owner);
+    validateRepo(repo);
     return `${owner}/${repo}`;
   }
 
-  validateRepo(trimmed, value);
+  validateRepo(trimmed);
   return `${owner}/${trimmed}`;
 }
 
 export function normalizeOwner(value: string): string {
   const owner = value.trim();
-  validateOwner(owner, value);
+  validateOwner(owner);
   return owner;
 }
 
@@ -84,13 +84,13 @@ export function parseRepositoryList(
   return repos;
 }
 
-function validateOwner(owner: string, original: string): void {
+function validateOwner(owner: string): void {
   if (!OWNER_PATTERN.test(owner)) {
-    throw new Error(`Invalid repository owner in slug: ${original}`);
+    throw new Error('Invalid repository owner.');
   }
 }
 
-function validateRepo(repo: string, original: string): void {
+function validateRepo(repo: string): void {
   if (
     !REPO_PATTERN.test(repo) ||
     repo === '.' ||
@@ -98,6 +98,6 @@ function validateRepo(repo: string, original: string): void {
     repo.includes('..') ||
     repo.toLowerCase().endsWith('.git')
   ) {
-    throw new Error(`Invalid repository name in slug: ${original}`);
+    throw new Error('Invalid repository name.');
   }
 }
