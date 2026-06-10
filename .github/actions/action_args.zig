@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const MAX_DIAGNOSTIC_TOKEN_BYTES = 512;
+const MAX_VALUE_TOKEN_BYTES = 4096;
 
 pub fn takeValue(
     iterator: *std.process.Args.Iterator,
@@ -57,10 +58,19 @@ fn validateValueToken(flag: []const u8, value: []const u8) error{InvalidArgument
         printDiagnostic("missing value for {s}\n", flag);
         return error.InvalidArguments;
     }
+
+    if (isOversizedValueToken(value)) {
+        printDiagnostic("invalid value for {s}\n", flag);
+        return error.InvalidArguments;
+    }
 }
 
 fn isOptionLikeValue(value: []const u8) bool {
     return std.mem.startsWith(u8, value, "-");
+}
+
+fn isOversizedValueToken(value: []const u8) bool {
+    return value.len > MAX_VALUE_TOKEN_BYTES;
 }
 
 fn isDiagnosticControlByte(byte: u8) bool {
@@ -79,6 +89,15 @@ test "value tokens reject option-looking arguments" {
     try std.testing.expect(!isOptionLikeValue("value"));
     try std.testing.expect(isOptionLikeValue("--other"));
     try std.testing.expect(isOptionLikeValue("-x"));
+}
+
+test "value tokens are bounded before duplication" {
+    const max_value = [_]u8{'a'} ** MAX_VALUE_TOKEN_BYTES;
+    const oversized_value = [_]u8{'a'} ** (MAX_VALUE_TOKEN_BYTES + 1);
+
+    try validateValueToken("--flag", max_value[0..]);
+    try std.testing.expect(!isOversizedValueToken(max_value[0..]));
+    try std.testing.expect(isOversizedValueToken(oversized_value[0..]));
 }
 
 test "diagnostic tokens replace controls and bound output" {
