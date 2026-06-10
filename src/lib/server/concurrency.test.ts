@@ -138,3 +138,19 @@ test('settleStarted waits for all started promises before rethrowing', async () 
   await assert.rejects(reads, (error: unknown) => error === failure);
   assert.equal(settled, true);
 });
+
+test('settleStarted avoids global array map hooks when collecting results', async () => {
+  const originalMap = Array.prototype.map;
+  Array.prototype.map = function mapShouldNotBeCalled(): never {
+    throw new Error('Array.prototype.map should not be called');
+  } as typeof Array.prototype.map;
+
+  let values: [number, number] | undefined;
+  try {
+    values = await settleStarted([Promise.resolve(1), Promise.resolve(2)] as const);
+  } finally {
+    Array.prototype.map = originalMap;
+  }
+
+  assert.deepEqual(values, [1, 2]);
+});

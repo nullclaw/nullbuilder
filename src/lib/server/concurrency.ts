@@ -41,7 +41,11 @@ export function settleStarted<T1, T2, T3, T4>(
 export function settleStarted<T>(reads: readonly Promise<T>[]): Promise<T[]>;
 export async function settleStarted(reads: readonly Promise<unknown>[]): Promise<unknown[]> {
   const results = await Promise.allSettled(reads);
-  return results.map(fulfilledValue);
+  const values = new Array<unknown>(results.length);
+  for (let index = 0; index < results.length; index += 1) {
+    values[index] = fulfilledValue(results[index]);
+  }
+  return values;
 }
 
 function fulfilledValue<T>(result: PromiseSettledResult<T>): T {
