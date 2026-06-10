@@ -20,6 +20,7 @@ const work_number_width: usize = 5;
 const work_title_width: usize = 74;
 const error_message_width: usize = 90;
 const max_recent_work_items = 8;
+const ascii_escape: u8 = 0x1b;
 
 pub fn render(
     arena: std.mem.Allocator,
@@ -63,51 +64,69 @@ pub fn render(
 
     for (dashboard.items) |item| {
         const repo = dashboard_model.repositoryFromValue(item) orelse continue;
+        const repo_slug = try sanitizeTerminalText(arena, repo.slug);
+        defer arena.free(repo_slug);
 
         try out.print("{s:<[3]} {d:>[4]} {d:>[4]} ", .{
-            clipUtf8(repo.slug, repo_column_width),
+            clipUtf8(repo_slug, repo_column_width),
             repo.open_issues,
             repo.open_pulls,
             repo_column_width,
             count_column_width,
         });
-        try printStatus(out, no_color, repo.runs.ci, status_column_width);
+        try printStatus(arena, out, no_color, repo.runs.ci, status_column_width);
         try out.writeByte(' ');
-        try printStatus(out, no_color, repo.runs.nightly, status_column_width);
+        try printStatus(arena, out, no_color, repo.runs.nightly, status_column_width);
         try out.writeByte(' ');
-        try printStatus(out, no_color, repo.runs.release, status_column_width);
+        try printStatus(arena, out, no_color, repo.runs.release, status_column_width);
         try out.writeByte('\n');
     }
 
     try out.writeAll("\nRecent work\n");
     try out.writeAll("-----------\n");
-    try printWorkItems(out, dashboard, .issues, "open issues");
-    try printWorkItems(out, dashboard, .pull_requests, "open pull requests");
+    try printWorkItems(arena, out, dashboard, .issues, "open issues");
+    try printWorkItems(arena, out, dashboard, .pull_requests, "open pull requests");
 
     if (dashboard.errors.len > 0) {
         try out.writeAll("\nLoad errors\n");
         try out.writeAll("-----------\n");
         var errors = dashboard_model.LoadErrorIterator.init(dashboard);
         while (errors.next()) |load_error| {
+            const error_repo = try sanitizeTerminalText(arena, load_error.repo);
+            defer arena.free(error_repo);
+            const message = try sanitizeTerminalText(arena, load_error.message);
+            defer arena.free(message);
+
             try out.print("  {s:<[2]} {s}\n", .{
-                clipUtf8(load_error.repo, repo_column_width),
-                clipUtf8(load_error.message, error_message_width),
+                clipUtf8(error_repo, repo_column_width),
+                clipUtf8(message, error_message_width),
                 repo_column_width,
             });
         }
     }
 }
 
-fn printWorkItems(out: *std.Io.Writer, dashboard: Dashboard, kind: WorkKind, label: []const u8) !void {
+fn printWorkItems(
+    arena: std.mem.Allocator,
+    out: *std.Io.Writer,
+    dashboard: Dashboard,
+    kind: WorkKind,
+    label: []const u8,
+) !void {
     var printed: usize = 0;
     var items = dashboard_model.WorkItemIterator.init(dashboard, kind);
 
     while (printed < max_recent_work_items) {
         const work = items.next() orelse break;
+        const work_repo = try sanitizeTerminalText(arena, work.repo);
+        defer arena.free(work_repo);
+        const title = try sanitizeTerminalText(arena, work.title);
+        defer arena.free(title);
+
         try out.print("  {s:<[3]} #{d:<[4]} {s}\n", .{
-            clipUtf8(work.repo, repo_column_width),
+            clipUtf8(work_repo, repo_column_width),
             work.number,
-            clipUtf8(work.title, work_title_width),
+            clipUtf8(title, work_title_width),
             repo_column_width,
             work_number_width,
         });
@@ -119,9 +138,12 @@ fn printWorkItems(out: *std.Io.Writer, dashboard: Dashboard, kind: WorkKind, lab
     }
 }
 
-fn printStatus(out: *std.Io.Writer, no_color: bool, status: []const u8, width: usize) !void {
-    try out.writeAll(statusColor(no_color, status));
-    try out.print("{s:<[1]}", .{ clipUtf8(status, width), width });
+fn printStatus(arena: std.mem.Allocator, out: *std.Io.Writer, no_color: bool, status: []const u8, width: usize) !void {
+    const safe_status = try sanitizeTerminalText(arena, status);
+    defer arena.free(safe_status);
+
+    try out.writeAll(statusColor(no_color, safe_status));
+    try out.print("{s:<[1]}", .{ clipUtf8(safe_status, width), width });
     try out.writeAll(color(no_color, reset));
 }
 
@@ -154,6 +176,56 @@ fn isUtf8ContinuationByte(byte: u8) bool {
     return byte & 0b1100_0000 == 0b1000_0000;
 }
 
+fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) ![]u8 {
+    var sanitized = std.array_list.Managed(u8).init(arena);
+    errdefer sanitized.deinit();
+
+    var index: usize = 0;
+    while (index < value.len) {
+        const byte = value[index];
+        if (byte == ascii_escape) {
+            index = skipAnsiEscape(value, index);
+        } else {
+            try sanitized.append(if (isTerminalControlByte(byte)) ' ' else byte);
+            index += 1;
+        }
+    }
+
+    return sanitized.toOwnedSlice();
+}
+
+fn skipAnsiEscape(value: []const u8, start: usize) usize {
+    var index = start + 1;
+    if (index >= value.len) return index;
+
+    const introducer = value[index];
+    if (introducer == '[') {
+        index += 1;
+        while (index < value.len) {
+            const byte = value[index];
+            index += 1;
+            if (byte >= 0x40 and byte <= 0x7e) return index;
+        }
+        return index;
+    }
+
+    if (introducer == ']') {
+        index += 1;
+        while (index < value.len) {
+            if (value[index] == 0x07) return index + 1;
+            if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
+            index += 1;
+        }
+        return index;
+    }
+
+    return index + 1;
+}
+
+fn isTerminalControlByte(byte: u8) bool {
+    return byte < 0x20 or byte == 0x7f;
+}
+
 test "clipUtf8 does not split multibyte sequences" {
     const text = "repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82";
 
@@ -166,11 +238,11 @@ test "printStatus honors requested display width" {
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try printStatus(&out.writer, true, "queued", 8);
+    try printStatus(std.testing.allocator, &out.writer, true, "queued", 8);
     try std.testing.expectEqualStrings("queued  ", out.writer.buffered());
 
     out.clearRetainingCapacity();
-    try printStatus(&out.writer, true, "in_progress", 4);
+    try printStatus(std.testing.allocator, &out.writer, true, "in_progress", 4);
     try std.testing.expectEqualStrings("in_p", out.writer.buffered());
 }
 
@@ -212,6 +284,38 @@ test "render prints repository rows recent work and load errors" {
     try expectContains(output, "#9");
     try expectContains(output, "Load errors");
     try expectContains(output, "rate limited");
+}
+
+test "render sanitizes terminal control characters from external text" {
+    const json =
+        \\{
+        \\  "items": [
+        \\    {
+        \\      "slug": "alpha\u001b[31mred\u001b[0m",
+        \\      "status": "ok",
+        \\      "openIssues": 1,
+        \\      "openPulls": 0,
+        \\      "stars": 3,
+        \\      "latestRuns": {
+        \\        "ci": {"status": "completed", "conclusion": "success\u001b[2K"}
+        \\      },
+        \\      "issues": [{"repo": "alpha\u001b[31mred\u001b[0m", "number": 7, "title": "Fix \u001b[31mred\u001b[0m\nnext\titem"}]
+        \\    }
+        \\  ],
+        \\  "errors": [{"repo": "beta\u001b]0;title\u0007", "error": "rate limited\rnow"}]
+        \\}
+    ;
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try render(std.testing.allocator, &out.writer, json, true);
+    const output = out.writer.buffered();
+
+    try std.testing.expect(std.mem.indexOfScalar(u8, output, ascii_escape) == null);
+    try expectContains(output, "alphared");
+    try expectContains(output, "success");
+    try expectContains(output, "Fix red next item");
+    try expectContains(output, "rate limited now");
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
