@@ -1,5 +1,4 @@
 const std = @import("std");
-const action_text = @import("action_text");
 const repository_safety = @import("repository_safety");
 const text_safety = @import("text_safety");
 
@@ -91,7 +90,7 @@ fn isHttpAuthority(authority: []const u8) bool {
     if (authority.len == 0) return false;
 
     for (authority) |byte| {
-        if (action_text.isAsciiControlOrSpace(byte)) return false;
+        if (text_safety.isAsciiControlOrSpace(byte)) return false;
         if (byte == '/' or byte == '?' or byte == '#' or byte == '@') return false;
     }
 
@@ -219,7 +218,7 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
 fn isSafePercentEncodedByte(value: []const u8, index: usize) bool {
     if (index + 2 >= value.len) return false;
     const decoded = decodePercentEncodedByte(value[index + 1], value[index + 2]) orelse return false;
-    return !action_text.isControlByte(decoded);
+    return !text_safety.isControlByte(decoded);
 }
 
 fn decodePercentEncodedByte(high: u8, low: u8) ?u8 {
@@ -278,8 +277,7 @@ pub fn isSafeActionOutputValue(value: []const u8, max_len: usize) bool {
 }
 
 fn isSafeSingleLineText(value: []const u8, max_len: usize) bool {
-    if (value.len == 0 or value.len > max_len) return false;
-    return !action_text.hasControl(value);
+    return text_safety.isNonEmptyTextWithoutControl(value, max_len);
 }
 
 fn isAsciiDigitSlice(value: []const u8) bool {

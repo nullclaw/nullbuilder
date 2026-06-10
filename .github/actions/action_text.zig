@@ -13,7 +13,7 @@ pub fn hasControl(value: []const u8) bool {
 }
 
 pub fn isAsciiControlOrSpace(byte: u8) bool {
-    return byte <= ' ' or byte == 0x7f;
+    return text_safety.isAsciiControlOrSpace(byte);
 }
 
 pub fn isControlByte(byte: u8) bool {

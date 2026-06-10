@@ -66,7 +66,6 @@ jobs:
           -Maction_args=.github/actions/action_args.zig
           --dep text_safety
           -Maction_paths=.github/actions/action_paths.zig
-          --dep action_text
           --dep repository_safety
           --dep text_safety
           -Maction_values=.github/actions/action_values.zig
@@ -93,7 +92,6 @@ jobs:
           -Maction_args=.github/actions/action_args.zig
           --dep text_safety
           -Maction_paths=.github/actions/action_paths.zig
-          --dep action_text
           --dep repository_safety
           --dep text_safety
           -Maction_values=.github/actions/action_values.zig

@@ -28,7 +28,7 @@ pub fn safeTextValue(
 }
 
 pub fn isNonEmptyTextWithoutControl(value: []const u8, max_len: usize) bool {
-    return value.len > 0 and value.len <= max_len and !text_safety.hasControl(value);
+    return text_safety.isNonEmptyTextWithoutControl(value, max_len);
 }
 
 fn safePositiveInteger(integer: i64) u64 {

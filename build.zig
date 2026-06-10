@@ -68,7 +68,6 @@ pub fn build(b: *std.Build) void {
     const action_text_module = createModule(b, options, ".github/actions/action_text.zig");
     action_text_module.addImport("text_safety", text_safety_module);
     const action_values_module = createModule(b, options, ".github/actions/action_values.zig");
-    action_values_module.addImport("action_text", action_text_module);
     action_values_module.addImport("repository_safety", repository_safety_module);
     action_values_module.addImport("text_safety", text_safety_module);
     const action_paths_module = createModule(b, options, ".github/actions/action_paths.zig");

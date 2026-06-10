@@ -21,6 +21,10 @@ pub fn hasControl(value: []const u8) bool {
     return false;
 }
 
+pub fn isNonEmptyTextWithoutControl(value: []const u8, max_len: usize) bool {
+    return value.len > 0 and value.len <= max_len and !hasControl(value);
+}
+
 pub fn firstSanitizableIndex(value: []const u8, options: SanitizeOptions) ?usize {
     var index: usize = 0;
     while (index < value.len) {
@@ -121,6 +125,10 @@ pub fn sanitizeIntoBuffer(value: []const u8, buffer: []u8, options: SanitizeOpti
 
 pub fn isControlByte(byte: u8) bool {
     return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
+}
+
+pub fn isAsciiControlOrSpace(byte: u8) bool {
+    return byte <= ' ' or byte == 0x7f;
 }
 
 pub fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
@@ -283,6 +291,23 @@ test "text safety detects ASCII and UTF-8 encoded control characters" {
     try std.testing.expect(hasControl("bidi\xe2\x80\xaecontrol"));
     try std.testing.expect(hasControl("bidi\xe2\x81\xa6control"));
     try std.testing.expect(hasControl("bidi\xd8\x9ccontrol"));
+}
+
+test "text safety validates bounded non-empty text without controls" {
+    try std.testing.expect(isNonEmptyTextWithoutControl("safe", 4));
+    try std.testing.expect(isNonEmptyTextWithoutControl("repo-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c", 64));
+
+    try std.testing.expect(!isNonEmptyTextWithoutControl("", 64));
+    try std.testing.expect(!isNonEmptyTextWithoutControl("too-long", 3));
+    try std.testing.expect(!isNonEmptyTextWithoutControl("line\nbreak", 64));
+    try std.testing.expect(!isNonEmptyTextWithoutControl("escape\x1b[31m", 64));
+}
+
+test "text safety identifies ASCII controls and spaces" {
+    try std.testing.expect(isAsciiControlOrSpace(' '));
+    try std.testing.expect(isAsciiControlOrSpace('\n'));
+    try std.testing.expect(isAsciiControlOrSpace(0x7f));
+    try std.testing.expect(!isAsciiControlOrSpace('a'));
 }
 
 test "text safety counts only complete UTF-8 sequences" {
