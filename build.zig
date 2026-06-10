@@ -65,12 +65,15 @@ pub fn build(b: *std.Build) void {
     const action_values_module = createModule(b, options, ".github/actions/action_values.zig");
     action_values_module.addImport("action_text", action_text_module);
     action_values_module.addImport("repository_safety", repository_safety_module);
+    action_values_module.addImport("text_safety", text_safety_module);
+    const action_paths_module = createModule(b, options, ".github/actions/action_paths.zig");
+    action_paths_module.addImport("text_safety", text_safety_module);
     const action_json_module = createModule(b, options, ".github/actions/action_json.zig");
     action_json_module.addImport("action_values", action_values_module);
     const action_modules = SharedActionModules{
         .args = createModule(b, options, ".github/actions/action_args.zig"),
         .json = action_json_module,
-        .paths = createModule(b, options, ".github/actions/action_paths.zig"),
+        .paths = action_paths_module,
         .text = action_text_module,
         .values = action_values_module,
     };

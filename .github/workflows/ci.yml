@@ -60,11 +60,15 @@ jobs:
           -Maction_json=.github/actions/action_json.zig
           --dep action_text
           -Maction_args=.github/actions/action_args.zig
+          --dep text_safety
           -Maction_paths=.github/actions/action_paths.zig
           --dep action_text
+          --dep repository_safety
+          --dep text_safety
           -Maction_values=.github/actions/action_values.zig
           --dep text_safety
           -Maction_text=.github/actions/action_text.zig
+          -Mrepository_safety=src/zig/repository_safety.zig
           -Mtext_safety=src/zig/text_safety.zig
 
       - name: Test artifact package helper
@@ -79,9 +83,13 @@ jobs:
           -Maction_json=.github/actions/action_json.zig
           --dep action_text
           -Maction_args=.github/actions/action_args.zig
+          --dep text_safety
           -Maction_paths=.github/actions/action_paths.zig
           --dep action_text
+          --dep repository_safety
+          --dep text_safety
           -Maction_values=.github/actions/action_values.zig
           --dep text_safety
           -Maction_text=.github/actions/action_text.zig
+          -Mrepository_safety=src/zig/repository_safety.zig
           -Mtext_safety=src/zig/text_safety.zig

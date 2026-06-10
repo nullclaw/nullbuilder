@@ -1,4 +1,5 @@
 const std = @import("std");
+const text_safety = @import("text_safety");
 
 const max_label_bytes = 128;
 const max_relative_path_bytes = 1024;
@@ -33,26 +34,16 @@ pub fn isSafeLabel(value: []const u8) bool {
 fn isWindowsReservedDeviceName(value: []const u8) bool {
     const stem = std.mem.sliceTo(value, '.');
 
-    if (eqlAsciiIgnoreCase(stem, "con")) return true;
-    if (eqlAsciiIgnoreCase(stem, "prn")) return true;
-    if (eqlAsciiIgnoreCase(stem, "aux")) return true;
-    if (eqlAsciiIgnoreCase(stem, "nul")) return true;
+    if (text_safety.eqlAsciiIgnoreCase(stem, "con")) return true;
+    if (text_safety.eqlAsciiIgnoreCase(stem, "prn")) return true;
+    if (text_safety.eqlAsciiIgnoreCase(stem, "aux")) return true;
+    if (text_safety.eqlAsciiIgnoreCase(stem, "nul")) return true;
 
-    if (stem.len == 4 and (eqlAsciiIgnoreCase(stem[0..3], "com") or eqlAsciiIgnoreCase(stem[0..3], "lpt"))) {
+    if (stem.len == 4 and (text_safety.eqlAsciiIgnoreCase(stem[0..3], "com") or text_safety.eqlAsciiIgnoreCase(stem[0..3], "lpt"))) {
         return stem[3] >= '1' and stem[3] <= '9';
     }
 
     return false;
-}
-
-fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
-    if (left.len != right.len) return false;
-
-    for (left, right) |left_byte, right_byte| {
-        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
-    }
-
-    return true;
 }
 
 fn hasWindowsDrivePrefix(path: []const u8) bool {

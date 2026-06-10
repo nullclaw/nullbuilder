@@ -1,6 +1,7 @@
 const std = @import("std");
 const action_text = @import("action_text");
 const repository_safety = @import("repository_safety");
+const text_safety = @import("text_safety");
 
 const max_decimal_id_digits = "18446744073709551615".len;
 const full_sha_bytes = 40;
@@ -142,17 +143,7 @@ fn isSafeHost(host: []const u8) bool {
 }
 
 fn isLoopbackHost(host: []const u8) bool {
-    return eqlAsciiIgnoreCase(host, "localhost") or isLoopbackIpv4(host) or isLoopbackIpv6(host);
-}
-
-fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
-    if (left.len != right.len) return false;
-
-    for (left, right) |left_byte, right_byte| {
-        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
-    }
-
-    return true;
+    return text_safety.eqlAsciiIgnoreCase(host, "localhost") or isLoopbackIpv4(host) or isLoopbackIpv6(host);
 }
 
 fn isLoopbackIpv4(host: []const u8) bool {

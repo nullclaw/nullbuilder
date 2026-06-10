@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const actionsRoot = join(projectRoot, '.github', 'actions');
+const workflowsRoot = join(projectRoot, '.github', 'workflows');
 
 test('composite action Zig commands declare module dependencies explicitly', () => {
   const duplicateDependencies: string[] = [];
@@ -30,14 +31,17 @@ test('composite action Zig commands declare module dependencies explicitly', () 
       }
     }
 
-    assertDependencies(modules, 'root', ['action_args', 'action_json', 'action_paths', 'action_values']);
-    assertDependencies(modules, 'action_args', ['action_text']);
-    assertDependencies(modules, 'action_json', ['action_values']);
-    assertDependencies(modules, 'action_values', ['action_text']);
-    assertDependencies(modules, 'action_text', ['text_safety']);
+    assertActionHelperDependencies(modules);
   }
 
   assert.deepEqual(duplicateDependencies, []);
+});
+
+test('workflow Zig action tests declare module dependencies explicitly', () => {
+  const source = readFileSync(join(workflowsRoot, 'ci.yml'), 'utf8');
+  const modules = zigRunModules(source);
+
+  assertActionHelperDependencies(modules);
 });
 
 test('setup-zig downloader keeps archive fetches on HTTPS', () => {
@@ -135,4 +139,13 @@ function zigRunModules(source: string): Map<string, string[]> {
 
 function assertDependencies(modules: Map<string, string[]>, moduleName: string, expectedDependencies: string[]) {
   assert.deepEqual([...(modules.get(moduleName) ?? [])].sort(), [...expectedDependencies].sort());
+}
+
+function assertActionHelperDependencies(modules: Map<string, string[]>) {
+  assertDependencies(modules, 'root', ['action_args', 'action_json', 'action_paths', 'action_values']);
+  assertDependencies(modules, 'action_args', ['action_text']);
+  assertDependencies(modules, 'action_json', ['action_values']);
+  assertDependencies(modules, 'action_paths', ['text_safety']);
+  assertDependencies(modules, 'action_values', ['action_text', 'repository_safety', 'text_safety']);
+  assertDependencies(modules, 'action_text', ['text_safety']);
 }

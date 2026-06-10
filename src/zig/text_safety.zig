@@ -21,6 +21,16 @@ pub fn isControlByte(byte: u8) bool {
     return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
 }
 
+pub fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
+    if (left.len != right.len) return false;
+
+    for (left, right) |left_byte, right_byte| {
+        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
+    }
+
+    return true;
+}
+
 pub fn isUtf8C1Control(value: []const u8, index: usize) bool {
     return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
 }
@@ -175,6 +185,13 @@ test "text safety counts only complete UTF-8 sequences" {
     try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xed\xa0\x80", 0));
     try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xf4\x90\x80\x80", 0));
     try std.testing.expect(isInvalidUtf8SequenceStart("\xc0\x85", 0));
+}
+
+test "text safety compares ASCII text without case sensitivity" {
+    try std.testing.expect(eqlAsciiIgnoreCase("localhost", "LOCALHOST"));
+    try std.testing.expect(eqlAsciiIgnoreCase("Com1", "com1"));
+    try std.testing.expect(!eqlAsciiIgnoreCase("host", "hosts"));
+    try std.testing.expect(!eqlAsciiIgnoreCase("local-host", "local_host"));
 }
 
 test "text safety identifies ANSI string control boundaries" {

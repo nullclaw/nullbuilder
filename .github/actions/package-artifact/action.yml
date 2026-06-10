@@ -56,11 +56,15 @@ runs:
           -Maction_json="$GITHUB_ACTION_PATH/../action_json.zig" \
           --dep action_text \
           -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
+          --dep text_safety \
           -Maction_paths="$GITHUB_ACTION_PATH/../action_paths.zig" \
           --dep action_text \
+          --dep repository_safety \
+          --dep text_safety \
           -Maction_values="$GITHUB_ACTION_PATH/../action_values.zig" \
           --dep text_safety \
           -Maction_text="$GITHUB_ACTION_PATH/../action_text.zig" \
+          -Mrepository_safety="$GITHUB_ACTION_PATH/../../../src/zig/repository_safety.zig" \
           -Mtext_safety="$GITHUB_ACTION_PATH/../../../src/zig/text_safety.zig" \
           -- \
           --binary "${PACKAGE_BINARY}" \
