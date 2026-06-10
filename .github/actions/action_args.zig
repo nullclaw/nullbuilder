@@ -40,7 +40,10 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
     while (index < value.len) {
         if (written >= buffer.len) break;
         const byte = value[index];
-        if (isUtf8C1Control(value, index)) {
+        if (byte == 0x1b) {
+            index = skipAnsiEscape(value, index);
+            continue;
+        } else if (isUtf8C1Control(value, index)) {
             buffer[written] = ' ';
             index += 2;
         } else {
@@ -51,6 +54,34 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
     }
 
     return buffer[0..written];
+}
+
+fn skipAnsiEscape(value: []const u8, start: usize) usize {
+    var index = start + 1;
+    if (index >= value.len) return index;
+
+    const introducer = value[index];
+    if (introducer == '[') {
+        index += 1;
+        while (index < value.len) {
+            const byte = value[index];
+            index += 1;
+            if (byte >= 0x40 and byte <= 0x7e) return index;
+        }
+        return index;
+    }
+
+    if (introducer == ']') {
+        index += 1;
+        while (index < value.len) {
+            if (value[index] == 0x07) return index + 1;
+            if (value[index] == 0x1b and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
+            index += 1;
+        }
+        return index;
+    }
+
+    return index + 1;
 }
 
 fn validateValueToken(flag: []const u8, value: []const u8) error{InvalidArguments}!void {
@@ -103,8 +134,14 @@ test "value tokens are bounded before duplication" {
 test "diagnostic tokens replace controls and bound output" {
     var buffer: [16]u8 = undefined;
     try std.testing.expectEqualStrings(
-        "bad  [31m value",
+        "bad  value",
         sanitizeDiagnosticToken("bad\n\x1b[31m\tvalue", &buffer),
+    );
+
+    var title_buffer: [32]u8 = undefined;
+    try std.testing.expectEqualStrings(
+        "baddone",
+        sanitizeDiagnosticToken("bad\x1b]0;title\x07done", &title_buffer),
     );
 
     var c1_buffer: [32]u8 = undefined;
