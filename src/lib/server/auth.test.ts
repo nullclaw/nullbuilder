@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { Buffer } from 'node:buffer';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import type { Cookies } from '@sveltejs/kit';
 import { readConfig } from './config';
 import {
@@ -18,10 +18,32 @@ import {
   resolveAuthContext
 } from './auth';
 
+const originalMapKeys = Map.prototype.keys;
+const originalMapIterator = Map.prototype[Symbol.iterator];
+
+afterEach(() => {
+  restoreMapIteration();
+});
+
 function cookiesWith(value?: string): Cookies {
   return {
     get: (name: string) => (name === AUTH_COOKIE ? value : undefined)
   } as Cookies;
+}
+
+function rejectMapIteration(): void {
+  Map.prototype.keys = function mapKeysShouldNotBeCalled(): ReturnType<Map<unknown, unknown>['keys']> {
+    throw new Error('Map.prototype.keys should not be called');
+  } as typeof originalMapKeys;
+  Map.prototype[Symbol.iterator] =
+    function mapIteratorShouldNotBeCalled(): ReturnType<Map<unknown, unknown>[typeof Symbol.iterator]> {
+      throw new Error('Map.prototype[Symbol.iterator] should not be called');
+    } as typeof originalMapIterator;
+}
+
+function restoreMapIteration(): void {
+  Map.prototype.keys = originalMapKeys;
+  Map.prototype[Symbol.iterator] = originalMapIterator;
 }
 
 test('session tokens validate signature and expiry', () => {
@@ -223,6 +245,33 @@ test('login rate limiter bounds distinct failed clients immediately', () => {
   assert.equal(limiter.size, 2);
   assert.equal(limiter.isAllowed('client-a'), true);
   assert.equal(limiter.size, 2);
+});
+
+test('login rate limiter prunes and bounds attempts without Map iteration', () => {
+  let now = 10_000;
+  const limiter = new LoginRateLimiter({
+    windowMs: 1000,
+    maxFailures: 1,
+    maxKeys: 2,
+    now: () => now
+  });
+
+  rejectMapIteration();
+  try {
+    limiter.recordFailure('client-a');
+    limiter.recordFailure('client-b');
+    limiter.recordFailure('client-c');
+
+    assert.equal(limiter.size, 2);
+    assert.equal(limiter.isAllowed('client-a'), true);
+    assert.equal(limiter.size, 2);
+
+    now += 1001;
+    assert.equal(limiter.isAllowed('client-b'), true);
+    assert.equal(limiter.size, 0);
+  } finally {
+    restoreMapIteration();
+  }
 });
 
 test('login rate limiter normalizes unsafe client keys before storage', () => {

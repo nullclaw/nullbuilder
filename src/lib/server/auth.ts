@@ -68,6 +68,8 @@ type NormalizedLoginRateLimiterOptions = {
 
 export class LoginRateLimiter {
   #attempts = new Map<string, LoginAttempt>();
+  #attemptKeys: string[] = [];
+  #attemptKeyHead = 0;
   #options: NormalizedLoginRateLimiterOptions;
   #now: () => number;
 
@@ -91,7 +93,7 @@ export class LoginRateLimiter {
     const current = this.#attempts.get(normalizedKey);
 
     if (!current || current.resetAt <= now) {
-      this.#attempts.set(normalizedKey, {
+      this.#rememberAttempt(normalizedKey, {
         failures: 1,
         resetAt: now + this.#options.windowMs
       });
@@ -103,7 +105,7 @@ export class LoginRateLimiter {
   }
 
   clear(key: string): void {
-    this.#attempts.delete(normalizeLoginRateLimitKey(key));
+    this.#deleteAttempt(normalizeLoginRateLimitKey(key));
   }
 
   get size(): number {
@@ -115,19 +117,72 @@ export class LoginRateLimiter {
   }
 
   #prune(now: number): void {
-    for (const [key, attempt] of this.#attempts) {
-      if (attempt.resetAt <= now) {
+    let writeIndex = 0;
+    for (let readIndex = this.#attemptKeyHead; readIndex < this.#attemptKeys.length; readIndex += 1) {
+      const key = this.#attemptKeys[readIndex];
+      const attempt = this.#attempts.get(key);
+      if (!attempt || attempt.resetAt <= now) {
         this.#attempts.delete(key);
+        continue;
       }
+
+      this.#attemptKeys[writeIndex] = key;
+      writeIndex += 1;
     }
+    this.#attemptKeys.length = writeIndex;
+    this.#attemptKeyHead = 0;
 
     while (this.#attempts.size > this.#options.maxKeys) {
-      const oldestKey = this.#attempts.keys().next().value;
+      const oldestKey = this.#takeOldestAttemptKey();
       if (oldestKey === undefined) {
         return;
       }
       this.#attempts.delete(oldestKey);
     }
+  }
+
+  #rememberAttempt(key: string, attempt: LoginAttempt): void {
+    if (!this.#attempts.has(key)) {
+      this.#attemptKeys.push(key);
+    }
+    this.#attempts.set(key, attempt);
+  }
+
+  #deleteAttempt(key: string): void {
+    if (this.#attempts.delete(key)) {
+      this.#removeAttemptKey(key);
+    }
+  }
+
+  #removeAttemptKey(key: string): void {
+    let removed = false;
+    let writeIndex = 0;
+    for (let readIndex = this.#attemptKeyHead; readIndex < this.#attemptKeys.length; readIndex += 1) {
+      const attemptKey = this.#attemptKeys[readIndex];
+      if (!removed && attemptKey === key) {
+        removed = true;
+        continue;
+      }
+
+      this.#attemptKeys[writeIndex] = attemptKey;
+      writeIndex += 1;
+    }
+    this.#attemptKeys.length = writeIndex;
+    this.#attemptKeyHead = 0;
+  }
+
+  #takeOldestAttemptKey(): string | undefined {
+    while (this.#attemptKeyHead < this.#attemptKeys.length) {
+      const key = this.#attemptKeys[this.#attemptKeyHead];
+      this.#attemptKeyHead += 1;
+      if (this.#attempts.has(key)) {
+        return key;
+      }
+    }
+
+    this.#attemptKeys.length = 0;
+    this.#attemptKeyHead = 0;
+    return undefined;
   }
 }
 
