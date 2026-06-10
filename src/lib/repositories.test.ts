@@ -6,6 +6,13 @@ test('normalizeOwner rejects invalid owners', () => {
   assert.equal(normalizeOwner('NullClaw'), 'NullClaw');
   assert.throws(() => normalizeOwner('-bad'), /^Error: Invalid repository owner\.$/);
   assert.throws(() => normalizeOwner('bad/owner'), /^Error: Invalid repository owner\.$/);
+  assert.throws(
+    () => normalizeOwner('a'.repeat(129)),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Repository owner is too large.' &&
+      !error.message.includes('aaaa')
+  );
 });
 
 test('normalizeRepoSlug validates default owner for unqualified repositories', () => {
@@ -42,6 +49,24 @@ test('parseRepositoryList bounds configured repository input', () => {
       error instanceof Error &&
       error.message === 'Repository list is too large.' &&
       !error.message.includes(oversizedList.slice(0, 32))
+  );
+
+  const oversizedWhitespaceList = ' '.repeat(256 * 1024 + 1);
+  assert.throws(
+    () => parseRepositoryList(oversizedWhitespaceList, 'nullclaw'),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Repository list is too large.' &&
+      !error.message.includes(oversizedWhitespaceList.slice(0, 32))
+  );
+
+  const oversizedSlug = 'a'.repeat(513);
+  assert.throws(
+    () => normalizeRepoSlug(oversizedSlug, 'nullclaw'),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Repository slug is too large.' &&
+      !error.message.includes(oversizedSlug.slice(0, 32))
   );
 });
 
