@@ -466,6 +466,23 @@ test('readWebActionFormData rejects bodies larger than the declared content leng
   });
 });
 
+test('readWebActionFormData rejects stream read errors without throwing details', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error('private stream failure detail'));
+    }
+  });
+  const result = await readWebActionFormData(webFormReadableStreamRequest(stream));
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    message: 'Invalid form body.'
+  });
+  assert.equal(result.message.includes('private stream failure detail'), false);
+  assert.equal(stream.locked, false);
+});
+
 test('readWebActionFormData rejects unsupported content types before streamed body size checks', async () => {
   const result = await readWebActionFormData(
     new Request('https://nullbuilder.example.test/', {
@@ -1200,19 +1217,25 @@ function webFormRequest(body: string, headers: HeadersInit = {}): Request {
 }
 
 function webFormStreamRequest(chunks: Uint8Array[]): Request {
-  return new Request('https://nullbuilder.example.test/', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: new ReadableStream<Uint8Array>({
+  return webFormReadableStreamRequest(
+    new ReadableStream<Uint8Array>({
       start(controller) {
         for (const chunk of chunks) {
           controller.enqueue(chunk);
         }
         controller.close();
       }
-    }),
+    })
+  );
+}
+
+function webFormReadableStreamRequest(stream: ReadableStream<Uint8Array>): Request {
+  return new Request('https://nullbuilder.example.test/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: stream,
     duplex: 'half'
   } as RequestInit);
 }

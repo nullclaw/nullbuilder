@@ -698,9 +698,15 @@ function asciiLowerCodeUnit(value: number): number {
   return value >= 65 && value <= 90 ? value + 32 : value;
 }
 
-async function readBoundedWebActionBody(request: Request): Promise<WebActionRequestBodySuccess | WebActionBodyLimitFailure> {
-  const body = await readBoundedByteStream(request.body, MAX_WEB_ACTION_FORM_BYTES);
-  return body.ok ? body : webActionBodyTooLargeFailure();
+async function readBoundedWebActionBody(
+  request: Request
+): Promise<WebActionRequestBodySuccess | WebActionBodyLimitFailure | WebActionBodyParseFailure> {
+  try {
+    const body = await readBoundedByteStream(request.body, MAX_WEB_ACTION_FORM_BYTES);
+    return body.ok ? body : webActionBodyTooLargeFailure();
+  } catch {
+    return webActionBodyParseFailure();
+  }
 }
 
 function webActionBodyTooLargeFailure(): WebActionBodyLimitFailure {
