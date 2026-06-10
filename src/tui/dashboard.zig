@@ -39,7 +39,7 @@ pub fn render(
     defer parsed.deinit();
 
     const root = dashboard_json.objectValue(parsed.value) orelse return error.InvalidDashboardJson;
-    const dashboard = try Dashboard.init(root);
+    const dashboard = Dashboard.init(root);
     const totals = dashboard.totals();
 
     try out.print("nullbuilder command center\n", .{});
@@ -317,6 +317,25 @@ test "render falls back for empty external status labels" {
     try expectContains(output, "completed");
     try expectContains(output, "success");
     try expectContains(output, "1 failing");
+}
+
+test "render treats malformed dashboard collections as empty" {
+    const json =
+        \\{
+        \\  "items": "not-array",
+        \\  "errors": {"repo": "alpha", "error": "hidden"}
+        \\}
+    ;
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try render(std.testing.allocator, &out.writer, json, true);
+    const output = out.writer.buffered();
+
+    try expectContains(output, "0 repos  0 issues  0 PRs  0 stars  0 failing");
+    try expectContains(output, "no open issues");
+    try expectContains(output, "no open pull requests");
+    try std.testing.expect(std.mem.indexOf(u8, output, "Load errors") == null);
 }
 
 test "render does not echo terminal control characters from external text" {

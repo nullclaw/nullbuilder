@@ -18,13 +18,10 @@ pub const Dashboard = struct {
     items: []const JsonValue,
     errors: []const JsonValue,
 
-    pub fn init(root: JsonObject) !Dashboard {
-        const items = dashboard_json.boundedArrayField(root, "items", max_dashboard_repositories) orelse return error.InvalidDashboardJson;
-        const errors = dashboard_json.boundedArrayField(root, "errors", max_load_errors) orelse dashboard_json.emptyValues();
-
+    pub fn init(root: JsonObject) Dashboard {
         return .{
-            .items = items,
-            .errors = errors,
+            .items = dashboard_json.boundedArrayFieldOrEmpty(root, "items", max_dashboard_repositories),
+            .errors = dashboard_json.boundedArrayFieldOrEmpty(root, "errors", max_load_errors),
         };
     }
 
@@ -164,8 +161,8 @@ fn repositoryFromObject(repo: JsonObject) Repository {
         .stars = dashboard_json.safeIntegerField(repo, "stars"),
         .runs = dashboard_runs.repositoryRunStatuses(status, latest),
         .has_failure = dashboard_runs.repositoryHasFailure(latest),
-        .issues = dashboard_json.boundedArrayField(repo, "issues", max_work_items_per_repository) orelse dashboard_json.emptyValues(),
-        .pull_requests = dashboard_json.boundedArrayField(repo, "pullRequests", max_work_items_per_repository) orelse dashboard_json.emptyValues(),
+        .issues = dashboard_json.boundedArrayFieldOrEmpty(repo, "issues", max_work_items_per_repository),
+        .pull_requests = dashboard_json.boundedArrayFieldOrEmpty(repo, "pullRequests", max_work_items_per_repository),
     };
 }
 
@@ -240,7 +237,7 @@ test "dashboard model collects repository totals and run statuses" {
     , .{});
     defer parsed.deinit();
 
-    const dashboard = try Dashboard.init(parsed.value.object);
+    const dashboard = Dashboard.init(parsed.value.object);
     const totals = dashboard.totals();
 
     try std.testing.expectEqual(@as(u64, 2), totals.repositories);
@@ -284,7 +281,7 @@ test "dashboard totals reject counters outside the safe JSON integer domain" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator, json, .{});
     defer parsed.deinit();
 
-    const dashboard = try Dashboard.init(parsed.value.object);
+    const dashboard = Dashboard.init(parsed.value.object);
     const totals = dashboard.totals();
 
     try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.issues);
@@ -306,7 +303,7 @@ test "dashboard model bounds external collection sizes" {
     var parsed_repos = try std.json.parseFromSlice(JsonValue, std.testing.allocator, repos_json.writer.buffered(), .{});
     defer parsed_repos.deinit();
 
-    const bounded_dashboard = try Dashboard.init(parsed_repos.value.object);
+    const bounded_dashboard = Dashboard.init(parsed_repos.value.object);
     try std.testing.expectEqual(@as(usize, max_dashboard_repositories), bounded_dashboard.items.len);
 
     var nested_json: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -332,11 +329,45 @@ test "dashboard model bounds external collection sizes" {
     var parsed_nested = try std.json.parseFromSlice(JsonValue, std.testing.allocator, nested_json.writer.buffered(), .{});
     defer parsed_nested.deinit();
 
-    const nested_dashboard = try Dashboard.init(parsed_nested.value.object);
+    const nested_dashboard = Dashboard.init(parsed_nested.value.object);
     const repo = repositoryFromValue(nested_dashboard.items[0]).?;
     try std.testing.expectEqual(@as(usize, max_work_items_per_repository), repo.issues.len);
     try std.testing.expectEqual(@as(usize, max_work_items_per_repository), repo.pull_requests.len);
     try std.testing.expectEqual(@as(usize, max_load_errors), nested_dashboard.errors.len);
+}
+
+test "dashboard model treats malformed collection fields as empty" {
+    var malformed_root = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{"items":"not-array","errors":{"repo":"alpha"}}
+    , .{});
+    defer malformed_root.deinit();
+
+    const empty_dashboard = Dashboard.init(malformed_root.value.object);
+    try std.testing.expectEqual(@as(usize, 0), empty_dashboard.items.len);
+    try std.testing.expectEqual(@as(usize, 0), empty_dashboard.errors.len);
+
+    var malformed_nested = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    {"slug": "alpha", "issues": "not-array", "pullRequests": {"number": 7}},
+        \\    {"slug": "beta", "issues": [{"number": 8, "title": "Valid issue"}]}
+        \\  ],
+        \\  "errors": "not-array"
+        \\}
+    , .{});
+    defer malformed_nested.deinit();
+
+    const dashboard = Dashboard.init(malformed_nested.value.object);
+    const alpha = repositoryFromValue(dashboard.items[0]).?;
+    try std.testing.expectEqual(@as(usize, 0), alpha.issues.len);
+    try std.testing.expectEqual(@as(usize, 0), alpha.pull_requests.len);
+    try std.testing.expectEqual(@as(usize, 0), dashboard.errors.len);
+
+    var issues = WorkItemIterator.init(dashboard, .issues);
+    const issue = issues.next().?;
+    try std.testing.expectEqualStrings("beta", issue.repo);
+    try std.testing.expectEqual(@as(u64, 8), issue.number);
+    try std.testing.expectEqual(null, issues.next());
 }
 
 test "dashboard model rejects oversized external text fields" {
@@ -357,7 +388,7 @@ test "dashboard model rejects oversized external text fields" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator, json, .{});
     defer parsed.deinit();
 
-    const dashboard = try Dashboard.init(parsed.value.object);
+    const dashboard = Dashboard.init(parsed.value.object);
     const repo = repositoryFromValue(dashboard.items[0]).?;
     try std.testing.expectEqualStrings("unknown", repo.slug);
 
@@ -387,7 +418,7 @@ test "dashboard model rejects control-bearing external text fields" {
     , .{});
     defer parsed.deinit();
 
-    const dashboard = try Dashboard.init(parsed.value.object);
+    const dashboard = Dashboard.init(parsed.value.object);
     const repo = repositoryFromValue(dashboard.items[0]).?;
     try std.testing.expectEqualStrings("unknown", repo.slug);
     try std.testing.expectEqualStrings("completed", repo.runs.ci);
@@ -428,7 +459,7 @@ test "work item iterator skips invalid rows across repositories" {
     , .{});
     defer parsed.deinit();
 
-    const dashboard = try Dashboard.init(parsed.value.object);
+    const dashboard = Dashboard.init(parsed.value.object);
     var issues = WorkItemIterator.init(dashboard, .issues);
 
     const first = issues.next().?;
@@ -459,7 +490,7 @@ test "work item iterator binds item repos to the parent repository slug" {
     , .{});
     defer parsed.deinit();
 
-    const dashboard = try Dashboard.init(parsed.value.object);
+    const dashboard = Dashboard.init(parsed.value.object);
     var issues = WorkItemIterator.init(dashboard, .issues);
 
     const first = issues.next().?;

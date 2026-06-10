@@ -32,6 +32,10 @@ pub fn boundedArrayField(object: JsonObject, field_name: []const u8, max_items: 
     return items[0..@min(items.len, max_items)];
 }
 
+pub fn boundedArrayFieldOrEmpty(object: JsonObject, field_name: []const u8, max_items: usize) []const JsonValue {
+    return boundedArrayField(object, field_name, max_items) orelse emptyValues();
+}
+
 pub fn objectField(object: JsonObject, field_name: []const u8) ?JsonObject {
     const value = object.get(field_name) orelse return null;
     return switch (value) {
@@ -117,6 +121,18 @@ test "boundedArrayField caps external arrays" {
     try std.testing.expectEqual(@as(usize, 0), boundedArrayField(object, "items", 0).?.len);
     try std.testing.expectEqual(null, boundedArrayField(object, "name", 2));
     try std.testing.expectEqual(null, boundedArrayField(object, "missing", 2));
+}
+
+test "boundedArrayFieldOrEmpty returns empty slices for missing and malformed arrays" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{"items":[1,2,3],"name":"nullbuilder"}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try std.testing.expectEqual(@as(usize, 2), boundedArrayFieldOrEmpty(object, "items", 2).len);
+    try std.testing.expectEqual(@as(usize, 0), boundedArrayFieldOrEmpty(object, "name", 2).len);
+    try std.testing.expectEqual(@as(usize, 0), boundedArrayFieldOrEmpty(object, "missing", 2).len);
 }
 
 test "safeTextField rejects oversized and control-bearing strings" {
