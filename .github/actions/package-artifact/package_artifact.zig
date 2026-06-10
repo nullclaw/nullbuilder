@@ -383,6 +383,8 @@ test "package artifact validates manifest run URL fields at the formatter bounda
     var unsafe_run_options = valid_options;
     unsafe_run_options.run_id = "0";
     try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_run_options));
+    unsafe_run_options.run_id = "01";
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_run_options));
 
     var unsafe_binary_options = valid_options;
     unsafe_binary_options.binary_path = "../nullclaw-linux-x86_64";
@@ -510,6 +512,8 @@ test "package artifact validates package options before filesystem writes" {
 
     var unsafe_run_options = valid_options;
     unsafe_run_options.run_id = "0";
+    try std.testing.expectError(error.InvalidRunId, validatePackageOptions(unsafe_run_options));
+    unsafe_run_options.run_id = "01";
     try std.testing.expectError(error.InvalidRunId, validatePackageOptions(unsafe_run_options));
 
     var unsafe_url_options = valid_options;

@@ -20,6 +20,7 @@ const ParsedHttpUrl = struct {
 
 pub fn isDecimalId(value: []const u8) bool {
     if (value.len == 0 or value.len > max_decimal_id_digits) return false;
+    if (value.len > 1 and value[0] == '0') return false;
 
     const id = std.fmt.parseUnsigned(u64, value, 10) catch return false;
     return id > 0;
@@ -379,6 +380,7 @@ test "action values validate decimal ids and full shas" {
     try std.testing.expect(isDecimalId("18446744073709551615"));
     try std.testing.expect(!isDecimalId(""));
     try std.testing.expect(!isDecimalId("0"));
+    try std.testing.expect(!isDecimalId("01"));
     try std.testing.expect(!isDecimalId("12a"));
     try std.testing.expect(!isDecimalId("18446744073709551616"));
     try std.testing.expect(!isDecimalId("1" ** 100));

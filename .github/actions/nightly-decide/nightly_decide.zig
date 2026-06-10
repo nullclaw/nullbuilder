@@ -111,6 +111,7 @@ fn decideShouldBuildFromPayload(
 }
 
 fn parseCurrentRunId(current_run_id: []const u8) ?u64 {
+    if (!action_values.isDecimalId(current_run_id)) return null;
     return std.fmt.parseUnsigned(u64, current_run_id, 10) catch null;
 }
 
@@ -691,6 +692,8 @@ test "nightly validates action options before reading runs json" {
 
     var unsafe_run_options = valid_options;
     unsafe_run_options.current_run_id = "not-a-number";
+    try std.testing.expectError(error.InvalidCurrentRunId, validateDecideOptions(unsafe_run_options));
+    unsafe_run_options.current_run_id = "01";
     try std.testing.expectError(error.InvalidCurrentRunId, validateDecideOptions(unsafe_run_options));
 
     var unsafe_sha_options = valid_options;
