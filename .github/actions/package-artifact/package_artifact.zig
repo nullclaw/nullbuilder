@@ -174,24 +174,30 @@ fn validateManifestMetadata(options: PackageOptions) ManifestBuildError!void {
 }
 
 fn formatSha256Path(allocator: std.mem.Allocator, binary_path: []const u8) ![]u8 {
-    const path = try std.fmt.allocPrint(allocator, "{s}.sha256", .{binary_path});
-    errdefer allocator.free(path);
-    try validateGeneratedPath(path);
-    return path;
+    if (!action_paths.isSafeRelativePath(binary_path)) return error.InvalidGeneratedPath;
+    return allocGeneratedPath(allocator, "{s}.sha256", .{binary_path});
 }
 
 fn formatManifestPath(allocator: std.mem.Allocator, binary_path: []const u8, target: []const u8) ![]u8 {
+    if (!action_paths.isSafeRelativePath(binary_path)) return error.InvalidGeneratedPath;
+    if (!action_paths.isSafeLabel(target)) return error.InvalidGeneratedPath;
+
     if (std.Io.Dir.path.dirname(binary_path)) |artifact_dir| {
-        const path = try std.fmt.allocPrint(allocator, "{s}/manifest-{s}.json", .{
+        return allocGeneratedPath(allocator, "{s}/manifest-{s}.json", .{
             artifact_dir,
             target,
         });
-        errdefer allocator.free(path);
-        try validateGeneratedPath(path);
-        return path;
     }
 
-    const path = try std.fmt.allocPrint(allocator, "manifest-{s}.json", .{target});
+    return allocGeneratedPath(allocator, "manifest-{s}.json", .{target});
+}
+
+fn allocGeneratedPath(
+    allocator: std.mem.Allocator,
+    comptime format: []const u8,
+    args: anytype,
+) ![]u8 {
+    const path = try std.fmt.allocPrint(allocator, format, args);
     errdefer allocator.free(path);
     try validateGeneratedPath(path);
     return path;
@@ -572,6 +578,21 @@ test "package artifact formats safe generated paths" {
     const long_safe_target = "t" ** 128;
     try std.testing.expect(action_paths.isSafeLabel(long_safe_target));
     try std.testing.expectError(error.InvalidGeneratedPath, formatManifestPath(std.testing.allocator, long_safe_binary, long_safe_target));
+}
+
+test "package artifact rejects unsafe generated path inputs before allocation" {
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        formatSha256Path(std.testing.failing_allocator, "../nullclaw-linux-x86_64"),
+    );
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        formatManifestPath(std.testing.failing_allocator, "../nullclaw-linux-x86_64", "linux-x86_64"),
+    );
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        formatManifestPath(std.testing.failing_allocator, "nightly-artifacts/nullclaw-linux-x86_64", "../linux-x86_64"),
+    );
 }
 
 test "package artifact prepares output metadata before reading binary bytes" {
