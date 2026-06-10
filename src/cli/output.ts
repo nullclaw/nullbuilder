@@ -227,9 +227,7 @@ function formatTable(rows: Array<Record<string, string>>, columns: string[]): st
   }
 
   const safeRows = sanitizeRows(rows, columns);
-  const widths = columns.map((column) => {
-    return Math.max(column.length, ...safeRows.map((row) => printableLength(row[column] ?? '')));
-  });
+  const widths = columnWidths(safeRows, columns);
   const lines = [
     columns.map((column, index) => column.padEnd(widths[index])).join('  '),
     widths.map((width) => '-'.repeat(width)).join('  ')
@@ -268,6 +266,18 @@ function countAuditFindings(findings: AuditFinding[]): Record<AuditSeverity, num
 
 function printableLength(value: string): number {
   return value.length;
+}
+
+function columnWidths(rows: Array<Record<string, string>>, columns: string[]): number[] {
+  const widths = columns.map((column) => column.length);
+
+  for (const row of rows) {
+    for (const [index, column] of columns.entries()) {
+      widths[index] = Math.max(widths[index], printableLength(row[column] ?? ''));
+    }
+  }
+
+  return widths;
 }
 
 function formatDate(value: string): string {

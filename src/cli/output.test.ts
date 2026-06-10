@@ -115,6 +115,25 @@ test('formatters bound terminal output from external text', () => {
   assert.match(output, /x{20}\.\.\./);
 });
 
+test('formatDashboard formats large tables without spreading row widths', () => {
+  const issueCount = 150_000;
+  const baseIssue = dashboardFixture().issues[0];
+  const output = formatDashboard(
+    'issues',
+    dashboardFixture({
+      issues: Array.from({ length: issueCount }, (_, index) => ({
+        ...baseIssue,
+        number: index + 1,
+        title: `Issue ${index + 1}`
+      }))
+    })
+  );
+
+  assert.match(output, /^repo\s+issue\s+updated\s+title\s+url/m);
+  assert.match(output, /#150000/);
+  assert.equal(output.includes('Issue 150000'), true);
+});
+
 test('formatters truncate by code point without splitting surrogate pairs', () => {
   const output = formatCliError(new Error('🙂'.repeat(3000)));
 
