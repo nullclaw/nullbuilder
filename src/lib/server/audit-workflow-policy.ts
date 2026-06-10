@@ -41,12 +41,10 @@ export function nullbuilderWorkflowFindings(
       continue;
     }
 
-    findings.push(
-      finding(
-        workflow.severity,
-        `Missing nullbuilder ${workflow.id} workflow`,
-        `Add a reusable workflow caller for ${workflow.file} when this repository should share nullbuilder automation.`
-      )
+    findings[findings.length] = finding(
+      workflow.severity,
+      `Missing nullbuilder ${workflow.id} workflow`,
+      `Add a reusable workflow caller for ${workflow.file} when this repository should share nullbuilder automation.`
     );
   }
 
@@ -64,14 +62,12 @@ export function dangerousWorkflowTriggerFindings(
       return;
     }
 
-    findings.push(
-      finding(
-        'critical',
-        'Workflow uses pull_request_target',
-        `${file.path} can expose write-scoped tokens to untrusted pull request code unless every checkout and script path is locked down.`,
-        file.url,
-        file.path
-      )
+    findings[findings.length] = finding(
+      'critical',
+      'Workflow uses pull_request_target',
+      `${file.path} can expose write-scoped tokens to untrusted pull request code unless every checkout and script path is locked down.`,
+      file.url,
+      file.path
     );
   });
 
@@ -83,36 +79,30 @@ export function workflowPermissionFindings(context: AuditContext, finding: Audit
 
   forEachAuditedWorkflowFile(context, (file) => {
     if (/^\s*permissions:\s*write-all\s*$/m.test(file.content)) {
-      findings.push(
-        finding(
-          'critical',
-          'Workflow grants write-all permissions',
-          `${file.path} should grant only the token scopes required by each job.`,
-          file.url,
-          file.path
-        )
+      findings[findings.length] = finding(
+        'critical',
+        'Workflow grants write-all permissions',
+        `${file.path} should grant only the token scopes required by each job.`,
+        file.url,
+        file.path
       );
     } else if (!/^\s*permissions:/m.test(file.content)) {
-      findings.push(
-        finding(
-          'warning',
-          'Workflow token permissions are implicit',
-          `${file.path} should declare top-level or job-level permissions explicitly.`,
-          file.url,
-          file.path
-        )
+      findings[findings.length] = finding(
+        'warning',
+        'Workflow token permissions are implicit',
+        `${file.path} should declare top-level or job-level permissions explicitly.`,
+        file.url,
+        file.path
       );
     }
 
     if (/\bself-hosted\b/.test(file.content)) {
-      findings.push(
-        finding(
-          'warning',
-          'Workflow uses self-hosted runners',
-          `${file.path} should treat self-hosted runners as privileged infrastructure and restrict untrusted events.`,
-          file.url,
-          file.path
-        )
+      findings[findings.length] = finding(
+        'warning',
+        'Workflow uses self-hosted runners',
+        `${file.path} should treat self-hosted runners as privileged infrastructure and restrict untrusted events.`,
+        file.url,
+        file.path
       );
     }
   });
@@ -133,14 +123,12 @@ export function workflowPinningFindings(context: AuditContext, finding: AuditFin
         continue;
       }
 
-      findings.push(
-        finding(
-          'warning',
-          'Workflow action is not pinned to a commit SHA',
-          `${file.path} uses ${action.target}@${action.ref}; pin third-party actions to immutable commits for stronger supply-chain guarantees.`,
-          file.url,
-          file.path
-        )
+      findings[findings.length] = finding(
+        'warning',
+        'Workflow action is not pinned to a commit SHA',
+        `${file.path} uses ${action.target}@${action.ref}; pin third-party actions to immutable commits for stronger supply-chain guarantees.`,
+        file.url,
+        file.path
       );
 
       fileFindings += 1;
@@ -169,14 +157,12 @@ export function mutableNullbuilderWorkflowRefFindings(
         continue;
       }
 
-      findings.push(
-        finding(
-          'warning',
-          'Reusable workflow uses a mutable ref',
-          `${file.path} references ${reference.workflow}@${reference.ref}; use a release tag for predictable cross-repository behavior.`,
-          file.url,
-          file.path
-        )
+      findings[findings.length] = finding(
+        'warning',
+        'Reusable workflow uses a mutable ref',
+        `${file.path} references ${reference.workflow}@${reference.ref}; use a release tag for predictable cross-repository behavior.`,
+        file.url,
+        file.path
       );
 
       fileFindings += 1;

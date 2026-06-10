@@ -13,6 +13,7 @@ import {
 } from './audit-workflow-policy';
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
+const originalArrayPush = Array.prototype.push;
 
 test('nullbuilderWorkflowFindings reports only missing reusable workflow callers', () => {
   const findings = nullbuilderWorkflowFindings(
@@ -210,6 +211,48 @@ jobs:
   );
 });
 
+test('workflow policy helpers collect findings without global array push hooks', () => {
+  const context = auditContext({
+    workflowFiles: [
+      workflowFile(`
+on: pull_request_target
+permissions: write-all
+jobs:
+  ci:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/setup-node@v4
+  release:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-release.yml@main
+`)
+    ]
+  });
+
+  const {
+    result: { missing, dangerous, permissions, pinning, mutable },
+    pushCalls
+  } = withGuardedArrayPush(() => ({
+    missing: nullbuilderWorkflowFindings(context, testFinding),
+    dangerous: dangerousWorkflowTriggerFindings(context, testFinding),
+    permissions: workflowPermissionFindings(context, testFinding),
+    pinning: workflowPinningFindings(context, testFinding),
+    mutable: mutableNullbuilderWorkflowRefFindings(context, testFinding)
+  }));
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(
+    missing.map((finding) => finding.title),
+    ['Missing nullbuilder ci workflow', 'Missing nullbuilder nightly workflow']
+  );
+  assert.deepEqual(dangerous.map((finding) => finding.title), ['Workflow uses pull_request_target']);
+  assert.deepEqual(
+    permissions.map((finding) => finding.title),
+    ['Workflow grants write-all permissions', 'Workflow uses self-hosted runners']
+  );
+  assert.deepEqual(pinning.map((finding) => finding.title), ['Workflow action is not pinned to a commit SHA']);
+  assert.deepEqual(mutable.map((finding) => finding.title), ['Reusable workflow uses a mutable ref']);
+});
+
 function auditContext(overrides: Partial<AuditContext> = {}): AuditContext {
   return {
     repo: 'nullclaw/nullbuilder' as RepoSlug,
@@ -258,3 +301,28 @@ const testFinding: AuditFindingBuilder = (
   url,
   path
 });
+
+function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      pushCalls
+    };
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalArrayPush
+    });
+  }
+}
