@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
+import { MAX_REPOSITORY_LIST_ENTRIES } from '../repositories';
 import { readConfig } from './config';
 import { discoverRepositories, GitHubApiError, publicErrorMessage, resolveGitHubApiUrl } from './github';
 
@@ -132,4 +133,30 @@ test('discoverRepositories normalizes API repository slugs before adding them', 
     'nullclaw/utility'
   ]);
   assert.deepEqual(requests, ['https://discover.example.test/users/nullclaw/repos?type=owner&sort=updated&per_page=100']);
+});
+
+test('discoverRepositories caps discovered repositories before dashboard fan-out', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://discover-cap.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const discovered = Array.from({ length: MAX_REPOSITORY_LIST_ENTRIES + 5 }, (_, index) => {
+    const name = `nullrepo${String(index).padStart(4, '0')}`;
+    return {
+      name,
+      full_name: `nullclaw/${name}`,
+      language: 'TypeScript',
+      archived: false
+    };
+  });
+
+  globalThis.fetch = (async () => new Response(JSON.stringify(discovered))) as typeof fetch;
+
+  const repos = await discoverRepositories(config);
+
+  assert.equal(repos.length, MAX_REPOSITORY_LIST_ENTRIES);
+  assert.equal(repos.includes('nullclaw/nullbuilder'), true);
+  assert.equal(repos.includes('nullclaw/nullrepo0998'), true);
+  assert.equal(repos.includes('nullclaw/nullrepo0999'), false);
 });

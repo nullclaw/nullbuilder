@@ -1,4 +1,4 @@
-import { normalizeRepoSlug, type RepoSlug } from '../repositories';
+import { MAX_REPOSITORY_LIST_ENTRIES, normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { mapWithConcurrency } from './concurrency';
 import {
@@ -57,14 +57,22 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
 
     for (const repo of repos) {
       const slug = normalizeDiscoveredRepoSlug(repo.full_name, config.owner);
-      if (!slug || ignored.has(repoKey(slug))) {
+      if (!slug) {
+        continue;
+      }
+
+      const key = repoKey(slug);
+      if (ignored.has(key)) {
         continue;
       }
 
       const isNullRepo = repo.name.toLowerCase().startsWith('null') || repo.name.toLowerCase() === 'nllclw';
       const isZigRepo = repo.language === 'Zig';
       if (!repo.archived && (isNullRepo || isZigRepo)) {
-        configured.set(repoKey(slug), slug);
+        if (!configured.has(key) && configured.size >= MAX_REPOSITORY_LIST_ENTRIES) {
+          break;
+        }
+        configured.set(key, slug);
       }
     }
   } catch {
