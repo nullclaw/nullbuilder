@@ -31,6 +31,7 @@ export const MAX_DASHBOARD_URL_LENGTH = MAX_GITHUB_WEB_URL_LENGTH;
 export const MAX_LABELS_PER_WORK_ITEM = 20;
 export const MAX_LABEL_NAME_LENGTH = 64;
 export const MAX_REPOSITORY_WORK_ITEMS = 100;
+export const MAX_WORKFLOW_RUNS_PER_REPOSITORY = 100;
 
 export function mapRepositorySummary(
   repo: RepoSlug,
@@ -128,10 +129,12 @@ function mapLatestRunsForRepository(
   runs: unknown[],
   urlContext: GitHubWebUrlContext
 ): RepositoryLatestRuns {
+  const selectedRuns = selectLatestRuns(runs);
+
   return {
-    ci: mapRun(findRun(runs, ['ci', 'test'], ['ci.yml', 'zig-ci.yml']), urlContext),
-    nightly: mapRun(findRun(runs, ['nightly'], ['nightly.yml', 'zig-nightly.yml']), urlContext),
-    release: mapRun(findRun(runs, ['release'], ['release.yml', 'zig-release.yml']), urlContext)
+    ci: mapRun(selectedRuns.ci, urlContext),
+    nightly: mapRun(selectedRuns.nightly, urlContext),
+    release: mapRun(selectedRuns.release, urlContext)
   };
 }
 
@@ -296,25 +299,56 @@ function safeBoolean(value: unknown): boolean {
   return value === true;
 }
 
-function findRun(
-  runs: unknown[],
+type SelectedWorkflowRuns = {
+  ci: unknown | null;
+  nightly: unknown | null;
+  release: unknown | null;
+};
+
+function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
+  const selectedRuns: SelectedWorkflowRuns = {
+    ci: null,
+    nightly: null,
+    release: null
+  };
+  const runCount = Math.min(runs.length, MAX_WORKFLOW_RUNS_PER_REPOSITORY);
+
+  for (let index = 0; index < runCount; index += 1) {
+    const runObject = objectRecord(runs[index]);
+    if (!runObject) {
+      continue;
+    }
+
+    const name = safeDashboardText(runObject.name, '').toLowerCase();
+    const path = safeDashboardText(runObject.path, '').toLowerCase();
+
+    if (selectedRuns.ci === null && matchesRun(name, path, ['ci', 'test'], ['ci.yml', 'zig-ci.yml'])) {
+      selectedRuns.ci = runObject;
+    }
+    if (selectedRuns.nightly === null && matchesRun(name, path, ['nightly'], ['nightly.yml', 'zig-nightly.yml'])) {
+      selectedRuns.nightly = runObject;
+    }
+    if (selectedRuns.release === null && matchesRun(name, path, ['release'], ['release.yml', 'zig-release.yml'])) {
+      selectedRuns.release = runObject;
+    }
+
+    if (selectedRuns.ci !== null && selectedRuns.nightly !== null && selectedRuns.release !== null) {
+      break;
+    }
+  }
+
+  return selectedRuns;
+}
+
+function matchesRun(
+  name: string,
+  path: string,
   nameKeywords: string[],
   pathKeywords: string[]
-): unknown | null {
+): boolean {
   return (
-    runs.find((run) => {
-      const runObject = objectRecord(run);
-      if (!runObject) {
-        return false;
-      }
-
-      const name = safeDashboardText(runObject.name, '').toLowerCase();
-      const path = safeDashboardText(runObject.path, '').toLowerCase();
-      return (
-        nameKeywords.some((keyword) => name.includes(keyword)) ||
-        pathKeywords.some((keyword) => path.endsWith(keyword) || path.includes(`/${keyword}`))
-      );
-    }) ?? null
+    nameKeywords.some((keyword) => name.includes(keyword)) ||
+    pathKeywords.some((keyword) => path.endsWith(keyword) || path.includes(`/${keyword}`))
   );
 }
 

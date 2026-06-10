@@ -13,6 +13,7 @@ import {
   MAX_LABEL_NAME_LENGTH,
   MAX_REPOSITORY_WORK_ITEMS,
   MAX_TIMESTAMP_TEXT_LENGTH,
+  MAX_WORKFLOW_RUNS_PER_REPOSITORY,
   MAX_WORK_ITEM_TITLE_LENGTH,
   type GitHubIssueResponse,
   type GitHubPullResponse,
@@ -379,6 +380,43 @@ test('mapRepositorySummary validates dashboard URLs from GitHub payloads', () =>
   assert.equal(summary.pullRequests[0].url, `${repositoryUrl}/pull/9`);
   assert.equal(summary.latestRuns.ci?.url, `${repositoryUrl}/actions`);
   assert.equal(summary.latestRuns.nightly?.url, `${repositoryUrl}/actions/runs/2?check=true#summary`);
+});
+
+test('mapRepositorySummary bounds workflow run scanning to one GitHub page', () => {
+  const workflowRuns = [
+    workflowRun({
+      name: 'Unit Tests',
+      path: '.github/workflows/build.yml',
+      display_title: 'Unit Tests'
+    }),
+    ...Array.from({ length: MAX_WORKFLOW_RUNS_PER_REPOSITORY - 1 }, (_, index) =>
+      workflowRun({
+        id: index + 10,
+        name: 'Docs',
+        path: `.github/workflows/docs-${index}.yml`,
+        display_title: 'Docs'
+      })
+    ),
+    workflowRun({
+      id: 999,
+      name: 'Nightly',
+      path: '.github/workflows/nightly.yml',
+      display_title: 'Nightly'
+    })
+  ];
+
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [],
+    [],
+    workflowRuns,
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.latestRuns.ci?.name, 'Unit Tests');
+  assert.equal(summary.latestRuns.nightly, null);
+  assert.equal(summary.latestRuns.release, null);
 });
 
 test('mapRepositorySummary skips invalid issue and pull request numbers', () => {
