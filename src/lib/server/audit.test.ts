@@ -18,7 +18,7 @@ test('getAuditReport normalizes repository and workflow URLs from GitHub payload
   });
   const repositoryUrl = 'https://github.example.test/nullclaw/nullbuilder';
 
-  mockGitHub((path) => {
+  const requests = mockGitHub((path) => {
     if (path === '/repos/nullclaw/nullbuilder') {
       return {
         full_name: 'nullclaw/nullbuilder',
@@ -36,6 +36,18 @@ test('getAuditReport normalizes repository and workflow URLs from GitHub payload
           path: '.github/workflows/ci.yml',
           type: 'file',
           html_url: 'https://github.example.test/other/repo/blob/main/.github/workflows/ci.yml'
+        },
+        {
+          name: 'unsafe.yml\nsecret',
+          path: '.github/workflows/unsafe.yml\nsecret',
+          type: 'file',
+          html_url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/unsafe.yml'
+        },
+        {
+          name: 'nested.yml',
+          path: '.github/workflows/nested.yml/extra',
+          type: 'file',
+          html_url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/nested.yml/extra'
         }
       ];
     }
@@ -86,6 +98,8 @@ jobs:
   assert.equal(repository.url, repositoryUrl);
   assert.equal(triggerFinding?.url, `${repositoryUrl}/actions`);
   assert.equal(report.findings.every((finding) => finding.url?.startsWith(repositoryUrl)), true);
+  assert.equal(requests.some((path) => path.includes('unsafe') || path.includes('nested')), false);
+  assert.equal(JSON.stringify(report).includes('secret'), false);
 });
 
 test('getAuditReport rejects unsafe default branch values before probing branch protection', async () => {

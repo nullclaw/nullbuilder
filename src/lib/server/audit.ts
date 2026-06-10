@@ -1,4 +1,5 @@
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
+import { readSafeTextInput } from '../text-safety';
 import type { NullbuilderConfig } from './config';
 import { buildAuditTotals, collectAuditFindings, scoreFindings, sortFindings } from './audit-summary';
 import type { AuditReport, AuditRepositoryResult } from './audit-types';
@@ -25,6 +26,9 @@ import {
   type GitHubWebUrlContext
 } from './github-web-urls';
 import { encodeGitHubPath } from './github-url-encoding';
+
+const MAX_WORKFLOW_FILE_NAME_LENGTH = 255;
+const MAX_WORKFLOW_FILE_PATH_LENGTH = 512;
 
 export type {
   AuditArea,
@@ -152,9 +156,7 @@ async function loadWorkflowFiles(
     return [];
   }
 
-  const workflowItems = workflowDirectory.data.filter(
-    (item) => item.type === 'file' && /\.(?:ya?ml)$/i.test(item.name)
-  );
+  const workflowItems = workflowDirectory.data.flatMap((item) => safeWorkflowDirectoryItem(item) ?? []);
 
   return (
     await mapWithConcurrency(workflowItems.slice(0, 50), Math.min(config.concurrency, 4), async (item) => {
@@ -180,6 +182,28 @@ async function loadWorkflowFiles(
       };
     })
   ).filter((file): file is WorkflowFile => file !== null);
+}
+
+function safeWorkflowDirectoryItem(item: GitHubContentItem): Pick<GitHubContentItem, 'name' | 'path' | 'html_url'> | null {
+  if (item.type !== 'file') {
+    return null;
+  }
+
+  const name = readSafeTextInput(item.name, { maxLength: MAX_WORKFLOW_FILE_NAME_LENGTH });
+  const path = readSafeTextInput(item.path, { maxLength: MAX_WORKFLOW_FILE_PATH_LENGTH });
+  if (!name || !path || !/^[^/\\]+\.ya?ml$/i.test(name)) {
+    return null;
+  }
+
+  if (path !== `.github/workflows/${name}`) {
+    return null;
+  }
+
+  return {
+    name,
+    path,
+    html_url: item.html_url
+  };
 }
 
 async function probeGitHub<T>(config: NullbuilderConfig, path: string): Promise<Probe<T>> {
