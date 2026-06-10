@@ -86,11 +86,16 @@ pub fn isRawAnsiStringControl(byte: u8) bool {
     return byte == 0x90 or byte == 0x98 or byte == 0x9d or byte == 0x9e or byte == 0x9f;
 }
 
+pub fn isUtf8AnsiStringControl(value: []const u8, index: usize) bool {
+    return value[index] == 0xc2 and index + 1 < value.len and isRawAnsiStringControl(value[index + 1]);
+}
+
 pub fn skipAnsiStringControl(value: []const u8, start: usize) usize {
     var index = start;
     while (index < value.len) {
         if (value[index] == 0x07) return index + 1;
         if (value[index] == 0x9c) return index + 1;
+        if (value[index] == 0xc2 and index + 1 < value.len and value[index + 1] == 0x9c) return index + 2;
         if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
         index += 1;
     }
@@ -186,6 +191,12 @@ test "text safety identifies ANSI string control boundaries" {
     try std.testing.expect(isRawAnsiStringControl(0x9e));
     try std.testing.expect(isRawAnsiStringControl(0x9f));
     try std.testing.expect(!isRawAnsiStringControl(0x85));
+    try std.testing.expect(isUtf8AnsiStringControl("\xc2\x90private", 0));
+    try std.testing.expect(isUtf8AnsiStringControl("\xc2\x98private", 0));
+    try std.testing.expect(isUtf8AnsiStringControl("\xc2\x9dprivate", 0));
+    try std.testing.expect(isUtf8AnsiStringControl("\xc2\x9eprivate", 0));
+    try std.testing.expect(isUtf8AnsiStringControl("\xc2\x9fprivate", 0));
+    try std.testing.expect(!isUtf8AnsiStringControl("\xc2\x85", 0));
     try std.testing.expect(isRawAnsiControlSequence(0x9b));
     try std.testing.expect(!isRawAnsiControlSequence(0x9d));
     try std.testing.expect(isUtf8AnsiControlSequence("\xc2\x9b31m", 0));
@@ -193,6 +204,7 @@ test "text safety identifies ANSI string control boundaries" {
 
     try std.testing.expectEqual(@as(usize, 4), skipAnsiStringControl("abc\x07tail", 0));
     try std.testing.expectEqual(@as(usize, 4), skipAnsiStringControl("abc\x9ctail", 0));
+    try std.testing.expectEqual(@as(usize, 5), skipAnsiStringControl("abc\xc2\x9ctail", 0));
     try std.testing.expectEqual(@as(usize, 5), skipAnsiStringControl("abc\x1b\\tail", 0));
     try std.testing.expectEqual(@as(usize, 3), skipAnsiStringControl("abc", 0));
     try std.testing.expectEqual(@as(usize, 3), skipAnsiControlSequence("31mred", 0));

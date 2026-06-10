@@ -155,6 +155,11 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
         return null;
     }
 
+    if (text_safety.isUtf8AnsiStringControl(value, index.*)) {
+        index.* = text_safety.skipAnsiStringControl(value, index.* + 2);
+        return null;
+    }
+
     if (text_safety.isUtf8C1Control(value, index.*)) {
         index.* += 2;
         buffer[0] = ' ';
@@ -281,6 +286,19 @@ test "terminal sanitizer strips raw C1 string control payloads" {
     const safe = try sanitizeAlloc(
         std.testing.allocator,
         "start\x90private-dcs\x9cmid\x98private-sos\x1b\\pm\x9eprivate-pm\x07apc\x9fprivate-apc\x9cend\x9dprivate-osc\x9cdone",
+        .{},
+    );
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("startmidpmapcenddone", safe);
+    try std.testing.expect(std.mem.indexOf(u8, safe, "private") == null);
+    try std.testing.expect(!hasUnsafeControl(safe, .{}));
+}
+
+test "terminal sanitizer strips UTF-8 C1 string control payloads" {
+    const safe = try sanitizeAlloc(
+        std.testing.allocator,
+        "start\xc2\x90private-dcs\xc2\x9cmid\xc2\x98private-sos\x1b\\pm\xc2\x9eprivate-pm\x07apc\xc2\x9fprivate-apc\xc2\x9cend\xc2\x9dprivate-osc\xc2\x9cdone",
         .{},
     );
     defer std.testing.allocator.free(safe);
