@@ -19,6 +19,7 @@ type CacheEntry<T> = {
 };
 
 export const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 256;
+export const GITHUB_JSON_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
@@ -168,16 +169,68 @@ async function toGitHubApiError(response: Response): Promise<GitHubApiError> {
 }
 
 async function readResponseJson<T>(response: Response): Promise<T> {
-  return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return JSON.parse(await readBoundedResponseText(response, GITHUB_JSON_RESPONSE_MAX_BYTES)) as T;
 }
 
 async function readErrorDetail(response: Response): Promise<string> {
   try {
-    const body: unknown = await response.json();
+    const body: unknown = JSON.parse(await readBoundedResponseText(response, GITHUB_JSON_RESPONSE_MAX_BYTES));
     return isGitHubErrorPayload(body) && body.message ? `: ${body.message}` : '';
   } catch {
     return '';
   }
+}
+
+async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = response.headers.get('Content-Length');
+  if (contentLength && contentLengthExceedsLimit(contentLength, maxBytes)) {
+    throw new Error('GitHub response body is too large.');
+  }
+
+  if (!response.body) {
+    return '';
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      throw new Error('GitHub response body is too large.');
+    }
+
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new TextDecoder().decode(bytes);
+}
+
+function contentLengthExceedsLimit(value: string, maxBytes: number): boolean {
+  if (!/^[0-9]+$/.test(value)) {
+    return false;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return !Number.isSafeInteger(parsed) || parsed > maxBytes;
 }
 
 function isGitHubErrorPayload(value: unknown): value is { message: string } {

@@ -1,7 +1,13 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
-import { GITHUB_RESPONSE_CACHE_MAX_ENTRIES, GitHubApiError, githubGetPages, githubRequest } from './github-client';
+import {
+  GITHUB_JSON_RESPONSE_MAX_BYTES,
+  GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
+  GitHubApiError,
+  githubGetPages,
+  githubRequest
+} from './github-client';
 
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
@@ -275,6 +281,67 @@ test('githubRequest returns undefined for no-content responses', async () => {
   globalThis.fetch = (async () => new Response(null, { status: 204 })) as typeof fetch;
 
   assert.equal(await githubRequest<void>(config, '/repos/nullclaw/nullbuilder', { method: 'DELETE' }), undefined);
+});
+
+test('githubRequest rejects oversized JSON responses before parsing', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://oversized-json.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response('{}', {
+      headers: {
+        'Content-Length': String(GITHUB_JSON_RESPONSE_MAX_BYTES + 1)
+      }
+    })) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) => error instanceof Error && error.message === 'GitHub response body is too large.'
+  );
+});
+
+test('githubRequest bounds streamed JSON responses without content-length', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://streamed-oversized-json.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const oversizedJson = `"${'x'.repeat(GITHUB_JSON_RESPONSE_MAX_BYTES)}"`;
+
+  globalThis.fetch = (async () => new Response(oversizedJson)) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) => error instanceof Error && error.message === 'GitHub response body is too large.'
+  );
+});
+
+test('githubRequest keeps oversized error bodies from masking API status', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://oversized-error.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response('{}', {
+      status: 500,
+      statusText: 'Server Error',
+      headers: {
+        'Content-Length': String(GITHUB_JSON_RESPONSE_MAX_BYTES + 1)
+      }
+    })) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof GitHubApiError &&
+      error.status === 500 &&
+      error.message === 'GitHub 500 Server Error'
+  );
 });
 
 test('githubRequest ignores non-string GitHub error messages', async () => {
