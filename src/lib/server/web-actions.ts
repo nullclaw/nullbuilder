@@ -599,6 +599,9 @@ function isWebActionFormContentType(value: string | null): boolean {
   if (!safeValue) {
     return false;
   }
+  if (safeValue.includes(',')) {
+    return false;
+  }
 
   const separatorIndex = safeValue.indexOf(';');
   const mediaType = (separatorIndex === -1 ? safeValue : safeValue.slice(0, separatorIndex)).trim().toLowerCase();
