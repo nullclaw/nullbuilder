@@ -36,12 +36,34 @@ test('parseCommandLine rejects unknown commands', () => {
   });
 });
 
+test('parseCommandLine bounds argument vectors before parsing', () => {
+  const oversized = ['repos', ...Array.from({ length: 128 }, (_, index) => `repo-${index}`)];
+
+  assert.throws(() => parseCommandLine(oversized), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Too many CLI arguments.');
+    assert.doesNotMatch(error.message, /repo-127/);
+    return true;
+  });
+});
+
 test('parseOptions rejects unknown options without echoing raw input', () => {
   assert.throws(() => parseOptions(['--unknown']), /^Error: Unknown option\.$/);
   assert.throws(() => parseOptions(['--bad\x1b[31m\noption']), (error) => {
     assert(error instanceof Error);
     assert.equal(error.message, 'Unknown option.');
     assert.doesNotMatch(error.message, /\x1b|\n|bad/);
+    return true;
+  });
+});
+
+test('parseOptions bounds option vectors before scanning values', () => {
+  const oversized = Array.from({ length: 129 }, (_, index) => `repo-${index}`);
+
+  assert.throws(() => parseOptions(oversized), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Too many CLI arguments.');
+    assert.doesNotMatch(error.message, /repo-128/);
     return true;
   });
 });

@@ -2,6 +2,7 @@ import { parsePositiveIntegerText, readSafeTextInput } from '../lib/text-safety'
 
 const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
+const MAX_CLI_ARGS = 128;
 const MAX_POSITIONAL_ARGS = 16;
 
 export type Command = (typeof COMMANDS)[number];
@@ -69,7 +70,8 @@ Environment:
 `;
 
 export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
-  const [rawCommand = 'help', ...rest] = argv;
+  assertCliArgCount(argv);
+  const rawCommand = argv[0] ?? 'help';
 
   if (rawCommand === 'help' || rawCommand === '--help' || rawCommand === '-h') {
     return { kind: 'help' };
@@ -82,11 +84,12 @@ export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
   return {
     kind: 'command',
     command: rawCommand,
-    options: parseOptions(rest)
+    options: parseOptions(argv.slice(1))
   };
 }
 
 export function parseOptions(args: readonly string[]): CliOptions {
+  assertCliArgCount(args);
   const options: CliOptions = {
     json: false,
     discover: false,
@@ -147,6 +150,12 @@ export function parseOptions(args: readonly string[]): CliOptions {
   }
 
   return options;
+}
+
+function assertCliArgCount(args: readonly string[]): void {
+  if (args.length > MAX_CLI_ARGS) {
+    throw new Error('Too many CLI arguments.');
+  }
 }
 
 function markOptionOnce(seenOptions: Set<string>, option: string): void {
