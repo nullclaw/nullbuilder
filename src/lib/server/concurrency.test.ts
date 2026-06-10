@@ -78,33 +78,40 @@ test('mapWithConcurrency rejects oversized input before starting workers', async
   assert.equal(mapped, false);
 });
 
-test('mapWithConcurrency stops scheduling new work after mapper failures', async () => {
+test('mapWithConcurrency waits for started workers after mapper failures', async () => {
   const failure = new Error('mapper failed');
   const seen: number[] = [];
   let releaseSecondMapper!: () => void;
+  let settled = false;
   const secondMapperReleased = new Promise<void>((resolve) => {
     releaseSecondMapper = resolve;
   });
 
-  await assert.rejects(
-    mapWithConcurrency([1, 2, 3, 4], 2, async (value) => {
-      seen.push(value);
+  const mapped = mapWithConcurrency([1, 2, 3, 4], 2, async (value) => {
+    seen.push(value);
 
-      if (value === 1) {
-        throw failure;
-      }
+    if (value === 1) {
+      throw failure;
+    }
 
-      if (value === 2) {
-        await secondMapperReleased;
-      }
+    if (value === 2) {
+      await secondMapperReleased;
+    }
 
-      return value;
-    }),
-    (error: unknown) => error === failure
-  );
+    return value;
+  });
+  mapped.finally(() => {
+    settled = true;
+  }).catch(() => undefined);
 
-  releaseSecondMapper();
+  await Promise.resolve();
   await Promise.resolve();
 
+  assert.equal(settled, false);
+  assert.deepEqual(seen, [1, 2]);
+  releaseSecondMapper();
+
+  await assert.rejects(mapped, (error: unknown) => error === failure);
+  assert.equal(settled, true);
   assert.deepEqual(seen, [1, 2]);
 });

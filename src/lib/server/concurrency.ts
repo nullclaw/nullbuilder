@@ -27,7 +27,12 @@ export async function mapWithConcurrency<T, R>(
     workers.push(runMapWorker(values, results, state, mapper));
   }
 
-  await Promise.all(workers);
+  const workerResults = await Promise.allSettled(workers);
+  for (const result of workerResults) {
+    if (result.status === 'rejected') {
+      throw result.reason;
+    }
+  }
 
   return results;
 }
