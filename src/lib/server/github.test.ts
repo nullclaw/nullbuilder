@@ -1,10 +1,17 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
-import { MAX_REPOSITORY_LIST_ENTRIES } from '../repositories';
+import { MAX_REPOSITORY_LIST_ENTRIES, type RepoSlug } from '../repositories';
 import { readConfig } from './config';
-import { discoverRepositories, GitHubApiError, publicErrorMessage, resolveGitHubApiUrl } from './github';
+import {
+  discoverRepositories,
+  getRepositorySummary,
+  GitHubApiError,
+  publicErrorMessage,
+  resolveGitHubApiUrl
+} from './github';
 
 const originalFetch = globalThis.fetch;
+const SUMMARY_REPO = 'nullclaw/nullbuilder' as RepoSlug;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -87,6 +94,62 @@ test('publicErrorMessage keeps GitHub authorization details generic', () => {
     publicErrorMessage(new Error('Invalid GitHub API URL: https://evil.example.test/repos?token=secret')),
     'Invalid GitHub API URL.'
   );
+});
+
+test('getRepositorySummary treats malformed workflow runs payload as empty', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://summary-runs.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const path = `${url.pathname}${url.search}`;
+    requests.push(path);
+
+    switch (path) {
+      case '/repos/nullclaw/nullbuilder':
+        return jsonResponse({
+          name: 'nullbuilder',
+          full_name: 'nullclaw/nullbuilder',
+          html_url: 'https://github.com/nullclaw/nullbuilder',
+          description: 'Command center',
+          default_branch: 'main',
+          language: 'TypeScript',
+          private: false,
+          archived: false,
+          stargazers_count: 0,
+          forks_count: 2,
+          open_issues_count: 0,
+          pushed_at: null,
+          updated_at: '2026-06-09T00:00:00Z',
+          owner: {
+            login: 'nullclaw'
+          }
+        });
+      case '/repos/nullclaw/nullbuilder/issues?state=open&per_page=100':
+      case '/repos/nullclaw/nullbuilder/pulls?state=open&per_page=100':
+        return jsonResponse([]);
+      case '/repos/nullclaw/nullbuilder/actions/runs?per_page=100':
+        return jsonResponse(null);
+      default:
+        return jsonResponse({ message: `Unexpected request: ${path}` }, { status: 404 });
+    }
+  }) as typeof fetch;
+
+  const summary = await getRepositorySummary(config, SUMMARY_REPO);
+
+  assert.equal(summary.status, 'ok');
+  assert.deepEqual(summary.latestRuns, { ci: null, nightly: null, release: null });
+  assert.equal(summary.error, undefined);
+  assert.deepEqual(requests.sort(), [
+    '/repos/nullclaw/nullbuilder',
+    '/repos/nullclaw/nullbuilder/actions/runs?per_page=100',
+    '/repos/nullclaw/nullbuilder/issues?state=open&per_page=100',
+    '/repos/nullclaw/nullbuilder/pulls?state=open&per_page=100'
+  ].sort());
 });
 
 test('discoverRepositories normalizes API repository slugs before adding them', async () => {
@@ -225,3 +288,12 @@ test('discoverRepositories caps discovered repositories before dashboard fan-out
   assert.equal(repos.includes('nullclaw/nullrepo0998'), true);
   assert.equal(repos.includes('nullclaw/nullrepo0999'), false);
 });
+
+function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set('Content-Type', 'application/json');
+  return new Response(JSON.stringify(value), {
+    ...init,
+    headers
+  });
+}

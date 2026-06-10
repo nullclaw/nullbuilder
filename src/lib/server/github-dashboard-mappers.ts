@@ -1,11 +1,8 @@
 import type { RepoSlug } from '../repositories';
 import { readSafeTextInput, sanitizeText } from '../text-safety';
 import type {
-  GitHubIssueResponse,
   GitHubLabel,
-  GitHubPullResponse,
   GitHubRepositoryResponse,
-  GitHubWorkflowRunResponse,
   IssueSummary,
   PullRequestSummary,
   RepositoryLatestRuns,
@@ -37,9 +34,9 @@ export const MAX_REPOSITORY_WORK_ITEMS = 100;
 export function mapRepositorySummary(
   repo: RepoSlug,
   repository: GitHubRepositoryResponse,
-  issues: GitHubIssueResponse[],
-  pulls: GitHubPullResponse[],
-  workflowRuns: GitHubWorkflowRunResponse[],
+  issues: unknown,
+  pulls: unknown,
+  workflowRuns: unknown,
   starGrowth: StarGrowthSummary,
   webBaseUrl = 'https://github.com'
 ): RepositorySummary {
@@ -122,7 +119,7 @@ function collectBoundedWorkItems<Input, Output extends IssueSummary | PullReques
   };
 }
 
-export function mapLatestRuns(runs: GitHubWorkflowRunResponse[]): RepositoryLatestRuns {
+export function mapLatestRuns(runs: unknown): RepositoryLatestRuns {
   return mapLatestRunsForRepository(safeArray(runs), EMPTY_GITHUB_WEB_URL_CONTEXT);
 }
 

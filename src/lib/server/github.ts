@@ -9,7 +9,6 @@ import {
   type GitHubIssueResponse,
   type GitHubPullResponse,
   type GitHubRepositoryResponse,
-  type GitHubWorkflowRunResponse,
   type RepositorySummary
 } from './github-dashboard';
 import { githubGetPages, githubRequest } from './github-client';
@@ -129,15 +128,21 @@ export async function getRepositorySummary(config: NullbuilderConfig, repo: Repo
     const [issues, pulls, runs, starGrowth] = await Promise.all([
       githubGetPages<GitHubIssueResponse>(config, `/repos/${repo}/issues?state=open&per_page=100`, {}, 20),
       githubGetPages<GitHubPullResponse>(config, `/repos/${repo}/pulls?state=open&per_page=100`, {}, 20),
-      githubRequest<{ workflow_runs: GitHubWorkflowRunResponse[] }>(
-        config,
-        `/repos/${repo}/actions/runs?per_page=100`
-      ),
+      githubRequest<unknown>(config, `/repos/${repo}/actions/runs?per_page=100`),
       getStarGrowth(config, repo, repository.stargazers_count)
     ]);
 
-    return mapRepositorySummary(repo, repository, issues, pulls, runs.workflow_runs, starGrowth, config.webBaseUrl);
+    return mapRepositorySummary(repo, repository, issues, pulls, safeWorkflowRunsPayload(runs), starGrowth, config.webBaseUrl);
   } catch (error) {
     return makeErrorRepository(config, repo, error);
   }
+}
+
+function safeWorkflowRunsPayload(value: unknown): unknown[] {
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  const workflowRuns = (value as Record<string, unknown>).workflow_runs;
+  return Array.isArray(workflowRuns) ? workflowRuns : [];
 }
