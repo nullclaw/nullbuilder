@@ -109,12 +109,14 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
     throw new Error(`Invalid URL credentials for ${name}.`);
   }
 
+  if (url.search || url.hash) {
+    throw new Error(`Invalid URL for ${name}.`);
+  }
+
   if (hasEncodedControlCharacter(url.pathname)) {
     throw new Error(`Invalid URL for ${name}.`);
   }
 
-  url.hash = '';
-  url.search = '';
   return url.toString().replace(/\/$/, '');
 }
 
