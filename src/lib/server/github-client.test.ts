@@ -792,6 +792,74 @@ test('githubRequest validates caller request headers before fetching GitHub', as
   assert.equal(fetched, false);
 });
 
+test('githubRequest rejects hostile caller header traps before fetching GitHub', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://hostile-header.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const hostileArray = new Proxy([['X-Trace-Id', 'trace-1']], {
+    get(target, property, receiver) {
+      if (property === 'length') {
+        throw new Error('private header array detail');
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const hostileTuple = new Proxy(['X-Trace-Id', 'trace-1'], {
+    get(target, property, receiver) {
+      if (property === '1') {
+        throw new Error('private header tuple detail');
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const hostileRecordKeys = new Proxy({ 'X-Trace-Id': 'trace-1' }, {
+    ownKeys() {
+      throw new Error('private header key detail');
+    }
+  });
+  const hostileRecordValue = {};
+  Object.defineProperty(hostileRecordValue, 'X-Trace-Id', {
+    enumerable: true,
+    get() {
+      throw new Error('private header value detail');
+    }
+  });
+  const hostileHeaders = [
+    revoked.proxy,
+    hostileArray,
+    [hostileTuple],
+    hostileRecordKeys,
+    hostileRecordValue
+  ] as unknown[];
+  let fetched = false;
+
+  globalThis.fetch = (async () => {
+    fetched = true;
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  for (let index = 0; index < hostileHeaders.length; index += 1) {
+    await assert.rejects(
+      () =>
+        githubRequest(config, `/repos/nullclaw/nullbuilder-${index}`, {
+          headers: hostileHeaders[index] as HeadersInit
+        }),
+      (error) => {
+        assert(error instanceof Error);
+        assert.equal(error.message, 'Invalid GitHub request header.');
+        assert.doesNotMatch(error.message, /private|header array|header tuple|header key|header value|revoked/i);
+        return true;
+      }
+    );
+  }
+
+  assert.equal(fetched, false);
+});
+
 test('githubRequest clones Headers input without instance hooks and bounds entries', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

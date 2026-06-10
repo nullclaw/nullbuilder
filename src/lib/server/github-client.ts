@@ -266,23 +266,20 @@ function cloneGitHubRequestHeaders(value: HeadersInit | undefined): Headers {
     return headers;
   }
 
-  if (value instanceof Headers) {
+  if (isGitHubRequestHeadersInstance(value)) {
     appendHeadersEntries(headers, value);
     return headers;
   }
 
-  if (Array.isArray(value)) {
-    if (value.length > GITHUB_REQUEST_HEADER_MAX_ENTRIES) {
-      throw new Error('Invalid GitHub request header.');
+  if (isGitHubRequestHeaderEntryArray(value)) {
+    const count = boundedGitHubRequestHeaderEntryCount(value);
+    if (count > GITHUB_REQUEST_HEADER_MAX_ENTRIES) {
+      invalidGitHubRequestHeader();
     }
 
-    for (let index = 0; index < value.length; index += 1) {
-      const entry = value[index];
-      if (!Array.isArray(entry) || entry.length < 2) {
-        throw new Error('Invalid GitHub request header.');
-      }
-
-      appendGitHubRequestHeader(headers, entry[0], entry[1]);
+    for (let index = 0; index < count; index += 1) {
+      const entry = readGitHubRequestHeaderEntry(readGitHubRequestHeaderArrayItem(value, index));
+      appendGitHubRequestHeader(headers, entry.name, entry.value);
     }
 
     return headers;
@@ -290,20 +287,96 @@ function cloneGitHubRequestHeaders(value: HeadersInit | undefined): Headers {
 
   const record = readObjectRecord(value);
   if (!record) {
-    throw new Error('Invalid GitHub request header.');
+    invalidGitHubRequestHeader();
   }
 
-  const names = Object.getOwnPropertyNames(record);
+  const names = readGitHubRequestHeaderNames(record);
   if (names.length > GITHUB_REQUEST_HEADER_MAX_ENTRIES) {
-    throw new Error('Invalid GitHub request header.');
+    invalidGitHubRequestHeader();
   }
 
   for (let index = 0; index < names.length; index += 1) {
     const name = names[index];
-    appendGitHubRequestHeader(headers, name, record[name]);
+    appendGitHubRequestHeader(headers, name, readGitHubRequestHeaderValue(record, name));
   }
 
   return headers;
+}
+
+function isGitHubRequestHeadersInstance(value: unknown): value is Headers {
+  try {
+    return value instanceof Headers;
+  } catch {
+    invalidGitHubRequestHeader();
+  }
+}
+
+function isGitHubRequestHeaderEntryArray(value: unknown): value is unknown[] {
+  try {
+    return Array.isArray(value);
+  } catch {
+    invalidGitHubRequestHeader();
+  }
+}
+
+function boundedGitHubRequestHeaderEntryCount(value: unknown[]): number {
+  try {
+    return Math.min(value.length, GITHUB_REQUEST_HEADER_MAX_ENTRIES + 1);
+  } catch {
+    invalidGitHubRequestHeader();
+  }
+}
+
+function readGitHubRequestHeaderEntry(entry: unknown): { name: unknown; value: unknown } {
+  if (!isGitHubRequestHeaderEntryArray(entry)) {
+    invalidGitHubRequestHeader();
+  }
+
+  const tuple = entry as unknown[];
+  if (boundedGitHubRequestHeaderTupleLength(tuple) < 2) {
+    invalidGitHubRequestHeader();
+  }
+
+  return {
+    name: readGitHubRequestHeaderArrayItem(tuple, 0),
+    value: readGitHubRequestHeaderArrayItem(tuple, 1)
+  };
+}
+
+function boundedGitHubRequestHeaderTupleLength(value: unknown[]): number {
+  try {
+    return Math.min(value.length, 2);
+  } catch {
+    invalidGitHubRequestHeader();
+  }
+}
+
+function readGitHubRequestHeaderArrayItem(value: unknown[], index: number): unknown {
+  try {
+    return value[index];
+  } catch {
+    invalidGitHubRequestHeader();
+  }
+}
+
+function readGitHubRequestHeaderNames(record: Record<string, unknown>): string[] {
+  try {
+    return Object.getOwnPropertyNames(record);
+  } catch {
+    invalidGitHubRequestHeader();
+  }
+}
+
+function readGitHubRequestHeaderValue(record: Record<string, unknown>, name: string): unknown {
+  try {
+    return record[name];
+  } catch {
+    invalidGitHubRequestHeader();
+  }
+}
+
+function invalidGitHubRequestHeader(): never {
+  throw new Error('Invalid GitHub request header.');
 }
 
 function appendHeadersEntries(headers: Headers, value: Headers): void {
@@ -313,7 +386,7 @@ function appendHeadersEntries(headers: Headers, value: Headers): void {
   try {
     entries = HEADERS_ENTRIES.call(value);
   } catch {
-    throw new Error('Invalid GitHub request header.');
+    invalidGitHubRequestHeader();
   }
 
   while (true) {
@@ -324,7 +397,7 @@ function appendHeadersEntries(headers: Headers, value: Headers): void {
 
     count += 1;
     if (count > GITHUB_REQUEST_HEADER_MAX_ENTRIES) {
-      throw new Error('Invalid GitHub request header.');
+      invalidGitHubRequestHeader();
     }
 
     appendGitHubRequestHeader(headers, entry.value[0], entry.value[1]);
@@ -335,13 +408,13 @@ function appendGitHubRequestHeader(headers: Headers, name: unknown, value: unkno
   const safeName = readSafeTextInput(name, { maxLength: GITHUB_REQUEST_HEADER_NAME_MAX_LENGTH });
   const safeValue = readSafeTextInput(value, { maxLength: GITHUB_REQUEST_HEADER_VALUE_MAX_LENGTH });
   if (!safeName || safeValue === null) {
-    throw new Error('Invalid GitHub request header.');
+    invalidGitHubRequestHeader();
   }
 
   try {
     headers.append(safeName, safeValue);
   } catch {
-    throw new Error('Invalid GitHub request header.');
+    invalidGitHubRequestHeader();
   }
 }
 
