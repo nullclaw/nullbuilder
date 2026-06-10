@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const max_label_bytes = 128;
+const max_relative_path_bytes = 1024;
+
 fn isAsciiAlpha(byte: u8) bool {
     return (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z');
 }
@@ -9,7 +12,7 @@ fn isAsciiDigit(byte: u8) bool {
 }
 
 pub fn isSafeLabel(value: []const u8) bool {
-    if (value.len == 0) return false;
+    if (value.len == 0 or value.len > max_label_bytes) return false;
     if (isWindowsReservedDeviceName(value)) return false;
 
     var previous_dot = false;
@@ -57,7 +60,7 @@ fn hasWindowsDrivePrefix(path: []const u8) bool {
 }
 
 pub fn isSafeRelativePath(path: []const u8) bool {
-    if (path.len == 0) return false;
+    if (path.len == 0 or path.len > max_relative_path_bytes) return false;
     if (path[0] == '/') return false;
     if (std.mem.indexOfScalar(u8, path, '\\') != null) return false;
     if (hasWindowsDrivePrefix(path)) return false;
@@ -78,6 +81,8 @@ test "action paths accepts safe labels" {
 }
 
 test "action paths rejects unsafe labels" {
+    const oversized_label = [_]u8{'a'} ** (max_label_bytes + 1);
+
     try std.testing.expect(!isSafeLabel("../outside"));
     try std.testing.expect(!isSafeLabel("linux/amd64"));
     try std.testing.expect(!isSafeLabel(".."));
@@ -88,10 +93,13 @@ test "action paths rejects unsafe labels" {
     try std.testing.expect(!isSafeLabel("nul.txt"));
     try std.testing.expect(!isSafeLabel("COM1"));
     try std.testing.expect(!isSafeLabel("lpt9.log"));
+    try std.testing.expect(!isSafeLabel(oversized_label[0..]));
     try std.testing.expect(isSafeLabel("com10"));
 }
 
 test "action paths accepts only safe relative paths" {
+    const oversized_path = [_]u8{'a'} ** (max_relative_path_bytes + 1);
+
     try std.testing.expect(isSafeRelativePath("previous-nightly-runs.json"));
     try std.testing.expect(isSafeRelativePath("nightly-artifacts/nullclaw-linux-x86_64"));
     try std.testing.expect(isSafeRelativePath("nightly-artifacts/nullclaw-linux-x86_64.exe"));
@@ -106,4 +114,5 @@ test "action paths accepts only safe relative paths" {
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/.hidden"));
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/nullclaw."));
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/CON"));
+    try std.testing.expect(!isSafeRelativePath(oversized_path[0..]));
 }
