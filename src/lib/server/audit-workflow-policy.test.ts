@@ -35,6 +35,32 @@ jobs:
   );
 });
 
+test('nullbuilderWorkflowFindings ignores commented reusable workflow examples', () => {
+  const findings = nullbuilderWorkflowFindings(
+    auditContext({
+      workflowFiles: [
+        workflowFile(`
+# uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@v1
+description: nullclaw/nullbuilder/.github/workflows/zig-nightly.yml@v1
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+`)
+      ]
+    }),
+    testFinding
+  );
+
+  assert.deepEqual(
+    findings.map((finding) => finding.title),
+    [
+      'Missing nullbuilder ci workflow',
+      'Missing nullbuilder nightly workflow',
+      'Missing nullbuilder release workflow'
+    ]
+  );
+});
+
 test('workflowPermissionFindings reports implicit permissions and self-hosted runners independently', () => {
   const findings = workflowPermissionFindings(
     auditContext({

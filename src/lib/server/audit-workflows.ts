@@ -6,6 +6,7 @@ const DEFAULT_MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
 export const MAX_WORKFLOW_REFERENCE_MATCHES = 200;
 export const MAX_WORKFLOW_REFERENCE_SCAN_MATCHES = MAX_WORKFLOW_REFERENCE_MATCHES * 4;
 export const MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH = 128;
+const NULLBUILDER_WORKFLOW_TARGET_PREFIX = 'nullclaw/nullbuilder/.github/workflows/';
 
 export type WorkflowActionUse = {
   target: string;
@@ -57,7 +58,7 @@ export function findNullbuilderWorkflowRefs(
   const references: NullbuilderWorkflowRef[] = [];
   const matchLimit = normalizeMatchLimit(maxMatches);
   const scanLimit = workflowReferenceScanLimit(matchLimit);
-  const regex = /nullclaw\/nullbuilder\/\.github\/workflows\/([^@\s'"]+)@([^'"\s#]+)/g;
+  const regex = /^\s*(?:-\s*)?uses:\s*['"]?nullclaw\/nullbuilder\/\.github\/workflows\/([^@\s'"]+)@([^'"\s#]+)['"]?/gm;
   let match: RegExpExecArray | null;
   let scannedMatches = 0;
 
@@ -83,11 +84,15 @@ export function shouldRequireShaPin(target: string, ref: string): boolean {
     return false;
   }
 
-  if (target.startsWith('nullclaw/nullbuilder/.github/workflows/')) {
+  if (isNullbuilderWorkflowTarget(target)) {
     return false;
   }
 
   return !/^[a-f0-9]{40}$/i.test(ref);
+}
+
+function isNullbuilderWorkflowTarget(target: string): boolean {
+  return target.startsWith(NULLBUILDER_WORKFLOW_TARGET_PREFIX);
 }
 
 export function isMutableRef(ref: string): boolean {

@@ -33,10 +33,7 @@ export function nullbuilderWorkflowFindings(
 
   for (let index = 0; index < NULLBUILDER_WORKFLOWS.length; index += 1) {
     const workflow = NULLBUILDER_WORKFLOWS[index];
-    const hasWorkflow = hasWorkflowFileContent(
-      context,
-      `nullclaw/nullbuilder/.github/workflows/${workflow.file}@`
-    );
+    const hasWorkflow = hasNullbuilderWorkflowFile(context, workflow.file);
     if (hasWorkflow) {
       continue;
     }
@@ -175,12 +172,15 @@ export function mutableNullbuilderWorkflowRefFindings(
   return findings;
 }
 
-function hasWorkflowFileContent(context: AuditContext, needle: string): boolean {
+function hasNullbuilderWorkflowFile(context: AuditContext, workflowFile: string): boolean {
   let found = false;
   forEachAuditedWorkflowFile(context, (file) => {
-    if (file.content.includes(needle)) {
-      found = true;
-      return false;
+    const references = findNullbuilderWorkflowRefs(file.content);
+    for (let index = 0; index < references.length; index += 1) {
+      if (references[index].workflow === workflowFile) {
+        found = true;
+        return false;
+      }
     }
     return true;
   });

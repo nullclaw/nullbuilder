@@ -72,6 +72,19 @@ jobs:
   );
 });
 
+test('findNullbuilderWorkflowRefs parses only uses lines', () => {
+  assert.deepEqual(
+    findNullbuilderWorkflowRefs(`
+# uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@main
+description: nullclaw/nullbuilder/.github/workflows/zig-nightly.yml@main
+jobs:
+  ci:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-release.yml@v1
+`),
+    [{ workflow: 'zig-release.yml', ref: 'v1' }]
+  );
+});
+
 test('workflow reference parsers bound noisy workflow files', () => {
   const actionContent = Array.from(
     { length: MAX_WORKFLOW_REFERENCE_MATCHES + 20 },
