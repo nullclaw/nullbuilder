@@ -12,6 +12,7 @@ import {
 } from './audit-rules';
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
+const originalArrayPush = Array.prototype.push;
 
 test('evaluateAuditChecks reports missing repository security controls', () => {
   const checks = evaluateAuditChecks(
@@ -119,6 +120,47 @@ test('evaluateAuditChecks avoids array iterators while scanning static rules', (
   );
 });
 
+test('evaluateAuditChecks collects checks and branch findings without global array push hooks', () => {
+  const context = auditContext({
+    workflowDirectory: present<GitHubContentItem[]>([
+      {
+        name: 'ci.yml',
+        path: '.github/workflows/ci.yml',
+        type: 'file',
+        html_url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/ci.yml'
+      }
+    ]),
+    workflowFiles: [
+      {
+        name: 'ci.yml',
+        path: '.github/workflows/ci.yml',
+        url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/ci.yml',
+        content: `
+permissions: read-all
+jobs:
+  ci:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@v1
+  nightly:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-nightly.yml@v1
+  release:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-release.yml@v1
+`
+      }
+    ],
+    branchProtection: present<GitHubBranchProtection>({})
+  });
+
+  const { result: checks, pushCalls } = withGuardedArrayPush(() => evaluateAuditChecks(context));
+
+  assert.equal(pushCalls, 0);
+  assert.equal(checks.length, 10);
+  assert.equal(check(checks, 'branch-protection').status, 'warning');
+  assert.deepEqual(
+    check(checks, 'branch-protection').findings.map((finding) => finding.title),
+    ['Default branch has no required status checks', 'Default branch has no required reviews']
+  );
+});
+
 function auditContext(overrides: Partial<AuditContext> = {}): AuditContext {
   return {
     repo: 'nullclaw/nullbuilder' as RepoSlug,
@@ -179,5 +221,30 @@ function withGuardedArrayIterator<T>(callback: () => T): T {
     return callback();
   } finally {
     Array.prototype[Symbol.iterator] = originalArrayIterator;
+  }
+}
+
+function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      pushCalls
+    };
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalArrayPush
+    });
   }
 }

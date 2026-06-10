@@ -102,22 +102,18 @@ const RULES = [
         const protection = context.branchProtection.data;
 
         if (!protection.required_status_checks) {
-          findings.push(
-            finding(
-              'warning',
-              'Default branch has no required status checks',
-              `Require CI checks before merging into ${context.repository.default_branch}.`
-            )
+          findings[findings.length] = finding(
+            'warning',
+            'Default branch has no required status checks',
+            `Require CI checks before merging into ${context.repository.default_branch}.`
           );
         }
 
         if (!protection.required_pull_request_reviews) {
-          findings.push(
-            finding(
-              'info',
-              'Default branch has no required reviews',
-              `Require pull request reviews before merging into ${context.repository.default_branch} when the repository is collaborative.`
-            )
+          findings[findings.length] = finding(
+            'info',
+            'Default branch has no required reviews',
+            `Require pull request reviews before merging into ${context.repository.default_branch} when the repository is collaborative.`
           );
         }
 
@@ -180,7 +176,7 @@ export function evaluateAuditChecks(context: AuditContext): AuditCheckResult[] {
 
   for (let index = 0; index < RULES.length; index += 1) {
     const rule = RULES[index];
-    checks.push(evaluateAuditRule(rule, context));
+    checks[checks.length] = evaluateAuditRule(rule, context);
   }
 
   return checks;
