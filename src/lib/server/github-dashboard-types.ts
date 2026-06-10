@@ -1,4 +1,5 @@
 import type { RepoSlug } from '../repositories';
+import type { WorkflowRunConclusion, WorkflowRunStatus } from '../workflow-run-labels';
 
 export type GitHubLabel = {
   name: string;
@@ -29,8 +30,8 @@ export type WorkflowRunSummary = {
   name: string;
   path: string;
   displayTitle: string;
-  status: string;
-  conclusion: string | null;
+  status: WorkflowRunStatus;
+  conclusion: WorkflowRunConclusion;
   url: string;
   branch: string;
   event: string;

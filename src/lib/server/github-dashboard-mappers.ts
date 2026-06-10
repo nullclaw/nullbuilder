@@ -22,6 +22,12 @@ import {
 } from './github-web-urls';
 import { isSafePositiveInteger, safeNonNegativeInteger, saturatingSafeIntegerAdd } from '../number-safety';
 import { hasValidRecentWorkItemLimit, RecentWorkItemCollector } from './recent-work-items';
+import {
+  normalizeWorkflowRunConclusion,
+  normalizeWorkflowRunStatus,
+  type WorkflowRunConclusion,
+  type WorkflowRunStatus
+} from '../workflow-run-labels';
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';
 const LABEL_COLOR_PATTERN = /^[0-9a-f]{6}$/i;
@@ -422,8 +428,8 @@ function mapRun(value: unknown, urlContext: GitHubWebUrlContext): WorkflowRunSum
     name: safeDashboardText(run.name ?? '', 'Workflow'),
     path: safeDashboardText(run.path ?? '', ''),
     displayTitle: safeDashboardText(run.display_title, 'Workflow'),
-    status: safeDashboardText(run.status, 'unknown'),
-    conclusion: run.conclusion === null ? null : safeDashboardText(run.conclusion, 'unknown'),
+    status: safeWorkflowRunStatus(run.status),
+    conclusion: safeWorkflowRunConclusion(run.conclusion),
     url: safeGitHubWebUrl(
       safeString(run.html_url),
       githubActionsUrl(urlContext),
@@ -439,6 +445,20 @@ function mapRun(value: unknown, urlContext: GitHubWebUrlContext): WorkflowRunSum
 
 function safeObjectText(value: unknown, key: string, fallback: string): string {
   return safeDashboardText(readObjectRecord(value)?.[key], fallback);
+}
+
+function safeWorkflowRunStatus(value: unknown): WorkflowRunStatus {
+  const text = safeDashboardText(value, '');
+  return text ? normalizeWorkflowRunStatus(text) : 'unknown';
+}
+
+function safeWorkflowRunConclusion(value: unknown): WorkflowRunConclusion {
+  if (value === null) {
+    return null;
+  }
+
+  const text = safeDashboardText(value, '');
+  return text ? normalizeWorkflowRunConclusion(text) : null;
 }
 
 function safeString(value: unknown): string {

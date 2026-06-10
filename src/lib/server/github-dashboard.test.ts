@@ -188,11 +188,51 @@ test('mapRepositorySummary tolerates malformed nested GitHub payloads', () => {
   assert.equal(summary.pullRequests[0].headBranch, 'unknown');
   assert.equal(summary.pullRequests[0].headSha, 'unknown');
   assert.equal(summary.latestRuns.ci?.status, 'unknown');
-  assert.equal(summary.latestRuns.ci?.conclusion, 'unknown');
+  assert.equal(summary.latestRuns.ci?.conclusion, null);
   assert.equal(summary.latestRuns.ci?.url, 'https://github.com/nullclaw/nullbuilder/actions');
   assert.equal(summary.latestRuns.ci?.branch, 'unknown');
   assert.equal(summary.latestRuns.ci?.event, 'unknown');
   assert.equal(summary.latestRuns.ci?.createdAt, '');
+});
+
+test('mapRepositorySummary canonicalizes workflow run labels before dashboard output', () => {
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [],
+    [],
+    [
+      workflowRun({
+        name: 'CI',
+        path: '.github/workflows/ci.yml',
+        status: 'deploying-secret',
+        conclusion: 'private-secret'
+      }),
+      workflowRun({
+        id: 2,
+        name: 'Nightly',
+        path: '.github/workflows/nightly.yml',
+        status: 'completed',
+        conclusion: 'private-secret'
+      }),
+      workflowRun({
+        id: 3,
+        name: 'Release',
+        path: '.github/workflows/release.yml',
+        status: 'completed',
+        conclusion: 'action_required'
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.latestRuns.ci?.status, 'unknown');
+  assert.equal(summary.latestRuns.ci?.conclusion, 'failure');
+  assert.equal(summary.latestRuns.nightly?.status, 'completed');
+  assert.equal(summary.latestRuns.nightly?.conclusion, 'failure');
+  assert.equal(summary.latestRuns.release?.conclusion, 'action_required');
+  assert.equal(JSON.stringify(summary.latestRuns).includes('deploying-secret'), false);
+  assert.equal(JSON.stringify(summary.latestRuns).includes('private-secret'), false);
 });
 
 test('mapRepositorySummary bounds and sanitizes labels from GitHub payloads', () => {
@@ -331,7 +371,7 @@ test('mapRepositorySummary bounds and sanitizes display strings from GitHub payl
   assert.equal(summary.pullRequests[0].headSha.length, MAX_DASHBOARD_TEXT_FIELD_LENGTH);
   assert.equal(summary.latestRuns.ci?.name, 'CI workflow');
   assert.equal(summary.latestRuns.ci?.displayTitle, 'Workflow');
-  assert.equal(summary.latestRuns.ci?.conclusion, 'failure later');
+  assert.equal(summary.latestRuns.ci?.conclusion, 'failure');
   assert.equal(summary.latestRuns.ci?.branch, 'main branch');
   assert.equal(summary.latestRuns.ci?.event, 'workflow_dispatch now');
   assert.equal(summary.updatedAt, '');

@@ -6,6 +6,7 @@ import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary
 import { githubRepositoryWebUrl } from './github-web-urls';
 import { MAX_TIMESTAMP_TEXT_LENGTH } from './github-dashboard-mappers';
 import { saturatingSafeIntegerAdd } from '../number-safety';
+import { isFailingWorkflowRun } from '../workflow-run-labels';
 import {
   compareByUpdatedAtDesc,
   RecentWorkItemCollector,
@@ -193,5 +194,5 @@ function repositoryHasFailingRun(repo: RepositorySummary): boolean {
 }
 
 function isFailingRun(run: RepositorySummary['latestRuns']['ci']): boolean {
-  return run?.status === 'completed' && run.conclusion !== 'success';
+  return run ? isFailingWorkflowRun(run.status, run.conclusion) : false;
 }

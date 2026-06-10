@@ -14,6 +14,8 @@ test('workflowRunLabel reports missing active and completed runs', () => {
   assert.equal(workflowRunLabel({ status: 'in_progress', conclusion: null }), 'in_progress');
   assert.equal(workflowRunLabel({ status: 'completed', conclusion: 'success' }), 'success');
   assert.equal(workflowRunLabel({ status: 'completed', conclusion: null }), 'completed');
+  assert.equal(workflowRunLabel({ status: 'deploying-secret', conclusion: null }), 'unknown');
+  assert.equal(workflowRunLabel({ status: 'completed', conclusion: 'private-secret' }), 'failure');
 });
 
 test('workflowRunClass maps run state to presentation classes', () => {
@@ -21,6 +23,9 @@ test('workflowRunClass maps run state to presentation classes', () => {
   assert.equal(workflowRunClass({ status: 'queued', conclusion: null }), 'running');
   assert.equal(workflowRunClass({ status: 'completed', conclusion: 'success' }), 'success');
   assert.equal(workflowRunClass({ status: 'completed', conclusion: 'failure' }), 'failed');
+  assert.equal(workflowRunClass({ status: 'unknown', conclusion: null }), 'muted');
+  assert.equal(workflowRunClass({ status: 'deploying-secret', conclusion: null }), 'muted');
+  assert.equal(workflowRunClass({ status: 'completed', conclusion: 'private-secret' }), 'failed');
 });
 
 test('format helpers keep null values explicit', () => {

@@ -1,4 +1,13 @@
 import { parseUtcTimestampMillis } from './date-safety';
+import {
+  isCompletedWorkflowRunStatus,
+  isRunningWorkflowRunStatus,
+  isSuccessfulWorkflowRunConclusion,
+  normalizeWorkflowRunConclusion,
+  normalizeWorkflowRunStatus,
+  WORKFLOW_RUN_COMPLETED_STATUS,
+  WORKFLOW_RUN_MISSING_LABEL
+} from './workflow-run-labels';
 
 type WorkflowRunLike = {
   status: string;
@@ -31,14 +40,15 @@ export function formatDashboardDateOnly(value: string | null): string {
 
 export function workflowRunLabel(run: WorkflowRunLike): string {
   if (!run) {
-    return 'n/a';
+    return WORKFLOW_RUN_MISSING_LABEL;
   }
 
-  if (run.status !== 'completed') {
-    return run.status;
+  const status = normalizeWorkflowRunStatus(run.status);
+  if (!isCompletedWorkflowRunStatus(status)) {
+    return status;
   }
 
-  return run.conclusion ?? 'completed';
+  return run.conclusion === null ? WORKFLOW_RUN_COMPLETED_STATUS : normalizeWorkflowRunConclusion(run.conclusion);
 }
 
 export function workflowRunClass(run: WorkflowRunLike): WorkflowRunClass {
@@ -46,11 +56,16 @@ export function workflowRunClass(run: WorkflowRunLike): WorkflowRunClass {
     return 'muted';
   }
 
-  if (run.status !== 'completed') {
+  const status = normalizeWorkflowRunStatus(run.status);
+  if (isRunningWorkflowRunStatus(status)) {
     return 'running';
   }
 
-  return run.conclusion === 'success' ? 'success' : 'failed';
+  if (!isCompletedWorkflowRunStatus(status)) {
+    return 'muted';
+  }
+
+  return isSuccessfulWorkflowRunConclusion(run.conclusion) ? 'success' : 'failed';
 }
 
 export function formatNullableNumber(value: number | null): string {
