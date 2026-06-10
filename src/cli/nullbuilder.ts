@@ -8,9 +8,18 @@ export type CliOutputWriters = {
 };
 
 async function main() {
-  const result = await runCli(process.argv.slice(2));
+  const result = await runCli(readCliArgTail(process.argv));
   writeCliRunResult(result);
   setExitCode(result.exitCode);
+}
+
+export function readCliArgTail(argv: readonly string[]): string[] {
+  const args: string[] = [];
+  for (let index = 2; index < argv.length; index += 1) {
+    args.push(argv[index]);
+  }
+
+  return args;
 }
 
 export function writeCliRunResult(
@@ -20,12 +29,13 @@ export function writeCliRunResult(
     stderr: (line) => console.error(line)
   }
 ): void {
-  for (const line of result.stdout) {
-    writers.stdout(line);
-  }
+  writeLines(result.stdout, writers.stdout);
+  writeLines(result.stderr, writers.stderr);
+}
 
-  for (const line of result.stderr) {
-    writers.stderr(line);
+function writeLines(lines: readonly string[], write: (line: string) => void): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    write(lines[index]);
   }
 }
 
