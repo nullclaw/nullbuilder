@@ -220,7 +220,7 @@ function parseNextLink(link: string | null): string | null {
     return null;
   }
 
-  for (const part of link.split(',')) {
+  for (const part of splitLinkHeaderEntries(link)) {
     const match = part.trim().match(/^<([^>]+)>\s*(?:;(.*))?$/);
     if (match && linkParametersIncludeRelation(match[2] ?? '', 'next')) {
       return match[1];
@@ -228,6 +228,48 @@ function parseNextLink(link: string | null): string | null {
   }
 
   return null;
+}
+
+function splitLinkHeaderEntries(link: string): string[] {
+  const entries: string[] = [];
+  let start = 0;
+  let inUrl = false;
+  let inQuotedString = false;
+  let escaped = false;
+
+  for (let index = 0; index < link.length; index += 1) {
+    const char = link[index];
+
+    if (inQuotedString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inQuotedString = false;
+      }
+      continue;
+    }
+
+    if (inUrl) {
+      if (char === '>') {
+        inUrl = false;
+      }
+      continue;
+    }
+
+    if (char === '<') {
+      inUrl = true;
+    } else if (char === '"') {
+      inQuotedString = true;
+    } else if (char === ',') {
+      entries.push(link.slice(start, index));
+      start = index + 1;
+    }
+  }
+
+  entries.push(link.slice(start));
+  return entries;
 }
 
 function linkParametersIncludeRelation(parameters: string, relation: string): boolean {

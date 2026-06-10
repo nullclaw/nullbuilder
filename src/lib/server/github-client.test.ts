@@ -63,6 +63,38 @@ test('githubGetPages follows only explicit next link relations', async () => {
   assert.deepEqual(requests, ['https://strict-link.example.test/repos']);
 });
 
+test('githubGetPages keeps commas inside pagination link URLs', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://comma-link.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+
+    if (requests.length === 1) {
+      return new Response(JSON.stringify([{ id: 1 }]), {
+        headers: {
+          Link: '<https://comma-link.example.test/repos?page=2&cursor=a,b>; rel="next", <https://comma-link.example.test/repos?page=3>; rel="last"'
+        }
+      });
+    }
+
+    return new Response(JSON.stringify([{ id: 2 }]));
+  }) as typeof fetch;
+
+  const pages = await githubGetPages<{ id: number }>(config, '/repos', {}, 5);
+
+  assert.deepEqual(pages, [{ id: 1 }, { id: 2 }]);
+  assert.deepEqual(requests, [
+    'https://comma-link.example.test/repos',
+    'https://comma-link.example.test/repos?page=2&cursor=a,b'
+  ]);
+});
+
 test('githubGetPages appends large pages without spreading array arguments', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
