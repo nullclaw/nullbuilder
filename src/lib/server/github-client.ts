@@ -31,6 +31,7 @@ export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
 export const GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH = 32;
 export const GITHUB_ACCEPT_HEADER_MAX_LENGTH = 256;
 export const GITHUB_METHOD_MAX_LENGTH = 16;
+export const GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES = 256;
 
 const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie', 'Proxy-Authorization'] as const;
@@ -650,7 +651,19 @@ function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | und
 }
 
 function rememberPendingRequest<T>(key: string, request: Promise<GitHubFetchResult<T>>): void {
+  pruneInFlightRequests();
   inFlightRequests.set(key, request);
+}
+
+function pruneInFlightRequests(): void {
+  while (inFlightRequests.size >= GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES) {
+    const oldestKey = inFlightRequests.keys().next().value;
+    if (!oldestKey) {
+      return;
+    }
+
+    inFlightRequests.delete(oldestKey);
+  }
 }
 
 function pruneCache(now: number): void {

@@ -7,6 +7,7 @@ import {
   GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH,
   GITHUB_DEFAULT_MAX_PAGES,
   GITHUB_ERROR_MESSAGE_MAX_LENGTH,
+  GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
   GITHUB_LINK_HEADER_MAX_LENGTH,
   GITHUB_METHOD_MAX_LENGTH,
@@ -447,6 +448,38 @@ test('githubRequest keeps caller-abortable GET requests independent', async () =
   releaseFetches.forEach((release) => release());
 
   assert.deepEqual(await Promise.all([first, second]), [{ id: 1 }, { id: 2 }]);
+});
+
+test('githubRequest bounds in-flight cacheable GET coalescing entries', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://bounded-inflight.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+  const releaseFetches: Array<() => void> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+    await new Promise<void>((resolve) => {
+      releaseFetches.push(resolve);
+    });
+    return new Response(JSON.stringify({ url }));
+  }) as typeof fetch;
+
+  const pendingRequests = Array.from({ length: GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 1 }, (_, index) =>
+    githubRequest<{ url: string }>(config, `/repos/nullclaw/repo-${index}`)
+  );
+
+  assert.equal(requests.length, GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 1);
+
+  const duplicateFirst = githubRequest<{ url: string }>(config, '/repos/nullclaw/repo-0');
+  assert.equal(requests.length, GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 2);
+  assert.equal(requests.at(-1), 'https://bounded-inflight.example.test/repos/nullclaw/repo-0');
+
+  releaseFetches.forEach((release) => release());
+  await Promise.all([...pendingRequests, duplicateFirst]);
 });
 
 test('githubRequest bounds cached responses and evicts the oldest entry', async () => {
