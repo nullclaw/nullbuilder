@@ -1,7 +1,9 @@
 const std = @import("std");
 
+const max_decimal_id_digits = "18446744073709551615".len;
+
 pub fn isDecimalId(value: []const u8) bool {
-    if (value.len == 0) return false;
+    if (value.len == 0 or value.len > max_decimal_id_digits) return false;
 
     const id = std.fmt.parseUnsigned(u64, value, 10) catch return false;
     return id > 0;
@@ -168,9 +170,12 @@ fn isAsciiControlOrSpace(byte: u8) bool {
 test "action values validate decimal ids and shas" {
     try std.testing.expect(isDecimalId("1"));
     try std.testing.expect(isDecimalId("123456789"));
+    try std.testing.expect(isDecimalId("18446744073709551615"));
     try std.testing.expect(!isDecimalId(""));
     try std.testing.expect(!isDecimalId("0"));
     try std.testing.expect(!isDecimalId("12a"));
+    try std.testing.expect(!isDecimalId("18446744073709551616"));
+    try std.testing.expect(!isDecimalId("1" ** 100));
 
     try std.testing.expect(isHexSha("abcdef0"));
     try std.testing.expect(isHexSha("abcdef0123456789abcdef0123456789abcdef01"));
