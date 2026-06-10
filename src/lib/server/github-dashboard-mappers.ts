@@ -57,8 +57,8 @@ export function mapRepositorySummary(
     description: safeDashboardText(repository.description ?? '', ''),
     defaultBranch: safeDashboardText(repository.default_branch, 'unknown'),
     language: safeOptionalDashboardText(repository.language),
-    isPrivate: repository.private,
-    archived: repository.archived,
+    isPrivate: safeBoolean(repository.private),
+    archived: safeBoolean(repository.archived),
     stars: safeNullableCount(repository.stargazers_count),
     forks: safeNullableCount(repository.forks_count),
     openIssues: openIssues.total,
@@ -192,7 +192,7 @@ function mapPullRequest(
     comments: safeCount(pull.comments),
     createdAt: safeTimestamp(pull.created_at),
     updatedAt: safeTimestamp(pull.updated_at),
-    draft: pull.draft,
+    draft: safeBoolean(pull.draft),
     baseBranch: safeDashboardText(pull.base.ref, 'unknown'),
     headBranch: safeDashboardText(pull.head.ref, 'unknown'),
     headSha: safeDashboardText(pull.head.sha, 'unknown')
@@ -277,6 +277,14 @@ function safeWorkItemNumber(value: number): number | null {
   return isSafePositiveInteger(value) ? value : null;
 }
 
+function safeWorkflowRunId(value: number): number | null {
+  return isSafePositiveInteger(value) ? value : null;
+}
+
+function safeBoolean(value: unknown): boolean {
+  return value === true;
+}
+
 function findRun(
   runs: GitHubWorkflowRunResponse[],
   nameKeywords: string[],
@@ -300,7 +308,7 @@ function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: GitHubWebUrlC
   }
 
   return {
-    id: run.id,
+    id: safeWorkflowRunId(run.id),
     name: safeDashboardText(run.name ?? '', 'Workflow'),
     path: safeDashboardText(run.path ?? '', ''),
     displayTitle: safeDashboardText(run.display_title, 'Workflow'),

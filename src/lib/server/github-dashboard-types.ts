@@ -25,7 +25,7 @@ export type PullRequestSummary = IssueSummary & {
 };
 
 export type WorkflowRunSummary = {
-  id: number;
+  id: number | null;
   name: string;
   path: string;
   displayTitle: string;

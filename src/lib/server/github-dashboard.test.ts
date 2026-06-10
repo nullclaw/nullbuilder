@@ -88,6 +88,8 @@ test('mapRepositorySummary normalizes unsafe GitHub counters', () => {
   const summary = mapRepositorySummary(
     REPO,
     githubRepository({
+      private: 'true' as unknown as boolean,
+      archived: 1 as unknown as boolean,
       stargazers_count: Number.MAX_SAFE_INTEGER + 1,
       forks_count: -1
     }),
@@ -98,17 +100,26 @@ test('mapRepositorySummary normalizes unsafe GitHub counters', () => {
     ],
     [
       pull({
+        draft: 'false' as unknown as boolean,
         comments: Number.MAX_SAFE_INTEGER + 1
       })
     ],
-    [],
+    [
+      workflowRun({
+        id: Number.MAX_SAFE_INTEGER + 1
+      })
+    ],
     { current: null, last7Days: null, last30Days: null }
   );
 
+  assert.equal(summary.isPrivate, false);
+  assert.equal(summary.archived, false);
   assert.equal(summary.stars, null);
   assert.equal(summary.forks, null);
   assert.equal(summary.issues[0].comments, 0);
   assert.equal(summary.pullRequests[0].comments, 0);
+  assert.equal(summary.pullRequests[0].draft, false);
+  assert.equal(summary.latestRuns.ci?.id, null);
 });
 
 test('mapRepositorySummary bounds and sanitizes labels from GitHub payloads', () => {
