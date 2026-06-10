@@ -127,7 +127,8 @@ fn matchingSuccessfulRun(run: Run, current_id: ?u64, head_sha: []const u8, workf
     if (workflow_name.len > 0 and !std.mem.eql(u8, run.name, workflow_name)) return false;
     if (!isNightlyEvent(run.event)) return false;
     if (!std.mem.eql(u8, run.head_sha, head_sha)) return false;
-    if (run.conclusion == null or !std.mem.eql(u8, run.conclusion.?, "success")) return false;
+    const conclusion = run.conclusion orelse return false;
+    if (!std.mem.eql(u8, conclusion, "success")) return false;
     return true;
 }
 
@@ -369,6 +370,12 @@ test "nightly decide ignores other workflows current run failed runs and non nig
             .event = "push",
             .head_sha = "0123456789abcdef",
             .conclusion = "success",
+        },
+        .{
+            .id = 5,
+            .name = "Nightly",
+            .event = "schedule",
+            .head_sha = "0123456789abcdef",
         },
     };
 
