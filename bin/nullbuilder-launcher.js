@@ -109,7 +109,7 @@ function readArgTail(args, start) {
 
   const tail = [];
   for (let index = start; index < args.length; index += 1) {
-    tail.push(args[index]);
+    tail[tail.length] = args[index];
   }
 
   return tail;
@@ -118,10 +118,10 @@ function readArgTail(args, start) {
 function prefixedArgs(prefix, userArgs) {
   const args = [];
   for (let index = 0; index < prefix.length; index += 1) {
-    args.push(prefix[index]);
+    args[args.length] = prefix[index];
   }
   for (let index = 0; index < userArgs.length; index += 1) {
-    args.push(userArgs[index]);
+    args[args.length] = userArgs[index];
   }
 
   return args;

@@ -16,7 +16,7 @@ async function main() {
 export function readCliArgTail(argv: readonly string[]): string[] {
   const args: string[] = [];
   for (let index = 2; index < argv.length; index += 1) {
-    args.push(argv[index]);
+    args[args.length] = argv[index];
   }
 
   return args;

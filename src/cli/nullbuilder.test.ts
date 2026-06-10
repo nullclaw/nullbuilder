@@ -59,6 +59,34 @@ test('readCliArgTail avoids user-controlled argv slice methods', () => {
   assert.deepEqual(readCliArgTail(argv), ['repos', '--json']);
 });
 
+test('readCliArgTail avoids global array push hooks', () => {
+  const originalPush = Array.prototype.push;
+  let pushCalls = 0;
+  let args: string[] | undefined;
+
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('push should not be called');
+    }
+  });
+
+  try {
+    args = readCliArgTail(['node', 'nullbuilder', 'repos', '--json']);
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalPush
+    });
+  }
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(args, ['repos', '--json']);
+});
+
 test('isCliEntrypoint matches only the invoked module path', () => {
   const cliPath = '/repo/src/cli/nullbuilder.ts';
   const cliUrl = pathToFileURL(cliPath).href;

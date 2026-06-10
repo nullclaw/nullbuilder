@@ -66,6 +66,38 @@ test('buildChildArgs avoids user-controlled forwarded argument iterators', () =>
   assert.deepEqual(buildChildArgs(paths, args, true), ['/repo/dist/cli/nullbuilder.js', 'repos', '--json']);
 });
 
+test('buildChildArgs avoids global array push hooks', () => {
+  const paths = {
+    bundledCli: '/repo/dist/cli/nullbuilder.js',
+    sourceCli: '/repo/src/cli/nullbuilder.ts'
+  };
+  const originalPush = Array.prototype.push;
+  let pushCalls = 0;
+  let childArgs;
+
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('push should not be called');
+    }
+  });
+
+  try {
+    childArgs = buildChildArgs(paths, ['repos', '--json'], false);
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalPush
+    });
+  }
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(childArgs, ['--import', 'tsx', '/repo/src/cli/nullbuilder.ts', 'repos', '--json']);
+});
+
 test('buildChildArgs rejects unsafe cli paths before spawning', () => {
   assert.equal(
     buildChildArgs(
@@ -151,6 +183,47 @@ test('runLauncher avoids user-controlled argv slice before spawning', () => {
   assert.equal(status, 0);
   assert.equal(spawned.length, 1);
   assert.equal(spawned[0].args.at(-1), 'repos');
+});
+
+test('runLauncher avoids global array push hooks before spawning', () => {
+  const originalPush = Array.prototype.push;
+  let pushCalls = 0;
+  let spawned;
+  let status;
+
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('push should not be called');
+    }
+  });
+
+  try {
+    status = runLauncher({
+      argv: ['node', 'bin/nullbuilder.js', 'repos'],
+      cwd: '/worktree',
+      execPath: '/usr/bin/node',
+      moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+      exists: () => true,
+      stderr: writableBuffer(),
+      spawn: (execPath, args, options) => {
+        spawned = { execPath, args, options };
+        return { status: 0 };
+      }
+    });
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalPush
+    });
+  }
+
+  assert.equal(pushCalls, 0);
+  assert.equal(status, 0);
+  assert.equal(spawned?.args.at(-1), 'repos');
 });
 
 test('runLauncher rejects invalid argv without spawning', () => {
