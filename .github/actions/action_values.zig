@@ -8,6 +8,16 @@ const max_host_label_bytes = 63;
 const max_port_digits = "65535".len;
 const max_repo_segment_bytes = 100;
 
+const HttpScheme = enum {
+    http,
+    https,
+};
+
+const ParsedHttpUrl = struct {
+    scheme: HttpScheme,
+    rest: []const u8,
+};
+
 pub fn isDecimalId(value: []const u8) bool {
     if (value.len == 0 or value.len > max_decimal_id_digits) return false;
 
@@ -35,14 +45,10 @@ pub fn isRepositorySlug(value: []const u8) bool {
 }
 
 pub fn isHttpUrlBase(value: []const u8) bool {
-    const scheme_len: usize = if (std.mem.startsWith(u8, value, "https://"))
-        "https://".len
-    else if (std.mem.startsWith(u8, value, "http://"))
-        "http://".len
-    else
-        return false;
+    const parsed = parseHttpPrefix(value) orelse return false;
+    if (!isHttpAuthority(parsed.rest)) return false;
 
-    return isHttpAuthority(value[scheme_len..]);
+    return parsed.scheme == .https or isLoopbackAuthority(parsed.rest);
 }
 
 pub fn isHttpUrl(value: []const u8, max_len: usize) bool {
@@ -51,18 +57,33 @@ pub fn isHttpUrl(value: []const u8, max_len: usize) bool {
         if (byte == ' ') return false;
     }
 
-    const scheme_len: usize = if (std.mem.startsWith(u8, value, "https://"))
-        "https://".len
-    else if (std.mem.startsWith(u8, value, "http://"))
-        "http://".len
-    else
-        return false;
+    const parsed = parseHttpPrefix(value) orelse return false;
 
-    const rest = value[scheme_len..];
+    const rest = parsed.rest;
     const authority_len = std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len;
-    if (!isHttpAuthority(rest[0..authority_len])) return false;
+    const authority = rest[0..authority_len];
+    if (!isHttpAuthority(authority)) return false;
+    if (parsed.scheme == .http and !isLoopbackAuthority(authority)) return false;
 
     return isSafeHttpUrlTail(rest[authority_len..]);
+}
+
+fn parseHttpPrefix(value: []const u8) ?ParsedHttpUrl {
+    if (std.mem.startsWith(u8, value, "https://")) {
+        return .{
+            .scheme = .https,
+            .rest = value["https://".len..],
+        };
+    }
+
+    if (std.mem.startsWith(u8, value, "http://")) {
+        return .{
+            .scheme = .http,
+            .rest = value["http://".len..],
+        };
+    }
+
+    return null;
 }
 
 const HostPort = struct {
@@ -87,6 +108,11 @@ fn isHttpAuthority(authority: []const u8) bool {
     return true;
 }
 
+fn isLoopbackAuthority(authority: []const u8) bool {
+    const host_port = splitHostPort(authority);
+    return isLoopbackHost(host_port.host);
+}
+
 fn splitHostPort(authority: []const u8) HostPort {
     const separator = std.mem.lastIndexOfScalar(u8, authority, ':') orelse return .{ .host = authority };
     return .{
@@ -104,6 +130,42 @@ fn isSafeHost(host: []const u8) bool {
     }
 
     return true;
+}
+
+fn isLoopbackHost(host: []const u8) bool {
+    return eqlAsciiIgnoreCase(host, "localhost") or isLoopbackIpv4(host);
+}
+
+fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
+    if (left.len != right.len) return false;
+
+    for (left, right) |left_byte, right_byte| {
+        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
+    }
+
+    return true;
+}
+
+fn isLoopbackIpv4(host: []const u8) bool {
+    var octets = std.mem.splitScalar(u8, host, '.');
+    const first = octets.next() orelse return false;
+    if (!std.mem.eql(u8, first, "127")) return false;
+
+    var count: usize = 1;
+    while (octets.next()) |octet| {
+        count += 1;
+        if (!isDecimalIpv4Octet(octet)) return false;
+    }
+
+    return count == 4;
+}
+
+fn isDecimalIpv4Octet(value: []const u8) bool {
+    if (value.len == 0 or value.len > 3) return false;
+    if (value.len > 1 and value[0] == '0') return false;
+
+    const octet = std.fmt.parseUnsigned(u8, value, 10) catch return false;
+    return octet <= 255;
 }
 
 fn isSafeHostLabel(label: []const u8) bool {
@@ -351,9 +413,13 @@ test "action values validate repository slugs" {
 test "action values validate URL bases" {
     try std.testing.expect(isHttpUrlBase("https://github.com"));
     try std.testing.expect(isHttpUrlBase("https://github.example.com:8443"));
-    try std.testing.expect(isHttpUrlBase("http://github.example.local"));
+    try std.testing.expect(isHttpUrlBase("http://localhost"));
+    try std.testing.expect(isHttpUrlBase("http://127.0.0.1:8080"));
 
     try std.testing.expect(!isHttpUrlBase("github.com"));
+    try std.testing.expect(!isHttpUrlBase("http://github.example.local"));
+    try std.testing.expect(!isHttpUrlBase("http://127.0.0.999"));
+    try std.testing.expect(!isHttpUrlBase("http://127.0.0.01"));
     try std.testing.expect(!isHttpUrlBase("https://."));
     try std.testing.expect(!isHttpUrlBase("https://github.com."));
     try std.testing.expect(!isHttpUrlBase("https://github..com"));
@@ -414,13 +480,17 @@ test "action values validate UTC timestamps" {
 
 test "action values validate HTTP URLs with paths" {
     try std.testing.expect(isHttpUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
-    try std.testing.expect(isHttpUrl("http://github.example.local/runs/1?check=true", 256));
+    try std.testing.expect(isHttpUrl("http://localhost/runs/1?check=true", 256));
+    try std.testing.expect(isHttpUrl("http://127.0.0.1:8080/runs/1?check=true", 256));
     try std.testing.expect(isHttpUrl("https://github.com:8443/actions/runs/123#summary", 256));
     try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?check_suite_focus=true#summary", 256));
     try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?name=check%20suite#step%2D1", 256));
 
     try std.testing.expect(!isHttpUrl("", 256));
     try std.testing.expect(!isHttpUrl("github.com/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("http://github.example.local/runs/1?check=true", 256));
+    try std.testing.expect(!isHttpUrl("http://127.0.0.999/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("http://127.0.0.01/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github..com/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com:bad/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com\n/actions/runs/1", 256));
