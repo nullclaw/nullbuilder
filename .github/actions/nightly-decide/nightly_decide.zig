@@ -6,6 +6,7 @@ const action_values = @import("action_values");
 
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 const MAX_OUTPUT_VALUE_BYTES = 4096;
+const MAX_WORKFLOW_NAME_BYTES = 256;
 const MAX_WORKFLOW_RUNS_TO_SCAN = 100;
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
@@ -42,6 +43,7 @@ const DecideValidationError = error{
     InvalidRunsJsonPath,
     InvalidCurrentRunId,
     InvalidHeadSha,
+    InvalidWorkflowName,
 };
 
 fn isNightlyEvent(event: []const u8) bool {
@@ -55,6 +57,9 @@ fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
     if (!action_paths.isSafeRelativePath(options.runs_json_path)) return error.InvalidRunsJsonPath;
     if (!action_values.isDecimalId(options.current_run_id)) return error.InvalidCurrentRunId;
     if (!action_values.isFullHexSha(options.head_sha)) return error.InvalidHeadSha;
+    if (options.workflow_name.len > 0 and !action_values.isSafeActionOutputValue(options.workflow_name, MAX_WORKFLOW_NAME_BYTES)) {
+        return error.InvalidWorkflowName;
+    }
 }
 
 fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(RunsPayload) {
@@ -75,6 +80,7 @@ fn decideShouldBuild(
     const current_id = std.fmt.parseUnsigned(u64, current_run_id, 10) catch null;
 
     for (boundedWorkflowRuns(runs)) |run| {
+        if (run.id == 0) continue;
         if (current_id) |id| {
             if (run.id == id) continue;
         }
@@ -113,6 +119,10 @@ fn validateActionOutputUrl(value: []const u8) error{InvalidActionOutput}!void {
     }
 }
 
+fn validateActionOutputRunId(value: u64) error{InvalidActionOutput}!void {
+    if (value == 0) return error.InvalidActionOutput;
+}
+
 fn writeOutputLine(out: *std.Io.Writer, key: []const u8, value: []const u8) !void {
     try out.print("{s}={s}\n", .{ key, value });
 }
@@ -123,6 +133,9 @@ fn writeDecision(out: *std.Io.Writer, decision: Decision) !void {
     try validateActionOutputValue(decision.reason);
     if (decision.matched_run_url.len > 0) {
         try validateActionOutputUrl(decision.matched_run_url);
+    }
+    if (decision.matched_run_id) |id| {
+        try validateActionOutputRunId(id);
     }
 
     try writeOutputLine(out, "should_build", should_build);
@@ -195,6 +208,10 @@ fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !
         },
         error.InvalidHeadSha => {
             action_args.printDiagnostic("invalid head sha: {s}\n", options.head_sha);
+            return error.InvalidArguments;
+        },
+        error.InvalidWorkflowName => {
+            action_args.printDiagnostic("invalid workflow name: {s}\n", options.workflow_name);
             return error.InvalidArguments;
         },
     };
@@ -344,6 +361,22 @@ test "nightly decide scans only bounded workflow history" {
     try std.testing.expectEqual(@as(?u64, 199), decision.matched_run_id);
 }
 
+test "nightly decide ignores matching API runs without a positive id" {
+    const decision = decideShouldBuild(&.{.{
+        .id = 0,
+        .name = "Nightly",
+        .event = "schedule",
+        .head_sha = "0123456789abcdef",
+        .conclusion = "success",
+        .html_url = "https://example.com/run/0",
+    }}, "10", "0123456789abcdef", "Nightly", false);
+
+    try std.testing.expect(decision.should_build);
+    try std.testing.expectEqualStrings("new-sha", decision.reason);
+    try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
+    try std.testing.expectEqualStrings("", decision.matched_run_url);
+}
+
 test "nightly decision output formats GitHub output lines" {
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
@@ -388,6 +421,20 @@ test "nightly decision output rejects non-url matched run URLs" {
         .reason = "successful-nightly-exists",
         .matched_run_id = 9,
         .matched_run_url = "not-a-url",
+    };
+
+    try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
+    try std.testing.expectEqualStrings("", out.writer.buffered());
+}
+
+test "nightly decision output rejects zero matched run ids" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const decision = Decision{
+        .should_build = false,
+        .reason = "successful-nightly-exists",
+        .matched_run_id = 0,
     };
 
     try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
@@ -483,4 +530,12 @@ test "nightly validates action options before reading runs json" {
     var unsafe_sha_options = valid_options;
     unsafe_sha_options.head_sha = "not-a-sha";
     try std.testing.expectError(error.InvalidHeadSha, validateDecideOptions(unsafe_sha_options));
+
+    var unsafe_workflow_options = valid_options;
+    unsafe_workflow_options.workflow_name = "Nightly\ninjected";
+    try std.testing.expectError(error.InvalidWorkflowName, validateDecideOptions(unsafe_workflow_options));
+
+    const oversized_workflow_name = [_]u8{'n'} ** (MAX_WORKFLOW_NAME_BYTES + 1);
+    unsafe_workflow_options.workflow_name = oversized_workflow_name[0..];
+    try std.testing.expectError(error.InvalidWorkflowName, validateDecideOptions(unsafe_workflow_options));
 }
