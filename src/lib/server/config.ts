@@ -6,7 +6,7 @@ import {
   type RepoSlug
 } from '../repositories';
 import { readSafeTextInput } from '../text-safety';
-import { readSafeUrlText } from '../url-safety';
+import { isCanonicalLoopbackHttpUrl, readSafeUrlText } from '../url-safety';
 import { MAX_MAP_CONCURRENCY } from './concurrency';
 
 export type NullbuilderConfig = {
@@ -114,111 +114,6 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
   }
 
   return url.toString().replace(/\/$/, '');
-}
-
-function isCanonicalLoopbackHttpUrl(value: string): boolean {
-  const separator = value.indexOf('://');
-  if (separator <= 0 || value.slice(0, separator).toLowerCase() !== 'http') {
-    return false;
-  }
-
-  const rest = value.slice(separator + '://'.length);
-  const authorityEnd = rest.search(/[/?#]/);
-  const authority = authorityEnd === -1 ? rest : rest.slice(0, authorityEnd);
-  return isLoopbackAuthority(authority);
-}
-
-function isLoopbackAuthority(authority: string): boolean {
-  if (!authority || authority.includes('@')) {
-    return false;
-  }
-
-  const hostPort = splitHostPort(authority);
-  return hostPort !== null && isLoopbackHost(hostPort.host) && isSafeOptionalPort(hostPort.port);
-}
-
-function splitHostPort(authority: string): { host: string; port: string | null } | null {
-  if (authority.startsWith('[')) {
-    const close = authority.indexOf(']');
-    if (close === -1) {
-      return null;
-    }
-
-    const host = authority.slice(0, close + 1);
-    const tail = authority.slice(close + 1);
-    return tail === '' || tail.startsWith(':') ? { host, port: tail ? tail.slice(1) : null } : null;
-  }
-
-  const separator = authority.lastIndexOf(':');
-  const host = separator === -1 ? authority : authority.slice(0, separator);
-  if (host.includes(':')) {
-    return null;
-  }
-
-  return {
-    host,
-    port: separator === -1 ? null : authority.slice(separator + 1)
-  };
-}
-
-function isLoopbackHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
-  return normalized === 'localhost' || normalized === '[::1]' || isLoopbackIpv4(normalized);
-}
-
-function isSafeOptionalPort(port: string | null): boolean {
-  if (port === null) {
-    return true;
-  }
-
-  if (!/^[1-9]\d{0,4}$/.test(port)) {
-    return false;
-  }
-
-  const parsed = Number.parseInt(port, 10);
-  return parsed <= 65_535;
-}
-
-function isLoopbackIpv4(hostname: string): boolean {
-  let octetStart = 0;
-  let octetIndex = 0;
-
-  for (let index = 0; index <= hostname.length; index += 1) {
-    if (index !== hostname.length && hostname[index] !== '.') {
-      continue;
-    }
-
-    if (octetIndex >= 4) {
-      return false;
-    }
-
-    const octet = parseCanonicalIpv4Octet(hostname, octetStart, index);
-    if (octet === null || (octetIndex === 0 && octet !== 127)) {
-      return false;
-    }
-
-    octetIndex += 1;
-    octetStart = index + 1;
-  }
-
-  return octetIndex === 4;
-}
-
-function parseCanonicalIpv4Octet(hostname: string, start: number, end: number): number | null {
-  if (end <= start || end - start > 3 || (end - start > 1 && hostname[start] === '0')) {
-    return null;
-  }
-
-  let value = 0;
-  for (let index = start; index < end; index += 1) {
-    const digit = hostname.charCodeAt(index) - 48;
-    if (digit < 0 || digit > 9) {
-      return null;
-    }
-    value = value * 10 + digit;
-  }
-
-  return value <= 255 ? value : null;
 }
 
 function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {

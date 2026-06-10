@@ -45,6 +45,7 @@ test('safeGitHubWebUrl rejects unsafe URLs before they become hrefs', () => {
   for (const value of [
     '',
     'javascript:alert(1)',
+    'http://github.example.test/nullclaw/nullbuilder',
     'https://evil.example/nullclaw/nullbuilder',
     'https://user:pass@github.example.test/nullclaw/nullbuilder',
     'https://github.example.test/nullclaw/nullbuilder bad',
@@ -76,6 +77,15 @@ test('safeGitHubWebUrl rejects unsafe URLs before they become hrefs', () => {
       '/nullclaw/nullbuilder'
     ),
     'https://github.example.test/nullclaw/nullbuilder/actions?query=check%20suite'
+  );
+  assert.equal(
+    safeGitHubWebUrl(
+      'http://localhost/nullclaw/nullbuilder/actions?query=branch%3Amain',
+      'http://localhost/nullclaw/nullbuilder',
+      'http://localhost',
+      '/nullclaw/nullbuilder'
+    ),
+    'http://localhost/nullclaw/nullbuilder/actions?query=branch%3Amain'
   );
   assert.equal(
     safeGitHubWebUrl(

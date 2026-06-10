@@ -1,6 +1,11 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { hasEncodedTextControlCharacter, readSafeUrlText, safeHttpUrlText } from './url-safety';
+import {
+  hasEncodedTextControlCharacter,
+  isCanonicalLoopbackHttpUrl,
+  readSafeUrlText,
+  safeHttpUrlText
+} from './url-safety';
 
 test('readSafeUrlText rejects raw and encoded text controls', () => {
   assert.equal(
@@ -30,7 +35,7 @@ test('hasEncodedTextControlCharacter identifies percent-encoded text controls on
   assert.equal(hasEncodedTextControlCharacter('/nullclaw/nullbuilder/actions%e2%81%a9'), true);
 });
 
-test('safeHttpUrlText accepts only credential-free HTTP URLs', () => {
+test('safeHttpUrlText accepts HTTPS and canonical loopback-only HTTP URLs', () => {
   assert.equal(
     safeHttpUrlText('https://github.example.test/nullclaw/nullbuilder/actions?query=check%20suite', {
       maxLength: 2048
@@ -41,11 +46,25 @@ test('safeHttpUrlText accepts only credential-free HTTP URLs', () => {
     safeHttpUrlText('http://localhost/nullclaw/nullbuilder', { maxLength: 2048 }),
     'http://localhost/nullclaw/nullbuilder'
   );
+  assert.equal(
+    safeHttpUrlText('http://127.255.255.255:65535/nullclaw/nullbuilder', { maxLength: 2048 }),
+    'http://127.255.255.255:65535/nullclaw/nullbuilder'
+  );
+  assert.equal(
+    safeHttpUrlText('http://[::1]:8080/nullclaw/nullbuilder', { maxLength: 2048 }),
+    'http://[::1]:8080/nullclaw/nullbuilder'
+  );
 
   for (const value of [
     '',
     'javascript:alert(1)',
     'mailto:security@example.test',
+    'http://github.example.test/nullclaw/nullbuilder',
+    'http://127.0.0.01/nullclaw/nullbuilder',
+    'http://0177.0.0.1/nullclaw/nullbuilder',
+    'http://[::2]/nullclaw/nullbuilder',
+    'http://localhost:08080/nullclaw/nullbuilder',
+    'http://127.0.0.1:0/nullclaw/nullbuilder',
     'https://user:pass@github.example.test/nullclaw/nullbuilder',
     'https://github.example.test/nullclaw/nullbuilder bad',
     'https://github.example.test/nullclaw/nullbuilder"bad',
@@ -55,5 +74,35 @@ test('safeHttpUrlText accepts only credential-free HTTP URLs', () => {
     null
   ]) {
     assert.equal(safeHttpUrlText(value, { maxLength: 2048 }), null);
+  }
+});
+
+test('isCanonicalLoopbackHttpUrl validates raw loopback syntax before URL normalization', () => {
+  for (const value of [
+    'http://localhost',
+    'http://localhost:8080/path',
+    'HTTP://LOCALHOST/path',
+    'http://127.0.0.1',
+    'http://127.255.255.255:65535/path',
+    'http://[::1]/path'
+  ]) {
+    assert.equal(isCanonicalLoopbackHttpUrl(value), true, value);
+  }
+
+  for (const value of [
+    'https://localhost',
+    'http://github.example.test',
+    'http://user@localhost',
+    'http://localhost:0',
+    'http://localhost:08080',
+    'http://localhost:65536',
+    'http://127.0.0.01',
+    'http://0177.0.0.1',
+    'http://127.0.0.256',
+    'http://126.0.0.1',
+    'http://[::2]',
+    'http://::1'
+  ]) {
+    assert.equal(isCanonicalLoopbackHttpUrl(value), false, value);
   }
 });

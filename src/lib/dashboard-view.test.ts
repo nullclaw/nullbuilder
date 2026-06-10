@@ -93,12 +93,14 @@ test('audit href helpers reject control-bearing and credentialed URLs', () => {
     { repo: 'nullclaw/control', url: 'https://github.example.test/nullclaw/control%0aoutput=true' },
     { repo: 'nullclaw/creds', url: 'https://user:pass@github.example.test/nullclaw/creds' },
     { repo: 'nullclaw/runtime', url: 42 },
+    { repo: 'nullclaw/plaintext', url: 'http://github.example.test/nullclaw/plaintext' },
     { repo: 'nullclaw/safe', url: 'http://localhost/nullclaw/safe' }
   ]);
 
   assert.equal(repositoryUrls.has('nullclaw/control'), false);
   assert.equal(repositoryUrls.has('nullclaw/creds'), false);
   assert.equal(repositoryUrls.has('nullclaw/runtime'), false);
+  assert.equal(repositoryUrls.has('nullclaw/plaintext'), false);
   assert.equal(repositoryUrls.get('nullclaw/safe'), 'http://localhost/nullclaw/safe');
   assert.equal(
     auditFindingHref(
