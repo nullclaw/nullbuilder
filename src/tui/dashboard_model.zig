@@ -7,6 +7,9 @@ const JsonValue = dashboard_json.JsonValue;
 const JsonObject = dashboard_json.JsonObject;
 
 const empty_values = [_]JsonValue{};
+const max_repo_text_len = 256;
+const max_work_title_len = 1024;
+const max_error_message_len = 2048;
 
 pub const Dashboard = struct {
     items: []const JsonValue,
@@ -142,11 +145,11 @@ pub fn repositoryFromValue(value: JsonValue) ?Repository {
 }
 
 fn repositoryFromObject(repo: JsonObject) Repository {
-    const status = dashboard_json.stringField(repo, "status", "ok");
+    const status = dashboard_json.boundedStringField(repo, "status", "ok", max_repo_text_len);
     const latest = dashboard_json.objectField(repo, "latestRuns");
 
     return .{
-        .slug = dashboard_json.stringField(repo, "slug", "unknown"),
+        .slug = dashboard_json.boundedStringField(repo, "slug", "unknown", max_repo_text_len),
         .open_issues = dashboard_json.intField(repo, "openIssues"),
         .open_pulls = dashboard_json.intField(repo, "openPulls"),
         .stars = dashboard_json.intField(repo, "stars"),
@@ -167,9 +170,9 @@ fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
 fn workItemFromValue(value: JsonValue) ?WorkItem {
     return switch (value) {
         .object => |work| .{
-            .repo = dashboard_json.stringField(work, "repo", ""),
+            .repo = dashboard_json.boundedStringField(work, "repo", "", max_repo_text_len),
             .number = dashboard_json.intField(work, "number"),
-            .title = dashboard_json.stringField(work, "title", ""),
+            .title = dashboard_json.boundedStringField(work, "title", "", max_work_title_len),
         },
         else => null,
     };
@@ -178,8 +181,8 @@ fn workItemFromValue(value: JsonValue) ?WorkItem {
 fn loadErrorFromValue(value: JsonValue) ?LoadError {
     return switch (value) {
         .object => |load_error| .{
-            .repo = dashboard_json.stringField(load_error, "repo", ""),
-            .message = dashboard_json.stringField(load_error, "error", ""),
+            .repo = dashboard_json.boundedStringField(load_error, "repo", "", max_repo_text_len),
+            .message = dashboard_json.boundedStringField(load_error, "error", "", max_error_message_len),
         },
         else => null,
     };
@@ -265,6 +268,40 @@ test "dashboard totals saturate untrusted counters" {
     try std.testing.expectEqual(std.math.maxInt(u64), totals.issues);
     try std.testing.expectEqual(std.math.maxInt(u64), totals.pull_requests);
     try std.testing.expectEqual(std.math.maxInt(u64), totals.stars);
+}
+
+test "dashboard model rejects oversized external text fields" {
+    const oversized = [_]u8{'x'} ** 3000;
+    const json = try std.fmt.allocPrint(std.testing.allocator,
+        \\{{
+        \\  "items": [
+        \\    {{
+        \\      "slug": "{s}",
+        \\      "issues": [{{"repo": "{s}", "number": 7, "title": "{s}"}}]
+        \\    }}
+        \\  ],
+        \\  "errors": [{{"repo": "{s}", "error": "{s}"}}]
+        \\}}
+    , .{ oversized[0..], oversized[0..], oversized[0..], oversized[0..], oversized[0..] });
+    defer std.testing.allocator.free(json);
+
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator, json, .{});
+    defer parsed.deinit();
+
+    const dashboard = try Dashboard.init(parsed.value.object);
+    const repo = repositoryFromValue(dashboard.items[0]).?;
+    try std.testing.expectEqualStrings("unknown", repo.slug);
+
+    var issues = WorkItemIterator.init(dashboard, .issues);
+    const issue = issues.next().?;
+    try std.testing.expectEqualStrings("", issue.repo);
+    try std.testing.expectEqual(@as(u64, 7), issue.number);
+    try std.testing.expectEqualStrings("", issue.title);
+
+    var errors = LoadErrorIterator.init(dashboard);
+    const load_error = errors.next().?;
+    try std.testing.expectEqualStrings("", load_error.repo);
+    try std.testing.expectEqualStrings("", load_error.message);
 }
 
 test "work item iterator skips invalid rows across repositories" {
