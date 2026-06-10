@@ -4,10 +4,12 @@ import { readConfig } from './config';
 import {
   GITHUB_ABSOLUTE_MAX_PAGES,
   GITHUB_DEFAULT_MAX_PAGES,
+  GITHUB_ERROR_MESSAGE_MAX_LENGTH,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
   GITHUB_LINK_HEADER_MAX_LENGTH,
   GITHUB_PAGINATED_ITEMS_MAX,
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
+  GITHUB_STATUS_TEXT_MAX_LENGTH,
   GitHubApiError,
   githubGetPages,
   githubRequest
@@ -504,6 +506,60 @@ test('githubRequest ignores non-string GitHub error messages', async () => {
       error instanceof GitHubApiError &&
       error.status === 500 &&
       error.message === 'GitHub 500 Server Error'
+  );
+});
+
+test('githubRequest rejects unsafe GitHub error detail text', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://unsafe-error-detail.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  for (const message of [
+    'private\nupstream',
+    'private\x1b[31mupstream',
+    'x'.repeat(GITHUB_ERROR_MESSAGE_MAX_LENGTH + 1)
+  ]) {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message }), {
+        status: 500,
+        statusText: 'Server Error'
+      })) as typeof fetch;
+
+    await assert.rejects(
+      githubRequest(config, `/repos/nullclaw/nullbuilder-${message.length}`),
+      (error: unknown) =>
+        error instanceof GitHubApiError &&
+        error.status === 500 &&
+        error.message === 'GitHub 500 Server Error'
+    );
+  }
+});
+
+test('githubRequest bounds unsafe GitHub status text', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://unsafe-status-text.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  const response = new Response(JSON.stringify({ message: 'upstream unavailable' }), {
+    status: 500,
+    statusText: 'Server Error'
+  });
+  Object.defineProperty(response, 'statusText', {
+    value: 'x'.repeat(GITHUB_STATUS_TEXT_MAX_LENGTH + 1)
+  });
+
+  globalThis.fetch = (async () => response) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof GitHubApiError &&
+      error.status === 500 &&
+      error.message === 'GitHub 500 Error: upstream unavailable'
   );
 });
 

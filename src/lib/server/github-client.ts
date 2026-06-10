@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readSafeTextInput } from '../text-safety';
 import type { NullbuilderConfig } from './config';
 
 export type GitHubRequestOptions = RequestInit & {
@@ -24,6 +25,8 @@ export const GITHUB_DEFAULT_MAX_PAGES = 20;
 export const GITHUB_ABSOLUTE_MAX_PAGES = 100;
 export const GITHUB_PAGINATED_ITEMS_MAX = GITHUB_ABSOLUTE_MAX_PAGES * 100;
 export const GITHUB_LINK_HEADER_MAX_LENGTH = 16 * 1024;
+export const GITHUB_ERROR_MESSAGE_MAX_LENGTH = 512;
+export const GITHUB_STATUS_TEXT_MAX_LENGTH = 128;
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
@@ -167,12 +170,13 @@ async function requestGitHubJson<T>(
 }
 
 async function toGitHubApiError(response: Response): Promise<GitHubApiError> {
+  const statusText = safeGitHubErrorText(response.statusText, GITHUB_STATUS_TEXT_MAX_LENGTH) || 'Error';
   const detail = await readErrorDetail(response);
   const remaining = response.headers.get('X-RateLimit-Remaining');
   const reset = response.headers.get('X-RateLimit-Reset');
   const rateLimit = rateLimitResetMessage(remaining, reset);
 
-  return new GitHubApiError(`GitHub ${response.status} ${response.statusText}${detail}${rateLimit}`, response.status);
+  return new GitHubApiError(`GitHub ${response.status} ${statusText}${detail}${rateLimit}`, response.status);
 }
 
 async function readResponseJson<T>(response: Response): Promise<T> {
@@ -186,7 +190,12 @@ async function readResponseJson<T>(response: Response): Promise<T> {
 async function readErrorDetail(response: Response): Promise<string> {
   try {
     const body: unknown = JSON.parse(await readBoundedResponseText(response, GITHUB_JSON_RESPONSE_MAX_BYTES));
-    return isGitHubErrorPayload(body) && body.message ? `: ${body.message}` : '';
+    if (!isGitHubErrorPayload(body)) {
+      return '';
+    }
+
+    const message = safeGitHubErrorText(body.message, GITHUB_ERROR_MESSAGE_MAX_LENGTH);
+    return message ? `: ${message}` : '';
   } catch {
     return '';
   }
@@ -246,6 +255,13 @@ function isGitHubErrorPayload(value: unknown): value is { message: string } {
   }
 
   return typeof (value as Record<string, unknown>).message === 'string';
+}
+
+function safeGitHubErrorText(value: string, maxLength: number): string {
+  return readSafeTextInput(value, {
+    maxLength,
+    trim: true
+  }) ?? '';
 }
 
 function rateLimitResetMessage(remaining: string | null, reset: string | null): string {
