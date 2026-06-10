@@ -2,6 +2,7 @@ const std = @import("std");
 
 const dashboard_model = @import("dashboard_model.zig");
 const dashboard_json = @import("dashboard_json.zig");
+const terminal = @import("terminal.zig");
 
 const JsonValue = dashboard_json.JsonValue;
 const Dashboard = dashboard_model.Dashboard;
@@ -20,7 +21,6 @@ const work_number_width: usize = 5;
 const work_title_width: usize = 74;
 const error_message_width: usize = 90;
 const max_recent_work_items = 8;
-const ascii_escape: u8 = 0x1b;
 
 pub fn render(
     arena: std.mem.Allocator,
@@ -177,60 +177,7 @@ fn isUtf8ContinuationByte(byte: u8) bool {
 }
 
 fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) ![]u8 {
-    var sanitized = std.array_list.Managed(u8).init(arena);
-    errdefer sanitized.deinit();
-
-    var index: usize = 0;
-    while (index < value.len) {
-        const byte = value[index];
-        if (byte == ascii_escape) {
-            index = skipAnsiEscape(value, index);
-        } else if (isUtf8C1Control(value, index)) {
-            try sanitized.append(' ');
-            index += 2;
-        } else {
-            try sanitized.append(if (isTerminalControlByte(byte)) ' ' else byte);
-            index += 1;
-        }
-    }
-
-    return sanitized.toOwnedSlice();
-}
-
-fn skipAnsiEscape(value: []const u8, start: usize) usize {
-    var index = start + 1;
-    if (index >= value.len) return index;
-
-    const introducer = value[index];
-    if (introducer == '[') {
-        index += 1;
-        while (index < value.len) {
-            const byte = value[index];
-            index += 1;
-            if (byte >= 0x40 and byte <= 0x7e) return index;
-        }
-        return index;
-    }
-
-    if (introducer == ']') {
-        index += 1;
-        while (index < value.len) {
-            if (value[index] == 0x07) return index + 1;
-            if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
-            index += 1;
-        }
-        return index;
-    }
-
-    return index + 1;
-}
-
-fn isTerminalControlByte(byte: u8) bool {
-    return byte < 0x20 or byte == 0x7f;
-}
-
-fn isUtf8C1Control(value: []const u8, index: usize) bool {
-    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+    return terminal.sanitizeAlloc(arena, value, .{});
 }
 
 test "clipUtf8 does not split multibyte sequences" {
@@ -327,7 +274,7 @@ test "render sanitizes terminal control characters from external text" {
     try render(std.testing.allocator, &out.writer, json, true);
     const output = out.writer.buffered();
 
-    try std.testing.expect(std.mem.indexOfScalar(u8, output, ascii_escape) == null);
+    try std.testing.expect(std.mem.indexOfScalar(u8, output, terminal.ascii_escape) == null);
     try expectContains(output, "alphared");
     try expectContains(output, "success");
     try expectContains(output, "Fix red next item");

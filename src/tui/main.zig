@@ -42,4 +42,5 @@ test {
     std.testing.refAllDecls(@import("dashboard_json.zig"));
     std.testing.refAllDecls(@import("dashboard_model.zig"));
     std.testing.refAllDecls(@import("dashboard_runs.zig"));
+    std.testing.refAllDecls(@import("terminal.zig"));
 }
