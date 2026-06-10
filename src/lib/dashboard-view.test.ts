@@ -75,6 +75,33 @@ test('visibleAuditFindings avoids user-controlled array slice methods', () => {
   assert.deepEqual(visibleAuditFindings(findings, 2), [1, 2]);
 });
 
+test('dashboard view helpers avoid user-controlled array traversal methods', () => {
+  class UnsafeTraversalArray<T> extends Array<T> {
+    override [Symbol.iterator](): ArrayIterator<T> {
+      throw new Error('iterator should not be called');
+    }
+
+    override some(
+      _predicate: (value: T, index: number, array: T[]) => unknown,
+      _thisArg?: unknown
+    ): boolean {
+      throw new Error('some should not be called');
+    }
+  }
+
+  const repositories = new UnsafeTraversalArray({ error: '' }, { error: 'failed' });
+  const auditLinks = new UnsafeTraversalArray(
+    { repo: 'nullclaw/nullbuilder', url: 'https://github.example.test/nullclaw/nullbuilder' },
+    { repo: 'nullclaw/unsafe', url: 'javascript:alert(1)' }
+  );
+
+  assert.equal(hasDashboardReadErrors(repositories, null), true);
+  assert.equal(
+    buildAuditRepositoryUrls(auditLinks).get('nullclaw/nullbuilder'),
+    'https://github.example.test/nullclaw/nullbuilder'
+  );
+});
+
 test('audit href helpers prefer safe finding URLs before repository fallbacks', () => {
   const repositoryUrls = buildAuditRepositoryUrls([
     { repo: 'nullclaw/nullbuilder', url: 'https://github.example.test/nullclaw/nullbuilder' },

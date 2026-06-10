@@ -87,7 +87,14 @@ export function hasDashboardReadErrors(
   repositories: readonly RepositoryErrorLike[],
   audit: AuditReadStateLike | null | undefined
 ): boolean {
-  return repositories.some((repo) => Boolean(repo.error)) || Boolean(audit?.hasReadErrors);
+  for (let index = 0; index < repositories.length; index += 1) {
+    const repo = repositories[index];
+    if (repo && Boolean(repo.error)) {
+      return true;
+    }
+  }
+
+  return Boolean(audit?.hasReadErrors);
 }
 
 export function visibleAuditFindings<T>(findings: readonly T[], limit = 18): readonly T[] {
@@ -109,7 +116,11 @@ export function buildAuditRepositoryUrls(
 ): ReadonlyMap<string, string> {
   const urls = new Map<string, string>();
 
-  for (const repo of repositories) {
+  for (let index = 0; index < repositories.length; index += 1) {
+    const repo = repositories[index];
+    if (!repo) {
+      continue;
+    }
     if (urls.has(repo.repo)) {
       continue;
     }
