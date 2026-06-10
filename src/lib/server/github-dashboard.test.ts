@@ -290,6 +290,44 @@ test('mapRepositorySummary bounds and sanitizes display strings from GitHub payl
   assert.equal(summary.latestRuns.ci?.updatedAt, '');
 });
 
+test('mapRepositorySummary accepts only strict UTC timestamps from GitHub payloads', () => {
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository({
+      pushed_at: '2026-06-08',
+      updated_at: '2026-06-09T00:00:00+00:00'
+    }),
+    [
+      issue({
+        created_at: '2026-02-29T00:00:00Z',
+        updated_at: '2026-06-09T00:00:00Z'
+      })
+    ],
+    [
+      pull({
+        created_at: '2026-06-08T00:00:00Z',
+        updated_at: '2026-06-09T00:00:00'
+      })
+    ],
+    [
+      workflowRun({
+        created_at: '2026-06-08T00:00:00.123Z',
+        updated_at: '2026-06-09 00:00:00'
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.pushedAt, '');
+  assert.equal(summary.updatedAt, '');
+  assert.equal(summary.issues[0].createdAt, '');
+  assert.equal(summary.issues[0].updatedAt, '2026-06-09T00:00:00Z');
+  assert.equal(summary.pullRequests[0].createdAt, '2026-06-08T00:00:00Z');
+  assert.equal(summary.pullRequests[0].updatedAt, '');
+  assert.equal(summary.latestRuns.ci?.createdAt, '2026-06-08T00:00:00.123Z');
+  assert.equal(summary.latestRuns.ci?.updatedAt, '');
+});
+
 test('mapRepositorySummary validates dashboard URLs from GitHub payloads', () => {
   const webBaseUrl = 'https://github.example.test';
   const repositoryUrl = `${webBaseUrl}/${REPO}`;
