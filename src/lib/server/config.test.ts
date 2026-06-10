@@ -20,21 +20,56 @@ test('readConfig normalizes URLs and clamps numeric settings', () => {
   assert.equal(config.requestTimeoutMs, 5_000);
 });
 
-test('readConfig parses booleans and integers from explicit decimal env values only', () => {
+test('readConfig parses booleans and integers from bounded explicit env values only', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
     NULLBUILDER_DISCOVER_REPOS: ' TRUE ',
-    NULLBUILDER_ENABLE_MUTATIONS: ' yes ',
+    NULLBUILDER_ENABLE_MUTATIONS: 'yes\n',
     NULLBUILDER_CACHE_TTL_MS: '0x10',
     NULLBUILDER_CONCURRENCY: '1e2',
-    NULLBUILDER_REQUEST_TIMEOUT_MS: '5000.5'
+    NULLBUILDER_REQUEST_TIMEOUT_MS: '1'.repeat(100_000)
   });
 
   assert.equal(config.discoverRepos, true);
-  assert.equal(config.enableWebMutations, true);
+  assert.equal(config.enableWebMutations, false);
   assert.equal(config.cacheTtlMs, 60_000);
   assert.equal(config.concurrency, 3);
   assert.equal(config.requestTimeoutMs, 15_000);
+});
+
+test('readConfig trims and bounds configured secrets', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_TOKEN: ' github-token ',
+    NULLBUILDER_WEB_TOKEN: ' web-secret '
+  });
+
+  assert.equal(config.token, 'github-token');
+  assert.equal(config.webToken, 'web-secret');
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_REPOS: 'nullbuilder',
+        NULLBUILDER_GITHUB_TOKEN: `github-token\n${'x'.repeat(20)}`
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid secret for NULLBUILDER_GITHUB_TOKEN.' &&
+      !error.message.includes('github-token')
+  );
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_REPOS: 'nullbuilder',
+        NULLBUILDER_WEB_TOKEN: 'x'.repeat(513)
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid secret for NULLBUILDER_WEB_TOKEN.' &&
+      !error.message.includes('xxxxx')
+  );
 });
 
 test('readConfig rejects invalid configured owners and URLs', () => {
@@ -89,5 +124,27 @@ test('readConfig rejects invalid configured owners and URLs', () => {
       error instanceof Error &&
       error.message === 'Invalid URL for NULLBUILDER_GITHUB_API_URL.' &&
       !error.message.includes('secret')
+  );
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_GITHUB_API_URL: 'https://api.github.com\nsecret'
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL for NULLBUILDER_GITHUB_API_URL.' &&
+      !error.message.includes('secret')
+  );
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_GITHUB_WEB_URL: `https://github.com/${'x'.repeat(2048)}`
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL for NULLBUILDER_GITHUB_WEB_URL.' &&
+      !error.message.includes('xxxxx')
   );
 });

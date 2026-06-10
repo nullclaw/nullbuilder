@@ -5,6 +5,7 @@ import {
   parseRepositoryList,
   type RepoSlug
 } from '../repositories';
+import { readSafeTextInput } from '../text-safety';
 import { MAX_MAP_CONCURRENCY } from './concurrency';
 
 export type NullbuilderConfig = {
@@ -30,6 +31,10 @@ const DEFAULT_CONCURRENCY = 3;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const MIN_REQUEST_TIMEOUT_MS = 5_000;
 const MAX_REQUEST_TIMEOUT_MS = 60_000;
+const MAX_CONFIG_SECRET_LENGTH = 512;
+const MAX_CONFIG_URL_LENGTH = 2048;
+const MAX_CONFIG_BOOLEAN_LENGTH = 16;
+const MAX_CONFIG_INTEGER_LENGTH = 32;
 
 export function readConfig(env: Record<string, string | undefined> = process.env): NullbuilderConfig {
   const owner = normalizeOwner(env.NULLBUILDER_OWNER ?? DEFAULT_OWNER);
@@ -38,7 +43,7 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     owner,
     repos: parseRepositoryList(env.NULLBUILDER_REPOS, owner),
     ignoredRepos: parseRepositoryList(env.NULLBUILDER_IGNORE_REPOS, owner, DEFAULT_IGNORED_REPOSITORIES),
-    token: optionalTrimmed(env.NULLBUILDER_GITHUB_TOKEN),
+    token: parseOptionalSecret(env.NULLBUILDER_GITHUB_TOKEN, 'NULLBUILDER_GITHUB_TOKEN'),
     apiBaseUrl: parseBaseUrl(env.NULLBUILDER_GITHUB_API_URL, DEFAULT_API_BASE_URL, 'NULLBUILDER_GITHUB_API_URL'),
     webBaseUrl: parseBaseUrl(env.NULLBUILDER_GITHUB_WEB_URL, DEFAULT_WEB_BASE_URL, 'NULLBUILDER_GITHUB_WEB_URL'),
     discoverRepos: parseBoolean(env.NULLBUILDER_DISCOVER_REPOS),
@@ -51,12 +56,12 @@ export function readConfig(env: Record<string, string | undefined> = process.env
       MAX_REQUEST_TIMEOUT_MS
     ),
     enableWebMutations: parseBoolean(env.NULLBUILDER_ENABLE_MUTATIONS),
-    webToken: optionalTrimmed(env.NULLBUILDER_WEB_TOKEN)
+    webToken: parseOptionalSecret(env.NULLBUILDER_WEB_TOKEN, 'NULLBUILDER_WEB_TOKEN')
   };
 }
 
 function parseBoolean(value: string | undefined): boolean {
-  const normalized = value?.trim().toLowerCase();
+  const normalized = parseConfigScalar(value, MAX_CONFIG_BOOLEAN_LENGTH)?.toLowerCase();
   if (!normalized) {
     return false;
   }
@@ -64,13 +69,29 @@ function parseBoolean(value: string | undefined): boolean {
   return ['1', 'true', 'yes', 'on'].includes(normalized);
 }
 
-function optionalTrimmed(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
+function parseOptionalSecret(value: string | undefined, name: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const safe = readSafeTextInput(value, {
+    maxLength: MAX_CONFIG_SECRET_LENGTH,
+    trim: true
+  });
+  if (safe === null) {
+    throw new Error(`Invalid secret for ${name}.`);
+  }
+
+  return safe || undefined;
 }
 
 function parseBaseUrl(value: string | undefined, fallback: string, name: string): string {
-  const raw = value?.trim() || fallback;
+  const safe = value === undefined ? fallback : readSafeTextInput(value, { maxLength: MAX_CONFIG_URL_LENGTH, trim: true });
+  if (safe === null) {
+    throw new Error(`Invalid URL for ${name}.`);
+  }
+
+  const raw = safe || fallback;
   let url: URL;
 
   try {
@@ -93,7 +114,7 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
 }
 
 function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
-  const trimmed = value?.trim();
+  const trimmed = parseConfigScalar(value, MAX_CONFIG_INTEGER_LENGTH);
   if (!trimmed) {
     return fallback;
   }
@@ -108,4 +129,12 @@ function parseBoundedInteger(value: string | undefined, fallback: number, min: n
   }
 
   return Math.min(max, Math.max(min, parsed));
+}
+
+function parseConfigScalar(value: string | undefined, maxLength: number): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return readSafeTextInput(value, { maxLength, trim: true }) ?? undefined;
 }
