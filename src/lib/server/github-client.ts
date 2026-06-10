@@ -45,7 +45,7 @@ export async function githubGetPages<T>(
   const itemLimit = normalizeMaxItems(maxItems);
 
   for (let page = 0; next && page < pageLimit && values.length < itemLimit; page += 1) {
-    const result: GitHubFetchResult<T[]> = await githubFetchJson<T[]>(config, next, init);
+    const result: GitHubFetchResult<unknown> = await githubFetchJson<unknown>(config, next, init);
     appendPageValues(values, result.data, itemLimit);
     next = values.length >= itemLimit ? null : result.next;
   }
@@ -532,7 +532,11 @@ function resultFromCacheEntry<T>(entry: CacheEntry<T>): GitHubFetchResult<T> {
   };
 }
 
-function appendPageValues<T>(values: T[], page: readonly T[], maxItems: number): void {
+function appendPageValues<T>(values: T[], page: unknown, maxItems: number): void {
+  if (!Array.isArray(page)) {
+    throw new Error('GitHub paginated response must be an array.');
+  }
+
   for (const value of page) {
     if (values.length >= maxItems) {
       return;

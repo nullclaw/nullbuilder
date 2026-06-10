@@ -200,6 +200,24 @@ test('githubGetPages normalizes unsafe page limits', async () => {
   assert.equal(await countRequests(GITHUB_ABSOLUTE_MAX_PAGES + 1), GITHUB_ABSOLUTE_MAX_PAGES);
 });
 
+test('githubGetPages rejects non-array paginated responses', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://malformed-page.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  for (const [index, page] of ['not-an-array', { items: [] }].entries()) {
+    globalThis.fetch = (async () => new Response(JSON.stringify(page))) as typeof fetch;
+
+    await assert.rejects(
+      githubGetPages(config, `/repos?page=${index}`, {}, 1),
+      (error: unknown) =>
+        error instanceof Error && error.message === 'GitHub paginated response must be an array.'
+    );
+  }
+});
+
 test('githubRequest reuses fresh cached GET responses', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
