@@ -5,7 +5,7 @@ import { githubRequest } from './github-client';
 import type { StarGrowthSummary } from './github-dashboard-types';
 import { safeNonNegativeInteger } from './number-safety';
 
-const STAR_PAGE_SIZE = 100;
+export const STAR_PAGE_SIZE = 100;
 const MAX_STAR_PAGES_TO_SCAN = 10;
 const MAX_STARGAZER_TIMESTAMP_LENGTH = 64;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -63,13 +63,14 @@ async function fetchStarGrowth(
     page >= 1 && pagesRead < MAX_STAR_PAGES_TO_SCAN;
     page -= 1, pagesRead += 1
   ) {
-    const stargazers = await githubRequest<GitHubStargazerResponse[]>(
+    const stargazersResponse = await githubRequest<unknown>(
       config,
       `/repos/${repo}/stargazers?per_page=${STAR_PAGE_SIZE}&page=${page}`,
       {
         accept: 'application/vnd.github.star+json'
       }
     );
+    const stargazers = safeStargazerPage(stargazersResponse);
     let pageHasRecentStars = false;
 
     for (const star of stargazers) {
@@ -111,6 +112,10 @@ function starAgeMs(starredAt: unknown, now: number): number | null {
 
   const age = now - timestamp;
   return age >= 0 ? age : null;
+}
+
+function safeStargazerPage(value: unknown): GitHubStargazerResponse[] {
+  return Array.isArray(value) ? value.slice(0, STAR_PAGE_SIZE) : [];
 }
 
 function safeCurrentStars(value: number): number | null {

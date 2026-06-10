@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 import type { RepoSlug } from '../repositories';
 import { readConfig } from './config';
-import { getStarGrowth } from './github-star-growth';
+import { getStarGrowth, STAR_PAGE_SIZE } from './github-star-growth';
 
 const originalFetch = globalThis.fetch;
 const REPO = 'nullclaw/nullbuilder' as RepoSlug;
@@ -120,6 +120,28 @@ test('getStarGrowth rejects unsafe and non-UTC stargazer timestamps', async () =
     current: 1,
     last7Days: 1,
     last30Days: 1
+  });
+});
+
+test('getStarGrowth bounds oversized stargazer pages to the API page size', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://oversized-star-page.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const now = Date.parse('2026-06-09T00:00:00Z');
+
+  globalThis.fetch = (async () =>
+    jsonResponse(
+      Array.from({ length: STAR_PAGE_SIZE + 25 }, (_, index) => ({
+        starred_at: index < STAR_PAGE_SIZE ? '2026-06-08T00:00:00Z' : '2026-05-20T00:00:00Z'
+      }))
+    )) as typeof fetch;
+
+  assert.deepEqual(await getStarGrowth(config, REPO, STAR_PAGE_SIZE, now), {
+    current: STAR_PAGE_SIZE,
+    last7Days: STAR_PAGE_SIZE,
+    last30Days: STAR_PAGE_SIZE
   });
 });
 
