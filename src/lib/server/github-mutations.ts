@@ -312,8 +312,8 @@ function optionEnabled(value: unknown): boolean {
   return value === true;
 }
 
-function sanitizeResultText(value: string, maxLength: number, fallback: string): string {
-  return sanitizeText(value, {
+function sanitizeResultText(value: unknown, maxLength: number, fallback: string): string {
+  return sanitizeText(typeof value === 'string' ? value : '', {
     maxLength,
     fallback,
     trim: true

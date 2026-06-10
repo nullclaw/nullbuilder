@@ -135,6 +135,32 @@ test('buildPrTag bounds and sanitizes API result metadata', async () => {
   assert.equal(result.headBranch.length <= 255, true);
 });
 
+test('buildPrTag falls back for malformed API result text metadata', async () => {
+  const config = testConfig();
+  mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse({
+        title: 123 as unknown as string,
+        headRef: 42 as unknown as string
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  const result = await buildPrTag(config, {
+    repo: 'nullbuilder',
+    prNumber: 7
+  });
+
+  assert.equal(result.prTitle, 'Untitled PR');
+  assert.equal(result.headBranch, 'unknown');
+});
+
 test('buildPrTag treats only literal true confirm flags as write requests', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
