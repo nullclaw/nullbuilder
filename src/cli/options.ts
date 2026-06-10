@@ -1,8 +1,8 @@
 import { parsePositiveIntegerText, readSafeTextInput } from '../lib/text-safety';
+import { readCliArgVector } from './runtime-args';
 
 const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
-const MAX_CLI_ARGS = 128;
 const MAX_POSITIONAL_ARGS = 16;
 
 export type Command = (typeof COMMANDS)[number];
@@ -156,34 +156,6 @@ export function parseOptions(args: unknown): CliOptions {
   return options;
 }
 
-function readCliArgVector(value: unknown): string[] {
-  const values = readRuntimeArray(value);
-  if (values === null) {
-    throw new Error('Invalid CLI argument.');
-  }
-
-  const length = readRuntimeArrayLength(values);
-  if (length === null) {
-    throw new Error('Invalid CLI argument.');
-  }
-
-  if (length > MAX_CLI_ARGS) {
-    throw new Error('Too many CLI arguments.');
-  }
-
-  const args: string[] = [];
-  for (let index = 0; index < length; index += 1) {
-    const entry = readRuntimeArrayItem(values, index);
-    if (!entry.ok || typeof entry.value !== 'string') {
-      throw new Error('Invalid CLI argument.');
-    }
-
-    args[args.length] = entry.value;
-  }
-
-  return args;
-}
-
 function readArgTail(args: readonly string[], start: number): string[] {
   const tail: string[] = [];
   for (let index = start; index < args.length; index += 1) {
@@ -191,34 +163,6 @@ function readArgTail(args: readonly string[], start: number): string[] {
   }
 
   return tail;
-}
-
-function readRuntimeArrayLength(value: readonly unknown[]): number | null {
-  try {
-    const length = value.length;
-    return Number.isSafeInteger(length) && length >= 0 ? length : null;
-  } catch {
-    return null;
-  }
-}
-
-function readRuntimeArrayItem(
-  values: readonly unknown[],
-  index: number
-): { ok: true; value: unknown } | { ok: false } {
-  try {
-    return { ok: true, value: values[index] };
-  } catch {
-    return { ok: false };
-  }
-}
-
-function readRuntimeArray(value: unknown): readonly unknown[] | null {
-  try {
-    return Array.isArray(value) ? value : null;
-  } catch {
-    return null;
-  }
 }
 
 function markOptionOnce(seenOptions: Set<string>, option: string): void {

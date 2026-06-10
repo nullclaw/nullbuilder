@@ -37,7 +37,7 @@ export const cliDependencies: CliDependencies = {
 };
 
 export async function runCli(
-  argv: readonly string[],
+  argv: unknown,
   dependencies: CliDependencies = cliDependencies
 ): Promise<CliRunResult> {
   const commandLine = parseCommandLine(argv);

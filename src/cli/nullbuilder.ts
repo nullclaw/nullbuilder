@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url';
 import { formatCliError } from './output';
+import { readCliArgVector } from './runtime-args';
 import { runCli, type CliRunResult } from './runner';
 
 export type CliOutputWriters = {
@@ -13,13 +14,8 @@ async function main() {
   setExitCode(result.exitCode);
 }
 
-export function readCliArgTail(argv: readonly string[]): string[] {
-  const args: string[] = [];
-  for (let index = 2; index < argv.length; index += 1) {
-    args[args.length] = argv[index];
-  }
-
-  return args;
+export function readCliArgTail(argv: unknown): string[] {
+  return readCliArgVector(argv, { start: 2 });
 }
 
 export function writeCliRunResult(

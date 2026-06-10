@@ -59,6 +59,30 @@ test('readCliArgTail avoids user-controlled argv slice methods', () => {
   assert.deepEqual(readCliArgTail(argv), ['repos', '--json']);
 });
 
+test('readCliArgTail copies argv tail before parsing', () => {
+  let tailReads = 0;
+  let prefixReads = 0;
+  const argv = new Proxy(['node', 'nullbuilder', 'repos', '--json'], {
+    get(target, property, receiver) {
+      if (property === '0' || property === '1') {
+        prefixReads += 1;
+      }
+      if (property === '2' || property === '3') {
+        tailReads += 1;
+        if (tailReads > 2) {
+          throw new Error('tail should not be read after validation');
+        }
+      }
+
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  assert.deepEqual(readCliArgTail(argv), ['repos', '--json']);
+  assert.equal(prefixReads, 0);
+  assert.equal(tailReads, 2);
+});
+
 test('readCliArgTail avoids global array push hooks', () => {
   const originalPush = Array.prototype.push;
   let pushCalls = 0;
@@ -85,6 +109,36 @@ test('readCliArgTail avoids global array push hooks', () => {
 
   assert.equal(pushCalls, 0);
   assert.deepEqual(args, ['repos', '--json']);
+});
+
+test('readCliArgTail rejects hostile argv traps without leaking details', () => {
+  for (const argv of [
+    new Proxy(['node', 'nullbuilder', 'repos'], {
+      get(target, property, receiver) {
+        if (property === 'length') {
+          throw new Error('secret length trap');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    }),
+    new Proxy(['node', 'nullbuilder', 'repos'], {
+      get(target, property, receiver) {
+        if (property === '2') {
+          throw new Error('secret item trap');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    })
+  ]) {
+    assert.throws(() => readCliArgTail(argv), (error) => {
+      assert(error instanceof Error);
+      assert.equal(error.message, 'Invalid CLI argument.');
+      assert.doesNotMatch(error.message, /secret/u);
+      return true;
+    });
+  }
 });
 
 test('isCliEntrypoint matches only the invoked module path', () => {
