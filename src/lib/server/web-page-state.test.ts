@@ -35,6 +35,24 @@ test('dashboard page state blocks token-backed data until web auth is valid', ()
   });
 });
 
+test('dashboard page state ignores payload when access cannot read data', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_TOKEN: 'github-token',
+    NULLBUILDER_WEB_TOKEN: 'web-secret',
+    NULLBUILDER_ENABLE_MUTATIONS: 'true'
+  });
+  const cookies = cookiesWith();
+  const access = resolveDashboardAccess(config, cookies);
+  const state = buildDashboardPageState(config, cookies, access, pagePayload());
+
+  assert.equal(access.canReadData, false);
+  assert.equal(state.dashboard, null);
+  assert.equal(state.audit, null);
+  assert.equal(state.csrfToken, null);
+  assert.equal(state.webMutationsAvailable, false);
+});
+
 test('dashboard page state allows anonymous data when no tokens are configured', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

@@ -48,9 +48,11 @@ export function buildDashboardPageState(
   access: DashboardAccessState,
   payload?: DashboardPagePayload
 ): DashboardPageState {
+  const visiblePayload = access.canReadData ? payload : undefined;
+
   return {
-    dashboard: payload?.dashboard ?? null,
-    audit: payload?.audit ?? null,
+    dashboard: visiblePayload?.dashboard ?? null,
+    audit: visiblePayload?.audit ?? null,
     authRequired: access.authRequired,
     authConfigured: access.authConfigured,
     authenticated: access.authenticated,
@@ -58,6 +60,6 @@ export function buildDashboardPageState(
     webMutationsAvailable: config.enableWebMutations && access.authConfigured && access.authenticated,
     hasGitHubToken: Boolean(config.token),
     ownerUrl: githubOwnerWebUrl(config.webBaseUrl, config.owner),
-    csrfToken: payload ? createCsrfToken(cookies, config) : null
+    csrfToken: visiblePayload ? createCsrfToken(cookies, config) : null
   };
 }
