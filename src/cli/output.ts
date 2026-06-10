@@ -50,7 +50,7 @@ export function formatBuildPrResult(result: BuildPrResult): string {
   ];
 
   if (result.dryRun) {
-    lines.push('pass --confirm to create the tag');
+    lines[lines.length] = 'pass --confirm to create the tag';
   }
 
   return lines.join('\n');
@@ -66,7 +66,7 @@ export function formatReleaseTagResult(result: ReleaseTagResult): string {
   ];
 
   if (result.dryRun) {
-    lines.push('pass --confirm to create the tag');
+    lines[lines.length] = 'pass --confirm to create the tag';
   }
 
   return lines.join('\n');
@@ -121,13 +121,13 @@ export function formatRepositoryErrors(dashboard: DashboardData): string {
   for (let index = 0; index < dashboard.repositories.length && lines.length < MAX_TERMINAL_TABLE_ROWS; index += 1) {
     const repo = dashboard.repositories[index];
     if (repo.status === 'error') {
-      lines.push(terminalLine(`${repo.slug}: ${repo.error ?? 'Unknown repository error.'}`));
+      lines[lines.length] = terminalLine(`${repo.slug}: ${repo.error ?? 'Unknown repository error.'}`);
     }
   }
 
   const omittedRows = Math.max(0, dashboard.totals.erroredRepositories - lines.length);
   if (omittedRows > 0) {
-    lines.push(terminalLine(`... ${omittedRows} repository errors omitted; use --json for full output.`));
+    lines[lines.length] = terminalLine(`... ${omittedRows} repository errors omitted; use --json for full output.`);
   }
 
   return lines.join('\n');
@@ -142,10 +142,10 @@ function repositoryErrorRows(
   for (let index = 0; index < dashboard.repositories.length && errors.length < maxRows; index += 1) {
     const repo = dashboard.repositories[index];
     if (repo.status === 'error') {
-      errors.push({
+      errors[errors.length] = {
         repo: repo.slug,
         error: repo.error ?? 'Unknown repository error.'
-      });
+      };
     }
   }
 
@@ -282,7 +282,7 @@ function formatBoundedTable(
   const rowLimit = Math.min(rowCount, MAX_TERMINAL_TABLE_ROWS);
   const safeRows: Array<Record<string, string>> = [];
   for (let index = 0; index < rowLimit; index += 1) {
-    safeRows.push(sanitizeRow(rowAt(index), columns));
+    safeRows[index] = sanitizeRow(rowAt(index), columns);
   }
 
   return formatSanitizedTable(safeRows, columns, rowCount - rowLimit);
@@ -301,11 +301,11 @@ function formatSanitizedTable(
   const lines = [formatTableHeader(columns, widths), formatTableSeparator(widths)];
 
   for (let index = 0; index < safeRows.length; index += 1) {
-    lines.push(formatTableRow(safeRows[index], columns, widths));
+    lines[lines.length] = formatTableRow(safeRows[index], columns, widths);
   }
 
   if (omittedRows > 0) {
-    lines.push(terminalLine(`... ${omittedRows} rows omitted; use --json for full output.`));
+    lines[lines.length] = terminalLine(`... ${omittedRows} rows omitted; use --json for full output.`);
   }
 
   return lines.join('\n');
@@ -319,7 +319,7 @@ function formatAuditFinding(item: AuditFinding): string {
   ];
 
   if (item.url) {
-    lines.push(terminalLine(`  ${item.url}`));
+    lines[lines.length] = terminalLine(`  ${item.url}`);
   }
 
   return lines.join('\n');
@@ -330,12 +330,12 @@ function formatAuditFindings(findings: readonly AuditFinding[]): string {
   const lines: string[] = [];
 
   for (let index = 0; index < findingLimit; index += 1) {
-    lines.push(formatAuditFinding(findings[index]));
+    lines[index] = formatAuditFinding(findings[index]);
   }
 
   const omittedFindings = findings.length - findingLimit;
   if (omittedFindings > 0) {
-    lines.push(terminalLine(`... ${omittedFindings} findings omitted; use --json for full output.`));
+    lines[lines.length] = terminalLine(`... ${omittedFindings} findings omitted; use --json for full output.`);
   }
 
   return lines.join('\n');
@@ -381,7 +381,7 @@ function appendTablePart(line: string, value: string): string {
 function columnWidths(rows: Array<Record<string, string>>, columns: readonly string[]): number[] {
   const widths: number[] = [];
   for (let index = 0; index < columns.length; index += 1) {
-    widths.push(columns[index].length);
+    widths[index] = columns[index].length;
   }
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {

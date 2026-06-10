@@ -15,6 +15,7 @@ import {
 } from './output';
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
+const originalArrayPush = Array.prototype.push;
 
 test('selectDashboardJson returns command-specific rows and load errors', () => {
   const dashboard = dashboardFixture();
@@ -297,6 +298,48 @@ test('formatters render terminal tables without array iterators', () => {
 
   assert.match(dashboardOutput, /nullclaw\/nullbuilder/);
   assert.match(auditOutput, /nullclaw\/nullbuilder\s+ok\s+100/);
+});
+
+test('formatters collect output without Array.prototype.push', () => {
+  const baseFinding = auditReportFixture().findings[0];
+  const dashboard = dashboardFixture();
+  const report = auditReportFixture({
+    findings: [
+      baseFinding,
+      {
+        ...baseFinding,
+        id: 'nullclaw/nullbuilder:metadata:info:Missing repository topics',
+        severity: 'info',
+        title: 'Missing repository topics',
+        url: undefined
+      }
+    ]
+  });
+
+  Array.prototype.push = function arrayPushShouldNotBeCalled(): number {
+    throw new Error('Array.prototype.push should not be called.');
+  };
+
+  let buildPrOutput = '';
+  let releaseTagOutput = '';
+  let repositoryErrorsOutput = '';
+  let dashboardOutput = '';
+  let auditOutput = '';
+  try {
+    buildPrOutput = formatBuildPrResult(buildPrResultFixture({ dryRun: true }));
+    releaseTagOutput = formatReleaseTagResult(releaseTagResultFixture({ dryRun: true }));
+    repositoryErrorsOutput = formatRepositoryErrors(dashboard);
+    dashboardOutput = formatDashboard('repos', dashboard);
+    auditOutput = formatAuditReport(report);
+  } finally {
+    Array.prototype.push = originalArrayPush;
+  }
+
+  assert.match(buildPrOutput, /pass --confirm to create the tag/);
+  assert.match(releaseTagOutput, /pass --confirm to create the tag/);
+  assert.match(repositoryErrorsOutput, /nullclaw\/broken/);
+  assert.match(dashboardOutput, /nullclaw\/nullbuilder/);
+  assert.match(auditOutput, /Missing repository topics/);
 });
 
 test('formatters truncate by code point without splitting surrogate pairs', () => {
