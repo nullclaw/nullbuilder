@@ -1,4 +1,5 @@
 const ANSI_STRING_CONTROL_PATTERN = /(?:\x1b[\]PX^_]|\x90|\x98|\x9d|\x9e|\x9f)(?:[^\x07\x1b\x9c]|\x1b(?!\\))*?(?:\x07|\x1b\\|\x9c|$)/g;
+const ANSI_CONTROL_SEQUENCE_PATTERN = /(?:\x1b\[|\x9b)[0-?]*[ -/]*(?:[@-~]|$)/g;
 const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])/g;
 const BIDI_FORMAT_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const BIDI_FORMAT_CONTROL_TEST_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
@@ -58,6 +59,7 @@ export function sanitizeText(value: string, options: SafeTextOptions): string {
     replaceLoneSurrogates(
       value
         .replace(ANSI_STRING_CONTROL_PATTERN, '')
+        .replace(ANSI_CONTROL_SEQUENCE_PATTERN, '')
         .replace(ANSI_ESCAPE_PATTERN, '')
         .replace(CONTROL_CHARACTER_PATTERN, ' ')
         .replace(BIDI_FORMAT_CONTROL_PATTERN, ' ')

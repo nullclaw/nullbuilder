@@ -70,6 +70,16 @@ test('sanitizeText strips ANSI string control payloads', () => {
   assert.equal(rawOutput.includes('private'), false);
 });
 
+test('sanitizeText strips C1 control sequence payloads', () => {
+  const output = sanitizeText('safe\x9b31mred\x9b0m text', { maxLength: 64, trim: true });
+
+  assert.equal(output, 'safered text');
+  assert.equal(output.includes('31m'), false);
+  assert.equal(output.includes('0m'), false);
+  assert.equal(sanitizeText('safe\x1b[31', { maxLength: 64, trim: true }), 'safe');
+  assert.equal(sanitizeText('safe\x9b31', { maxLength: 64, trim: true }), 'safe');
+});
+
 test('sanitizeTerminalLine truncates by code point without splitting surrogate pairs', () => {
   const output = sanitizeTerminalLine('🙂'.repeat(3000), 2048);
 
