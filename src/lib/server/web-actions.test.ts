@@ -235,7 +235,7 @@ test('runBuildPrWebMutation validates access and passes normalized input to exec
   );
 
   assert.deepEqual(received, {
-    repo: 'nullbuilder',
+    repo: 'nullclaw/nullbuilder',
     prNumber: 17,
     tagName: 'build-pr-17',
     confirm: true,
@@ -274,6 +274,55 @@ test('runBuildPrWebMutation rejects invalid form data before executor', async ()
   });
 });
 
+test('runBuildPrWebMutation rejects tampered repository and tag fields before executor', async () => {
+  const { config, cookies, csrfToken } = authorizedMutationContext();
+  const formData = new FormData();
+  formData.set('csrfToken', csrfToken);
+  formData.set('repo', 'unconfigured');
+  formData.set('prNumber', '17');
+  let executed = false;
+
+  const unconfiguredRepo = await runBuildPrWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(unconfiguredRepo, {
+    ok: false,
+    status: 400,
+    field: 'buildError',
+    message: 'Repository must be one of the configured repositories.'
+  });
+
+  formData.set('repo', 'nullbuilder');
+  formData.set('tagName', 'v1.2.3');
+  const invalidTag = await runBuildPrWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(invalidTag, {
+    ok: false,
+    status: 400,
+    field: 'buildError',
+    message: 'Invalid build PR tag.'
+  });
+});
+
 test('runReleaseTagWebMutation returns access failures before parsing execution', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder'
@@ -285,6 +334,80 @@ test('runReleaseTagWebMutation returns access failures before parsing execution'
     status: 403,
     field: 'releaseError',
     message: 'Web mutations are disabled. Set NULLBUILDER_ENABLE_MUTATIONS=true to enable release-tag from the UI.'
+  });
+});
+
+test('runReleaseTagWebMutation rejects tampered repository tag and target ref before executor', async () => {
+  const { config, cookies, csrfToken } = authorizedMutationContext();
+  let executed = false;
+
+  const unconfiguredRepo = await runReleaseTagWebMutation(
+    config,
+    cookies,
+    mutationForm(csrfToken, {
+      repo: 'unconfigured',
+      tagName: 'v1.2.3'
+    }),
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(unconfiguredRepo, {
+    ok: false,
+    status: 400,
+    field: 'releaseError',
+    message: 'Repository must be one of the configured repositories.'
+  });
+
+  executed = false;
+  const invalidTag = await runReleaseTagWebMutation(
+    config,
+    cookies,
+    mutationForm(csrfToken, {
+      repo: 'nullbuilder',
+      tagName: 'build-pr-17'
+    }),
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(invalidTag, {
+    ok: false,
+    status: 400,
+    field: 'releaseError',
+    message: 'Invalid release tag.'
+  });
+
+  executed = false;
+  const invalidTargetRef = await runReleaseTagWebMutation(
+    config,
+    cookies,
+    mutationForm(csrfToken, {
+      repo: 'nullbuilder',
+      tagName: 'v1.2.3',
+      targetRef: 'refs/heads/main'
+    }),
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(invalidTargetRef, {
+    ok: false,
+    status: 400,
+    field: 'releaseError',
+    message: 'Invalid target ref.'
   });
 });
 
@@ -326,6 +449,24 @@ function testLoginRateLimiter(maxFailures = 1): LoginRateLimiter {
     maxKeys: 10,
     now: () => 10_000
   });
+}
+
+function mutationForm(
+  csrfToken: string,
+  values: {
+    repo: string;
+    tagName: string;
+    targetRef?: string;
+  }
+): FormData {
+  const formData = new FormData();
+  formData.set('csrfToken', csrfToken);
+  formData.set('repo', values.repo);
+  formData.set('tagName', values.tagName);
+  if (values.targetRef !== undefined) {
+    formData.set('targetRef', values.targetRef);
+  }
+  return formData;
 }
 
 function authorizedMutationContext(): { config: ReturnType<typeof readConfig>; cookies: Cookies; csrfToken: string } {

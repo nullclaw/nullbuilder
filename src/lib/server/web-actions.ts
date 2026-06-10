@@ -7,6 +7,9 @@ import {
   type LoginRateLimiter
 } from './auth';
 import type { NullbuilderConfig } from './config';
+import { sanitizeGitTargetRef } from './git-refs';
+import { sanitizeBuildPrTagName, sanitizeReleaseTagName } from './tags';
+import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import { parsePositiveIntegerText, readSafeTextInput } from '../text-safety';
 
 export type WebMutationOperation = 'build-pr' | 'release-tag';
@@ -137,20 +140,15 @@ export async function runBuildPrWebMutation<T>(
   }
 
   const buildForm = parseBuildPrMutationForm(formData);
-  if (!buildForm.repo || !buildForm.prNumber) {
-    return mutationFailure(400, 'buildError', 'Repository and a positive PR number are required.');
+  const input = prepareBuildPrMutationInput(config, buildForm);
+  if (!input.ok) {
+    return input;
   }
 
   try {
     return {
       ok: true,
-      result: await execute({
-        repo: buildForm.repo,
-        prNumber: buildForm.prNumber,
-        tagName: buildForm.tagName,
-        confirm: buildForm.confirm,
-        force: buildForm.force
-      })
+      result: await execute(input.value)
     };
   } catch (error) {
     return mutationFailure(500, 'buildError', formatError(error));
@@ -170,20 +168,15 @@ export async function runReleaseTagWebMutation<T>(
   }
 
   const releaseForm = parseReleaseTagMutationForm(formData);
-  if (!releaseForm.repo || !releaseForm.tagName) {
-    return mutationFailure(400, 'releaseError', 'Repository and release tag are required.');
+  const input = prepareReleaseTagMutationInput(config, releaseForm);
+  if (!input.ok) {
+    return input;
   }
 
   try {
     return {
       ok: true,
-      result: await execute({
-        repo: releaseForm.repo,
-        tagName: releaseForm.tagName,
-        targetRef: releaseForm.targetRef,
-        confirm: releaseForm.confirm,
-        force: releaseForm.force
-      })
+      result: await execute(input.value)
     };
   } catch (error) {
     return mutationFailure(500, 'releaseError', formatError(error));
@@ -220,6 +213,122 @@ export function parsePositiveFormInteger(value: FormDataEntryValue | null): numb
   }
 
   return parsePositiveIntegerText(value);
+}
+
+type PreparedMutationInput<T, Field extends 'buildError' | 'releaseError'> =
+  | {
+      ok: true;
+      value: T;
+    }
+  | WebMutationFailure<Field>;
+
+function prepareBuildPrMutationInput(
+  config: NullbuilderConfig,
+  form: BuildPrMutationForm
+): PreparedMutationInput<BuildPrMutationInput, 'buildError'> {
+  if (!form.repo || !form.prNumber) {
+    return mutationFailure(400, 'buildError', 'Repository and a positive PR number are required.');
+  }
+
+  const repo = configuredRepository(config, form.repo);
+  if (!repo) {
+    return mutationFailure(400, 'buildError', 'Repository must be one of the configured repositories.');
+  }
+
+  const tagName = optionalBuildPrTagName(form.tagName);
+  if (tagName === null) {
+    return mutationFailure(400, 'buildError', 'Invalid build PR tag.');
+  }
+
+  return {
+    ok: true,
+    value: {
+      repo,
+      prNumber: form.prNumber,
+      tagName,
+      confirm: form.confirm,
+      force: form.force
+    }
+  };
+}
+
+function prepareReleaseTagMutationInput(
+  config: NullbuilderConfig,
+  form: ReleaseTagMutationForm
+): PreparedMutationInput<ReleaseTagMutationInput, 'releaseError'> {
+  if (!form.repo || !form.tagName) {
+    return mutationFailure(400, 'releaseError', 'Repository and release tag are required.');
+  }
+
+  const repo = configuredRepository(config, form.repo);
+  if (!repo) {
+    return mutationFailure(400, 'releaseError', 'Repository must be one of the configured repositories.');
+  }
+
+  const tagName = releaseTagName(form.tagName);
+  if (!tagName) {
+    return mutationFailure(400, 'releaseError', 'Invalid release tag.');
+  }
+
+  const targetRef = optionalTargetRef(form.targetRef);
+  if (targetRef === null) {
+    return mutationFailure(400, 'releaseError', 'Invalid target ref.');
+  }
+
+  return {
+    ok: true,
+    value: {
+      repo,
+      tagName,
+      targetRef,
+      confirm: form.confirm,
+      force: form.force
+    }
+  };
+}
+
+function configuredRepository(config: NullbuilderConfig, value: string): RepoSlug | null {
+  let repo: RepoSlug;
+  try {
+    repo = normalizeRepoSlug(value, config.owner);
+  } catch {
+    return null;
+  }
+
+  const key = repo.toLowerCase();
+  return config.repos.find((entry) => entry.toLowerCase() === key) ?? null;
+}
+
+function optionalBuildPrTagName(value: string | undefined): string | undefined | null {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return sanitizeBuildPrTagName(value);
+  } catch {
+    return null;
+  }
+}
+
+function releaseTagName(value: string): string | null {
+  try {
+    return sanitizeReleaseTagName(value);
+  } catch {
+    return null;
+  }
+}
+
+function optionalTargetRef(value: string | undefined): string | undefined | null {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return sanitizeGitTargetRef(value);
+  } catch {
+    return null;
+  }
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {
