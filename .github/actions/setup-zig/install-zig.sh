@@ -56,7 +56,15 @@ case "$runner_arch" in
 esac
 
 host_key="${zig_arch}-${zig_os}"
-tool_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nullbuilder-zig"
+temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+case "$temp_root" in
+  "" | *$'\n'* | *$'\r'*)
+    echo "invalid temporary directory" >&2
+    exit 1
+    ;;
+esac
+
+tool_root="${temp_root}/nullbuilder-zig"
 install_dir="${tool_root}/${version}/${host_key}"
 zig_bin="zig"
 if [ "$zig_os" = "windows" ]; then
@@ -142,9 +150,9 @@ PY
   fi
 
   archive_name="${archive_url##*/}"
-  archive_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/zig-archive.XXXXXX")"
+  archive_dir="$(mktemp -d "${temp_root}/zig-archive.XXXXXX")"
   archive_path="${archive_dir}/${archive_name}"
-  extract_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/zig-extract.XXXXXX")"
+  extract_dir="$(mktemp -d "${temp_root}/zig-extract.XXXXXX")"
   trap 'rm -rf "$archive_dir"; rm -rf "$extract_dir"' EXIT
 
   curl -fsSL --retry 3 --retry-all-errors --proto '=https' --proto-redir '=https' "$archive_url" -o "$archive_path"
