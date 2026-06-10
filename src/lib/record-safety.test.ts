@@ -45,3 +45,14 @@ test('readBoundedArray does not read past the configured prefix', () => {
 
   assert.deepEqual(readBoundedArray(values, 2), ['a', 'b']);
 });
+
+test('readBoundedArray does not call user-controlled array methods', () => {
+  class CustomArray<T> extends Array<T> {
+    override slice(): T[] {
+      throw new Error('slice should not be called');
+    }
+  }
+  const values = new CustomArray('a', 'b', 'c');
+
+  assert.deepEqual(readBoundedArray(values, 2), ['a', 'b']);
+});

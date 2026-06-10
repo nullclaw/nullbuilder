@@ -11,7 +11,17 @@ export function readArray(value: unknown): unknown[] {
 export function readBoundedArray(value: unknown, maxItems: unknown): unknown[] {
   const values = readArray(value);
   const limit = normalizeArrayLimit(maxItems);
-  return limit > 0 ? values.slice(0, limit) : [];
+  if (limit <= 0) {
+    return [];
+  }
+
+  const bounded: unknown[] = [];
+  const count = Math.min(values.length, limit);
+  for (let index = 0; index < count; index += 1) {
+    bounded.push(values[index]);
+  }
+
+  return bounded;
 }
 
 function normalizeArrayLimit(value: unknown): number {
