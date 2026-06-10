@@ -572,6 +572,54 @@ test('mapRepositorySummary selects newest matching workflow runs within the boun
   assert.equal(summary.latestRuns.release?.displayTitle, 'First Release');
 });
 
+test('mapRepositorySummary matches workflow path keywords as full path segments only', () => {
+  const spoofedOnly = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [],
+    [],
+    [
+      workflowRun({
+        id: 1,
+        name: 'Docs',
+        path: '.github/workflows/not-ci.yml',
+        display_title: 'Not CI',
+        updated_at: '2026-06-10T00:00:00Z'
+      }),
+      workflowRun({
+        id: 2,
+        name: 'Docs',
+        path: '.github/workflows/ci.yml.bak',
+        display_title: 'Backup CI',
+        updated_at: '2026-06-09T00:00:00Z'
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(spoofedOnly.latestRuns.ci, null);
+
+  const realPath = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [],
+    [],
+    [
+      workflowRun({
+        id: 3,
+        name: 'Docs',
+        path: '.github/workflows/ci.yml',
+        display_title: 'Real CI',
+        updated_at: '2026-06-08T00:00:00Z'
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(realPath.latestRuns.ci?.id, 3);
+  assert.equal(realPath.latestRuns.ci?.displayTitle, 'Real CI');
+});
+
 test('mapRepositorySummary skips invalid issue and pull request numbers', () => {
   const summary = mapRepositorySummary(
     REPO,

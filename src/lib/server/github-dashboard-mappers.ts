@@ -408,10 +408,29 @@ function matchesRun(
   }
 
   for (let index = 0; index < pathKeywords.length; index += 1) {
-    const keyword = pathKeywords[index];
-    if (path.endsWith(keyword) || path.includes(`/${keyword}`)) {
+    if (hasPathSegment(path, pathKeywords[index])) {
       return true;
     }
+  }
+
+  return false;
+}
+
+function hasPathSegment(path: string, segment: string): boolean {
+  let offset = 0;
+  while (offset <= path.length - segment.length) {
+    const index = path.indexOf(segment, offset);
+    if (index === -1) {
+      return false;
+    }
+
+    const startsSegment = index === 0 || path[index - 1] === '/';
+    const endsSegment = index + segment.length === path.length || path[index + segment.length] === '/';
+    if (startsSegment && endsSegment) {
+      return true;
+    }
+
+    offset = index + 1;
   }
 
   return false;
