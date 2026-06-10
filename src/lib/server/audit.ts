@@ -1,6 +1,6 @@
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
-import { buildAuditTotals, scoreFindings, sortFindings } from './audit-summary';
+import { buildAuditTotals, collectAuditFindings, scoreFindings, sortFindings } from './audit-summary';
 import type { AuditReport, AuditRepositoryResult } from './audit-types';
 import {
   evaluateAuditChecks,
@@ -30,8 +30,8 @@ export type {
 export async function getAuditReport(config: NullbuilderConfig): Promise<AuditReport> {
   const repoList = config.discoverRepos ? await discoverRepositories(config) : config.repos;
   const repositories = await mapWithConcurrency(repoList, config.concurrency, (repo) => auditRepository(config, repo));
-  const findings = repositories.flatMap((repo) => repo.findings).sort(sortFindings);
-  const totals = buildAuditTotals(repositories, findings);
+  const findings = collectAuditFindings(repositories);
+  const totals = buildAuditTotals(repositories);
 
   return {
     generatedAt: new Date().toISOString(),

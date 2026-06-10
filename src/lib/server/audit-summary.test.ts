@@ -5,7 +5,9 @@ import type { AuditFinding, AuditRepositoryResult, AuditSeverity } from './audit
 import {
   buildAuditTotals,
   checkStatus,
+  collectAuditFindings,
   countFindings,
+  MAX_AUDIT_REPORT_FINDINGS,
   scoreFindings,
   sortFindings
 } from './audit-summary';
@@ -52,13 +54,51 @@ test('sortFindings orders by severity repository and title', () => {
   );
 });
 
+test('collectAuditFindings returns a bounded sorted report list', () => {
+  const collected = collectAuditFindings(
+    [
+      repository('ok', 100, [
+        finding('info', 'nullclaw/zeta', 'Info'),
+        finding('critical', 'nullclaw/zeta', 'Beta'),
+        finding('warning', 'nullclaw/alpha', 'Warning')
+      ]),
+      repository('ok', 100, [finding('critical', 'nullclaw/alpha', 'Alpha')])
+    ],
+    3
+  );
+
+  assert.deepEqual(
+    collected.map((item) => `${item.severity}:${item.repo}:${item.title}`),
+    [
+      'critical:nullclaw/alpha:Alpha',
+      'critical:nullclaw/zeta:Beta',
+      'warning:nullclaw/alpha:Warning'
+    ]
+  );
+  assert.deepEqual(collectAuditFindings([repository('ok', 100, [finding('critical')])], 0), []);
+});
+
+test('collectAuditFindings caps noisy audit reports', () => {
+  const findings = Array.from({ length: MAX_AUDIT_REPORT_FINDINGS + 2 }, (_, index) =>
+    finding('warning', 'nullclaw/noisy', `Finding ${String(index).padStart(4, '0')}`)
+  );
+  const collected = collectAuditFindings([repository('ok', 100, findings)]);
+
+  assert.equal(collected.length, MAX_AUDIT_REPORT_FINDINGS);
+  assert.equal(collected.at(-1)?.title, `Finding ${String(MAX_AUDIT_REPORT_FINDINGS - 1).padStart(4, '0')}`);
+});
+
 test('buildAuditTotals summarizes loaded errored and average score', () => {
   const critical = finding('critical');
   const warning = finding('warning');
   const info = finding('info');
 
   assert.deepEqual(
-    buildAuditTotals([repository('ok', 80), repository('ok', 70), repository('error', 0)], [critical, warning, info]),
+    buildAuditTotals([
+      repository('ok', 80, [critical, warning]),
+      repository('ok', 70, [info]),
+      repository('error', 0)
+    ]),
     {
       repositories: 3,
       loadedRepositories: 2,
@@ -71,12 +111,12 @@ test('buildAuditTotals summarizes loaded errored and average score', () => {
     }
   );
 
-  assert.equal(buildAuditTotals([repository('error', 0)], []).averageScore, 0);
+  assert.equal(buildAuditTotals([repository('error', 0)]).averageScore, 0);
 });
 
 test('buildAuditTotals clamps unsafe repository scores before averaging', () => {
   assert.equal(
-    buildAuditTotals([repository('ok', 150), repository('ok', -25), repository('ok', Number.NaN)], []).averageScore,
+    buildAuditTotals([repository('ok', 150), repository('ok', -25), repository('ok', Number.NaN)]).averageScore,
     33
   );
 });
@@ -97,7 +137,7 @@ function finding(
   };
 }
 
-function repository(status: 'ok' | 'error', score: number): AuditRepositoryResult {
+function repository(status: 'ok' | 'error', score: number, findings: AuditFinding[] = []): AuditRepositoryResult {
   return {
     repo: status === 'ok' ? ('nullclaw/nullbuilder' as const) : ('nullclaw/broken' as const),
     url: 'https://github.example.test/nullclaw/nullbuilder',
@@ -105,6 +145,6 @@ function repository(status: 'ok' | 'error', score: number): AuditRepositoryResul
     status,
     score,
     checks: [],
-    findings: []
+    findings
   };
 }

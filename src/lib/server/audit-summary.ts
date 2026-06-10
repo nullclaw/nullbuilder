@@ -12,6 +12,8 @@ const SEVERITY_PENALTY: Record<AuditSeverity, number> = {
   info: 5
 };
 
+export const MAX_AUDIT_REPORT_FINDINGS = 1000;
+
 export function checkStatus(findings: readonly AuditFinding[]): AuditStatus {
   if (findings.some((finding) => finding.severity === 'critical')) {
     return 'critical';
@@ -48,12 +50,51 @@ export function sortFindings(left: AuditFinding, right: AuditFinding): number {
   );
 }
 
-export function buildAuditTotals(
+export function collectAuditFindings(
   repositories: readonly AuditRepositoryResult[],
-  findings: readonly AuditFinding[]
-): AuditReport['totals'] {
+  maxFindings = MAX_AUDIT_REPORT_FINDINGS
+): AuditFinding[] {
+  if (!Number.isSafeInteger(maxFindings) || maxFindings <= 0) {
+    return [];
+  }
+
+  const findings: AuditFinding[] = [];
+
+  for (const repo of repositories) {
+    for (const finding of repo.findings) {
+      insertSortedFinding(findings, finding, maxFindings);
+    }
+  }
+
+  return findings;
+}
+
+function insertSortedFinding(findings: AuditFinding[], finding: AuditFinding, maxFindings: number): void {
+  if (findings.length >= maxFindings && sortFindings(finding, findings[findings.length - 1]) >= 0) {
+    return;
+  }
+
+  let lower = 0;
+  let upper = findings.length;
+
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    if (sortFindings(finding, findings[middle]) < 0) {
+      upper = middle;
+    } else {
+      lower = middle + 1;
+    }
+  }
+
+  findings.splice(lower, 0, finding);
+  if (findings.length > maxFindings) {
+    findings.length = maxFindings;
+  }
+}
+
+export function buildAuditTotals(repositories: readonly AuditRepositoryResult[]): AuditReport['totals'] {
   const loadedRepositories = repositories.filter((repo) => repo.status === 'ok');
-  const counts = countFindings(findings);
+  const counts = countRepositoryFindings(repositories);
   const averageScore =
     loadedRepositories.length === 0
       ? 0
@@ -69,11 +110,40 @@ export function buildAuditTotals(
     critical: counts.critical,
     warning: counts.warning,
     info: counts.info,
-    findings: findings.length,
+    findings: totalFindingCount(counts),
     averageScore
   };
 }
 
+function countRepositoryFindings(repositories: readonly AuditRepositoryResult[]): Record<AuditSeverity, number> {
+  return repositories.reduce(
+    (counts, repo) => {
+      for (const finding of repo.findings) {
+        counts[finding.severity] = saturatingSafeIntegerAdd(counts[finding.severity], 1);
+      }
+
+      return counts;
+    },
+    { critical: 0, warning: 0, info: 0 }
+  );
+}
+
+function totalFindingCount(counts: Record<AuditSeverity, number>): number {
+  return saturatingSafeIntegerAdd(
+    saturatingSafeIntegerAdd(counts.critical, counts.warning),
+    counts.info
+  );
+}
+
 function normalizeScore(value: number): number {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
+}
+
+function saturatingSafeIntegerAdd(left: number, right: number): number {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || right < 0) {
+    return left;
+  }
+
+  const sum = left + right;
+  return Number.isSafeInteger(sum) ? sum : Number.MAX_SAFE_INTEGER;
 }
