@@ -110,11 +110,22 @@ pub fn isSafeActionOutputValue(value: []const u8, max_len: usize) bool {
 fn isSafeSingleLineText(value: []const u8, max_len: usize) bool {
     if (value.len == 0 or value.len > max_len) return false;
 
-    for (value) |byte| {
-        if (byte < 0x20 or byte == 0x7f) return false;
+    var index: usize = 0;
+    while (index < value.len) {
+        const byte = value[index];
+        if (isControlByte(byte) or isUtf8C1Control(value, index)) return false;
+        index += 1;
     }
 
     return true;
+}
+
+fn isControlByte(byte: u8) bool {
+    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
+}
+
+fn isUtf8C1Control(value: []const u8, index: usize) bool {
+    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
 }
 
 fn isSafeOwnerSegment(value: []const u8) bool {
@@ -212,5 +223,7 @@ test "action values validate single-line GitHub output values" {
     try std.testing.expect(!isSafeActionOutputValue("line\nbreak", 64));
     try std.testing.expect(!isSafeActionOutputValue("line\rbreak", 64));
     try std.testing.expect(!isSafeActionOutputValue("escape\x1b[31m", 64));
+    try std.testing.expect(!isSafeActionOutputValue("c1\xc2\x85break", 64));
+    try std.testing.expect(!isSafeActionOutputValue("raw\x85control", 64));
     try std.testing.expect(!isSafeActionOutputValue("too-long", 3));
 }
