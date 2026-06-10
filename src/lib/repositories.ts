@@ -26,6 +26,9 @@ export type RepoSlug = `${string}/${string}`;
 
 const OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const REPO_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
+const REPOSITORY_LIST_SEPARATOR_PATTERN = /[\s,]/u;
+const MAX_REPOSITORY_LIST_CHARS = 256 * 1024;
+const MAX_REPOSITORY_LIST_ENTRIES = 1000;
 
 export function normalizeRepoSlug(value: string, defaultOwner = DEFAULT_OWNER): RepoSlug {
   const trimmed = value.trim();
@@ -64,24 +67,50 @@ export function parseRepositoryList(
   const source = value?.trim()
     ? value
     : fallback.join(',');
+  if (source.length > MAX_REPOSITORY_LIST_CHARS) {
+    throw new Error('Repository list is too large.');
+  }
 
   const seen = new Set<string>();
   const repos: RepoSlug[] = [];
 
-  for (const entry of source.split(/[\s,]+/)) {
-    if (!entry.trim()) {
-      continue;
-    }
-
+  for (const entry of repositoryListEntries(source)) {
     const slug = normalizeRepoSlug(entry, defaultOwner);
     const key = slug.toLowerCase();
     if (!seen.has(key)) {
+      if (repos.length >= MAX_REPOSITORY_LIST_ENTRIES) {
+        throw new Error('Too many repositories configured.');
+      }
       seen.add(key);
       repos.push(slug);
     }
   }
 
   return repos;
+}
+
+function* repositoryListEntries(source: string): Iterable<string> {
+  let entryStart: number | null = null;
+
+  for (let index = 0; index < source.length; index += 1) {
+    if (isRepositoryListSeparator(source[index])) {
+      if (entryStart !== null) {
+        yield source.slice(entryStart, index);
+        entryStart = null;
+      }
+      continue;
+    }
+
+    entryStart ??= index;
+  }
+
+  if (entryStart !== null) {
+    yield source.slice(entryStart);
+  }
+}
+
+function isRepositoryListSeparator(value: string): boolean {
+  return REPOSITORY_LIST_SEPARATOR_PATTERN.test(value);
 }
 
 function validateOwner(owner: string): void {

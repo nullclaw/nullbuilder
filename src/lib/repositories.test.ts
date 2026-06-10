@@ -28,6 +28,23 @@ test('parseRepositoryList deduplicates case-insensitively', () => {
   ]);
 });
 
+test('parseRepositoryList bounds configured repository input', () => {
+  const tooManyRepos = Array.from({ length: 1001 }, (_, index) => `repo${index}`).join(',');
+  assert.throws(
+    () => parseRepositoryList(tooManyRepos, 'nullclaw'),
+    (error: unknown) => error instanceof Error && error.message === 'Too many repositories configured.'
+  );
+
+  const oversizedList = 'a'.repeat(256 * 1024 + 1);
+  assert.throws(
+    () => parseRepositoryList(oversizedList, 'nullclaw'),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Repository list is too large.' &&
+      !error.message.includes(oversizedList.slice(0, 32))
+  );
+});
+
 test('repository validators do not echo unsafe input in errors', () => {
   assert.throws(
     () => normalizeOwner('bad\nowner'),
