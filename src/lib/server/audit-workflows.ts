@@ -100,8 +100,13 @@ export function decodeGitHubContent(
     return '';
   }
 
-  const decoded = Buffer.from(boundedBase64Content(file.content, byteLimit), 'base64');
-  return decoded.subarray(0, byteLimit).toString('utf8');
+  const content = boundedBase64Content(file.content, byteLimit);
+  if (!isStrictBase64Content(content)) {
+    return '';
+  }
+
+  const decoded = Buffer.from(content, 'base64').subarray(0, byteLimit);
+  return decodeUtf8WorkflowContent(decoded);
 }
 
 function normalizeByteLimit(maxBytes: number): number {
@@ -152,4 +157,16 @@ function boundedBase64Content(content: string, maxBytes: number): string {
   }
 
   return chunks.join('');
+}
+
+function isStrictBase64Content(content: string): boolean {
+  return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(content);
+}
+
+function decodeUtf8WorkflowContent(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return '';
+  }
 }

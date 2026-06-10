@@ -126,3 +126,12 @@ test('decodeGitHubContent strips wrapped base64 while applying the byte limit ea
 
   assert.equal(decodeGitHubContent({ encoding: 'base64', content: wrapped }, 9), content.slice(0, 9));
 });
+
+test('decodeGitHubContent rejects malformed base64 before audit parsing', () => {
+  assert.equal(decodeGitHubContent({ encoding: 'base64', content: 'YWJj$GVm' }), '');
+  assert.equal(decodeGitHubContent({ encoding: 'base64', content: 'YWJj=' }), '');
+});
+
+test('decodeGitHubContent rejects malformed UTF-8 workflow content', () => {
+  assert.equal(decodeGitHubContent({ encoding: 'base64', content: Buffer.from([0xc0, 0x80]).toString('base64') }), '');
+});
