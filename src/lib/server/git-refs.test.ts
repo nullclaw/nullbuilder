@@ -44,7 +44,26 @@ test('git ref helpers reject unsafe branch names without echoing input', () => {
   );
 });
 
+test('git ref helpers reject malformed runtime values without throwing type errors', () => {
+  for (const value of [null, undefined, 17, true, { ref: 'main' }]) {
+    assert.equal(isFullGitSha(value), false);
+    assert.throws(
+      () => assertFullGitSha(value, 'target SHA'),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid target SHA.'
+    );
+    assert.throws(
+      () => sanitizeGitBranchName(value, 'default branch'),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid default branch.'
+    );
+    assert.throws(
+      () => sanitizeGitTargetRef(value),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid target ref.'
+    );
+  }
+});
+
 test('safeGitBranchName returns a bounded fallback for unsafe input', () => {
   assert.equal(safeGitBranchName('main\ninjected', 'unknown'), 'unknown');
+  assert.equal(safeGitBranchName(17, 'unknown'), 'unknown');
   assert.equal(safeGitBranchName('release/v1.2.3', 'unknown'), 'release/v1.2.3');
 });

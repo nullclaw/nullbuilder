@@ -3,7 +3,7 @@ const MAX_GIT_REF_NAME_LENGTH = 255;
 const MAX_GIT_REF_INPUT_LENGTH = 1024;
 const UNSAFE_GIT_REF_NAME_PATTERN = /[\u0000-\u001f\u007f ~^:?*[\]\\]/;
 
-export function assertFullGitSha(value: string, label: string): string {
+export function assertFullGitSha(value: unknown, label: string): string {
   if (!isFullGitSha(value)) {
     throw new Error(`Invalid ${label}.`);
   }
@@ -11,12 +11,16 @@ export function assertFullGitSha(value: string, label: string): string {
   return value;
 }
 
-export function isFullGitSha(value: string): boolean {
+export function isFullGitSha(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
   return FULL_GIT_SHA_PATTERN.test(value);
 }
 
-export function sanitizeGitBranchName(value: string, label = 'branch'): string {
-  if (value.length > MAX_GIT_REF_INPUT_LENGTH) {
+export function sanitizeGitBranchName(value: unknown, label = 'branch'): string {
+  if (typeof value !== 'string' || value.length > MAX_GIT_REF_INPUT_LENGTH) {
     throw new Error(`Invalid ${label}.`);
   }
 
@@ -29,7 +33,7 @@ export function sanitizeGitBranchName(value: string, label = 'branch'): string {
   return branchName;
 }
 
-export function safeGitBranchName(value: string, fallback: string): string {
+export function safeGitBranchName(value: unknown, fallback: string): string {
   try {
     return sanitizeGitBranchName(value);
   } catch {
@@ -37,8 +41,8 @@ export function safeGitBranchName(value: string, fallback: string): string {
   }
 }
 
-export function sanitizeGitTargetRef(value: string, label = 'target ref'): string {
-  if (value.length > MAX_GIT_REF_INPUT_LENGTH) {
+export function sanitizeGitTargetRef(value: unknown, label = 'target ref'): string {
+  if (typeof value !== 'string' || value.length > MAX_GIT_REF_INPUT_LENGTH) {
     throw new Error(`Invalid ${label}.`);
   }
 

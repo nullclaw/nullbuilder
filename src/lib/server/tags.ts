@@ -8,8 +8,8 @@ export function defaultBuildPrTagName(prNumber: number, sha: string): string {
   return `${BUILD_PR_TAG_PREFIX}${prNumber}-${sha.slice(0, 7)}`;
 }
 
-export function sanitizeBuildPrTagName(value: string): string {
-  if (value.length > MAX_TAG_NAME_INPUT_LENGTH) {
+export function sanitizeBuildPrTagName(value: unknown): string {
+  if (typeof value !== 'string' || value.length > MAX_TAG_NAME_INPUT_LENGTH) {
     throw new Error('Invalid tag name.');
   }
 
@@ -30,8 +30,8 @@ export function sanitizeBuildPrTagName(value: string): string {
   return tagName;
 }
 
-export function sanitizeReleaseTagName(value: string): string {
-  if (value.length > MAX_TAG_NAME_INPUT_LENGTH) {
+export function sanitizeReleaseTagName(value: unknown): string {
+  if (typeof value !== 'string' || value.length > MAX_TAG_NAME_INPUT_LENGTH) {
     throw new Error('Invalid tag name.');
   }
 

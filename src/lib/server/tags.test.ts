@@ -27,6 +27,13 @@ test('tag sanitizers reject unsafe git ref fragments', () => {
   assert.throws(() => sanitizeReleaseTagName(`${' '.repeat(513)}v1.2.3`), /^Error: Invalid tag name\.$/);
 });
 
+test('tag sanitizers reject malformed runtime values without throwing type errors', () => {
+  for (const value of [null, undefined, 17, true, { tag: 'build-pr-17' }]) {
+    assert.throws(() => sanitizeBuildPrTagName(value), /^Error: Invalid tag name\.$/);
+    assert.throws(() => sanitizeReleaseTagName(value), /^Error: Invalid tag name\.$/);
+  }
+});
+
 test('tag sanitizers do not echo unsafe tag input in errors', () => {
   assert.throws(
     () => sanitizeBuildPrTagName('build-pr-\x1b[31mred'),
