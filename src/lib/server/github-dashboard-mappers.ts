@@ -1,5 +1,5 @@
 import { repoSlugParts, type RepoSlug } from '../repositories';
-import { safeUtcTimestampText } from '../date-safety';
+import { parseUtcTimestampMillis, safeUtcTimestampText } from '../date-safety';
 import { readBoundedArray, readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
 import type {
@@ -312,14 +312,20 @@ type SelectedWorkflowRuns = {
   release: unknown | null;
 };
 
+type RankedWorkflowRun = {
+  run: Record<string, unknown>;
+  timestamp: number;
+  ordinal: number;
+};
+
 function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
-  const selectedRuns: SelectedWorkflowRuns = {
+  const selectedRuns: Record<keyof SelectedWorkflowRuns, RankedWorkflowRun | null> = {
     ci: null,
     nightly: null,
     release: null
   };
 
-  for (const run of runs) {
+  for (const [ordinal, run] of runs.entries()) {
     const runObject = readObjectRecord(run);
     if (!runObject) {
       continue;
@@ -327,23 +333,50 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
 
     const name = safeDashboardText(runObject.name, '').toLowerCase();
     const path = safeDashboardText(runObject.path, '').toLowerCase();
+    const rankedRun = {
+      run: runObject,
+      timestamp: workflowRunTimestamp(runObject),
+      ordinal
+    };
 
-    if (selectedRuns.ci === null && matchesRun(name, path, ['ci', 'test'], ['ci.yml', 'zig-ci.yml'])) {
-      selectedRuns.ci = runObject;
+    if (matchesRun(name, path, ['ci', 'test'], ['ci.yml', 'zig-ci.yml'])) {
+      selectedRuns.ci = newerWorkflowRun(rankedRun, selectedRuns.ci);
     }
-    if (selectedRuns.nightly === null && matchesRun(name, path, ['nightly'], ['nightly.yml', 'zig-nightly.yml'])) {
-      selectedRuns.nightly = runObject;
+    if (matchesRun(name, path, ['nightly'], ['nightly.yml', 'zig-nightly.yml'])) {
+      selectedRuns.nightly = newerWorkflowRun(rankedRun, selectedRuns.nightly);
     }
-    if (selectedRuns.release === null && matchesRun(name, path, ['release'], ['release.yml', 'zig-release.yml'])) {
-      selectedRuns.release = runObject;
-    }
-
-    if (selectedRuns.ci !== null && selectedRuns.nightly !== null && selectedRuns.release !== null) {
-      break;
+    if (matchesRun(name, path, ['release'], ['release.yml', 'zig-release.yml'])) {
+      selectedRuns.release = newerWorkflowRun(rankedRun, selectedRuns.release);
     }
   }
 
-  return selectedRuns;
+  return {
+    ci: selectedRuns.ci?.run ?? null,
+    nightly: selectedRuns.nightly?.run ?? null,
+    release: selectedRuns.release?.run ?? null
+  };
+}
+
+function newerWorkflowRun(candidate: RankedWorkflowRun, current: RankedWorkflowRun | null): RankedWorkflowRun {
+  if (current === null) {
+    return candidate;
+  }
+  if (candidate.timestamp > current.timestamp) {
+    return candidate;
+  }
+  if (candidate.timestamp < current.timestamp) {
+    return current;
+  }
+
+  return candidate.ordinal < current.ordinal ? candidate : current;
+}
+
+function workflowRunTimestamp(run: Record<string, unknown>): number {
+  return (
+    parseUtcTimestampMillis(run.updated_at, { maxLength: MAX_TIMESTAMP_TEXT_LENGTH }) ??
+    parseUtcTimestampMillis(run.created_at, { maxLength: MAX_TIMESTAMP_TEXT_LENGTH }) ??
+    Number.NEGATIVE_INFINITY
+  );
 }
 
 function matchesRun(

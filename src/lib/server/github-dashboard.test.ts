@@ -440,6 +440,69 @@ test('mapRepositorySummary bounds workflow run scanning to one GitHub page', () 
   assert.equal(summary.latestRuns.release, null);
 });
 
+test('mapRepositorySummary selects newest matching workflow runs within the bounded page', () => {
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [],
+    [],
+    [
+      workflowRun({
+        id: 1,
+        name: 'CI',
+        path: '.github/workflows/ci.yml',
+        display_title: 'Older CI',
+        updated_at: '2026-06-08T00:00:00Z'
+      }),
+      workflowRun({
+        id: 2,
+        name: 'Nightly',
+        path: '.github/workflows/nightly.yml',
+        display_title: 'Older Nightly',
+        created_at: '2026-06-07T00:00:00Z',
+        updated_at: 'not-a-date'
+      }),
+      workflowRun({
+        id: 3,
+        name: 'CI',
+        path: '.github/workflows/ci.yml',
+        display_title: 'Newer CI',
+        updated_at: '2026-06-10T00:00:00Z'
+      }),
+      workflowRun({
+        id: 4,
+        name: 'Nightly',
+        path: '.github/workflows/nightly.yml',
+        display_title: 'Newer Nightly',
+        created_at: '2026-06-09T00:00:00Z',
+        updated_at: 'not-a-date'
+      }),
+      workflowRun({
+        id: 5,
+        name: 'Release',
+        path: '.github/workflows/release.yml',
+        display_title: 'First Release',
+        updated_at: '2026-06-09T00:00:00Z'
+      }),
+      workflowRun({
+        id: 6,
+        name: 'Release',
+        path: '.github/workflows/release.yml',
+        display_title: 'Tie Release',
+        updated_at: '2026-06-09T00:00:00Z'
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.latestRuns.ci?.id, 3);
+  assert.equal(summary.latestRuns.ci?.displayTitle, 'Newer CI');
+  assert.equal(summary.latestRuns.nightly?.id, 4);
+  assert.equal(summary.latestRuns.nightly?.displayTitle, 'Newer Nightly');
+  assert.equal(summary.latestRuns.release?.id, 5);
+  assert.equal(summary.latestRuns.release?.displayTitle, 'First Release');
+});
+
 test('mapRepositorySummary skips invalid issue and pull request numbers', () => {
   const summary = mapRepositorySummary(
     REPO,
