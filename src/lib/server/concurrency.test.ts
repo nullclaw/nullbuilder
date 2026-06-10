@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { mapWithConcurrency, MAX_MAP_CONCURRENCY } from './concurrency';
+import { mapWithConcurrency, MAX_MAP_CONCURRENCY, MAX_MAP_ITEMS } from './concurrency';
 
 test('mapWithConcurrency preserves input order', async () => {
   const values = [1, 2, 3, 4];
@@ -41,4 +41,28 @@ test('mapWithConcurrency caps high concurrency to a bounded worker count', async
 
   assert.deepEqual(mapped, values);
   assert.equal(maxActive, MAX_MAP_CONCURRENCY);
+});
+
+test('mapWithConcurrency accepts inputs at the configured item cap', async () => {
+  const values = Array.from({ length: MAX_MAP_ITEMS }, (_, index) => index);
+  const mapped = await mapWithConcurrency(values, MAX_MAP_CONCURRENCY, async (value) => value + 1);
+
+  assert.equal(mapped.length, MAX_MAP_ITEMS);
+  assert.equal(mapped[0], 1);
+  assert.equal(mapped[MAX_MAP_ITEMS - 1], MAX_MAP_ITEMS);
+});
+
+test('mapWithConcurrency rejects oversized input before starting workers', async () => {
+  const values = Array.from({ length: MAX_MAP_ITEMS + 1 }, (_, index) => index);
+  let mapped = false;
+
+  await assert.rejects(
+    mapWithConcurrency(values, 10, async () => {
+      mapped = true;
+      return 0;
+    }),
+    (error: unknown) => error instanceof Error && error.message === 'Too many items to map.'
+  );
+
+  assert.equal(mapped, false);
 });

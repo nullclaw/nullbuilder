@@ -1,4 +1,5 @@
 export const MAX_MAP_CONCURRENCY = 10;
+export const MAX_MAP_ITEMS = 1000;
 
 export async function mapWithConcurrency<T, R>(
   values: readonly T[],
@@ -7,6 +8,9 @@ export async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   if (values.length === 0) {
     return [];
+  }
+  if (values.length > MAX_MAP_ITEMS) {
+    throw new Error('Too many items to map.');
   }
 
   const results = new Array<R>(values.length);
