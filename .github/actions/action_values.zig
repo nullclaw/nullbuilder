@@ -94,10 +94,24 @@ fn isSafePort(port: []const u8) bool {
 }
 
 pub fn isSafeMetadataValue(value: []const u8, max_len: usize) bool {
+    if (!isSafeSingleLineText(value, max_len)) return false;
+
+    for (value) |byte| {
+        if (byte == ' ') return false;
+    }
+
+    return true;
+}
+
+pub fn isSafeActionOutputValue(value: []const u8, max_len: usize) bool {
+    return isSafeSingleLineText(value, max_len);
+}
+
+fn isSafeSingleLineText(value: []const u8, max_len: usize) bool {
     if (value.len == 0 or value.len > max_len) return false;
 
     for (value) |byte| {
-        if (isAsciiControlOrSpace(byte)) return false;
+        if (byte < 0x20 or byte == 0x7f) return false;
     }
 
     return true;
@@ -188,4 +202,15 @@ test "action values validate URL bases and metadata" {
     try std.testing.expect(!isSafeMetadataValue("", 64));
     try std.testing.expect(!isSafeMetadataValue("line\nbreak", 64));
     try std.testing.expect(!isSafeMetadataValue("too-long", 3));
+}
+
+test "action values validate single-line GitHub output values" {
+    try std.testing.expect(isSafeActionOutputValue("scheduled build", 64));
+    try std.testing.expect(isSafeActionOutputValue("https://example.com/runs/1?check=true", 128));
+
+    try std.testing.expect(!isSafeActionOutputValue("", 64));
+    try std.testing.expect(!isSafeActionOutputValue("line\nbreak", 64));
+    try std.testing.expect(!isSafeActionOutputValue("line\rbreak", 64));
+    try std.testing.expect(!isSafeActionOutputValue("escape\x1b[31m", 64));
+    try std.testing.expect(!isSafeActionOutputValue("too-long", 3));
 }

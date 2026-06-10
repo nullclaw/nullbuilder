@@ -5,6 +5,7 @@ const action_paths = @import("action_paths");
 const action_values = @import("action_values");
 
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_OUTPUT_VALUE_BYTES = 4096;
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
 
@@ -91,14 +92,35 @@ fn decideShouldBuild(
     return .{ .should_build = true, .reason = "new-sha" };
 }
 
+fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void {
+    if (!action_values.isSafeActionOutputValue(value, MAX_OUTPUT_VALUE_BYTES)) {
+        return error.InvalidActionOutput;
+    }
+}
+
+fn writeOutputLine(out: *std.Io.Writer, key: []const u8, value: []const u8) !void {
+    try out.print("{s}={s}\n", .{ key, value });
+}
+
+fn writeDecision(out: *std.Io.Writer, decision: Decision) !void {
+    const should_build = if (decision.should_build) "true" else "false";
+    try validateActionOutputValue(should_build);
+    try validateActionOutputValue(decision.reason);
+    if (decision.matched_run_url.len > 0) {
+        try validateActionOutputValue(decision.matched_run_url);
+    }
+
+    try writeOutputLine(out, "should_build", should_build);
+    try writeOutputLine(out, "reason", decision.reason);
+    if (decision.matched_run_id) |id| try out.print("matched_run_id={d}\n", .{id});
+    if (decision.matched_run_url.len > 0) try writeOutputLine(out, "matched_run_url", decision.matched_run_url);
+}
+
 fn printDecision(io: std.Io, decision: Decision) !void {
     var out_buf: [1024]u8 = undefined;
     var out = std.Io.File.stdout().writer(io, &out_buf);
     const w = &out.interface;
-    try w.print("should_build={s}\n", .{if (decision.should_build) "true" else "false"});
-    try w.print("reason={s}\n", .{decision.reason});
-    if (decision.matched_run_id) |id| try w.print("matched_run_id={d}\n", .{id});
-    if (decision.matched_run_url.len > 0) try w.print("matched_run_url={s}\n", .{decision.matched_run_url});
+    try writeDecision(w, decision);
     try w.flush();
 }
 
@@ -265,6 +287,41 @@ test "nightly decide force overrides existing success" {
 
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("forced", decision.reason);
+}
+
+test "nightly decision output formats GitHub output lines" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try writeDecision(&out.writer, .{
+        .should_build = false,
+        .reason = "successful-nightly-exists",
+        .matched_run_id = 9,
+        .matched_run_url = "https://example.com/run/9",
+    });
+
+    try std.testing.expectEqualStrings(
+        \\should_build=false
+        \\reason=successful-nightly-exists
+        \\matched_run_id=9
+        \\matched_run_url=https://example.com/run/9
+        \\
+    , out.writer.buffered());
+}
+
+test "nightly decision output rejects multiline values before writing" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const decision = Decision{
+        .should_build = false,
+        .reason = "successful-nightly-exists",
+        .matched_run_id = 9,
+        .matched_run_url = "https://example.com/run/9\nshould_build=true",
+    };
+
+    try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
+    try std.testing.expectEqualStrings("", out.writer.buffered());
 }
 
 test "nightly parses workflow run API payload with unknown fields" {
