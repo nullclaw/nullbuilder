@@ -19,10 +19,14 @@ const ParsedHttpUrl = struct {
 };
 
 pub fn isDecimalId(value: []const u8) bool {
-    if (!isCanonicalDecimalText(value, max_decimal_id_digits)) return false;
+    return parseDecimalId(value) != null;
+}
 
-    const id = std.fmt.parseUnsigned(u64, value, 10) catch return false;
-    return id > 0;
+pub fn parseDecimalId(value: []const u8) ?u64 {
+    if (!isCanonicalDecimalText(value, max_decimal_id_digits)) return null;
+
+    const id = std.fmt.parseUnsigned(u64, value, 10) catch return null;
+    return if (id > 0) id else null;
 }
 
 pub fn isFullHexSha(value: []const u8) bool {
@@ -339,12 +343,17 @@ test "action values validate decimal ids and full shas" {
     try std.testing.expect(isDecimalId("1"));
     try std.testing.expect(isDecimalId("123456789"));
     try std.testing.expect(isDecimalId("18446744073709551615"));
+    try std.testing.expectEqual(@as(?u64, 123456789), parseDecimalId("123456789"));
+    try std.testing.expectEqual(@as(?u64, 18446744073709551615), parseDecimalId("18446744073709551615"));
     try std.testing.expect(!isDecimalId(""));
     try std.testing.expect(!isDecimalId("0"));
     try std.testing.expect(!isDecimalId("01"));
     try std.testing.expect(!isDecimalId("12a"));
     try std.testing.expect(!isDecimalId("18446744073709551616"));
     try std.testing.expect(!isDecimalId("1" ** 100));
+    try std.testing.expectEqual(@as(?u64, null), parseDecimalId("0"));
+    try std.testing.expectEqual(@as(?u64, null), parseDecimalId("01"));
+    try std.testing.expectEqual(@as(?u64, null), parseDecimalId("18446744073709551616"));
 
     try std.testing.expect(isFullHexSha("abcdef0123456789abcdef0123456789abcdef01"));
     try std.testing.expect(!isFullHexSha("abcdef0"));

@@ -142,8 +142,7 @@ fn forcedDecision() Decision {
 }
 
 fn parseCurrentRunId(current_run_id: []const u8) ?u64 {
-    if (!action_values.isDecimalId(current_run_id)) return null;
-    return std.fmt.parseUnsigned(u64, current_run_id, 10) catch null;
+    return action_values.parseDecimalId(current_run_id);
 }
 
 fn matchingSuccessfulRun(run: Run, current_id: ?u64, head_sha: []const u8, workflow_name: []const u8) bool {
