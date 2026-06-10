@@ -43,6 +43,8 @@ test('session tokens reject malformed bounded parts before matching signatures',
   assert.equal(isSessionTokenMatch(`${timestamp}.${'f'.repeat(63)}`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(`${timestamp}.${'f'.repeat(65)}`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(`${timestamp}.${'g'.repeat(64)}`, 'secret', issuedAt), false);
+  assert.equal(isSessionTokenMatch(`${timestamp}.${signature}.extra`, 'secret', issuedAt), false);
+  assert.equal(isSessionTokenMatch(`${timestamp}${'.x'.repeat(10_000)}`, 'secret', issuedAt), false);
 });
 
 test('auth cookie options keep session cookie policy centralized', () => {

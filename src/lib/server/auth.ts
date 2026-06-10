@@ -13,6 +13,7 @@ export const AUTH_COOKIE_DELETE_OPTIONS = {
 const ALLOWED_CLOCK_SKEW_MS = 60_000;
 const SESSION_SIGNATURE_LENGTH = 64;
 const MAX_ISSUED_AT_LENGTH = Number.MAX_SAFE_INTEGER.toString(36).length;
+const MAX_SESSION_TOKEN_LENGTH = MAX_ISSUED_AT_LENGTH + 1 + SESSION_SIGNATURE_LENGTH;
 const DEFAULT_LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_LOGIN_RATE_LIMIT_MAX_FAILURES = 5;
 const DEFAULT_LOGIN_RATE_LIMIT_MAX_KEYS = 1000;
@@ -224,12 +225,17 @@ export function isTokenMatch(value: string, expected: string): boolean {
 }
 
 function parseSessionToken(value: string): SessionTokenParts | null {
-  const parts = value.split('.');
-  if (parts.length !== 2) {
+  if (value.length > MAX_SESSION_TOKEN_LENGTH) {
     return null;
   }
 
-  const [issuedAt, signature] = parts;
+  const separator = value.indexOf('.');
+  if (separator <= 0 || separator !== value.lastIndexOf('.')) {
+    return null;
+  }
+
+  const issuedAt = value.slice(0, separator);
+  const signature = value.slice(separator + 1);
   if (!isIssuedAtTokenPart(issuedAt) || !isSignatureTokenPart(signature)) {
     return null;
   }
