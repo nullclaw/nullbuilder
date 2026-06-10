@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { mapWithConcurrency, MAX_MAP_CONCURRENCY, MAX_MAP_ITEMS } from './concurrency';
+import { mapWithConcurrency, MAX_MAP_CONCURRENCY, MAX_MAP_ITEMS, settleStarted } from './concurrency';
 
 test('mapWithConcurrency preserves input order', async () => {
   const values = [1, 2, 3, 4];
@@ -114,4 +114,27 @@ test('mapWithConcurrency waits for started workers after mapper failures', async
   await assert.rejects(mapped, (error: unknown) => error === failure);
   assert.equal(settled, true);
   assert.deepEqual(seen, [1, 2]);
+});
+
+test('settleStarted waits for all started promises before rethrowing', async () => {
+  const failure = new Error('read failed');
+  let releaseSecondRead!: () => void;
+  let settled = false;
+  const secondRead = new Promise<number>((resolve) => {
+    releaseSecondRead = () => resolve(2);
+  });
+
+  const reads = settleStarted([Promise.reject(failure), secondRead] as const);
+  reads.finally(() => {
+    settled = true;
+  }).catch(() => undefined);
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(settled, false);
+  releaseSecondRead();
+
+  await assert.rejects(reads, (error: unknown) => error === failure);
+  assert.equal(settled, true);
 });

@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
 import { buildPrTag, createReleaseTag } from './github-mutations';
+import { GitHubApiError } from './github-client';
 
 const originalFetch = globalThis.fetch;
 const headSha = 'de0fac2e4500dabe0009e67214ff5f5447ce83dd';
@@ -341,6 +342,51 @@ test('buildPrTag rejects unsafe API default branches before trust messages', asy
   );
 });
 
+test('buildPrTag waits for started repository and pull reads after a failure', async () => {
+  const config = testConfig();
+  let pullStarted = false;
+  let releasePull!: () => void;
+  let settled = false;
+  mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return responseJson({ message: 'repository unavailable' }, 500);
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      pullStarted = true;
+      return new Promise<Response>((resolve) => {
+        releasePull = () => resolve(responseJson(pullResponse()));
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  const result = buildPrTag(config, {
+    repo: 'nullbuilder',
+    prNumber: 7
+  });
+  result.finally(() => {
+    settled = true;
+  }).catch(() => undefined);
+
+  for (let attempts = 0; attempts < 10 && !pullStarted; attempts += 1) {
+    await waitForEventLoopTurn();
+  }
+  assert.equal(pullStarted, true);
+
+  await waitForEventLoopTurn();
+  await waitForEventLoopTurn();
+  assert.equal(settled, false);
+
+  releasePull();
+  await assert.rejects(
+    result,
+    (error: unknown) => error instanceof GitHubApiError && error.status === 500
+  );
+  assert.equal(settled, true);
+});
+
 test('createReleaseTag reports forced tag moves separately from creation', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
@@ -549,7 +595,7 @@ function testConfig() {
 }
 
 function mockGitHub(
-  handler: (path: string, method: string, init?: RequestInit) => unknown
+  handler: (path: string, method: string, init?: RequestInit) => unknown | Promise<unknown>
 ): Array<{ method: string; path: string }> {
   const requests: Array<{ method: string; path: string }> = [];
 
@@ -561,7 +607,7 @@ function mockGitHub(
       path: url.pathname
     });
 
-    const response = handler(url.pathname, method, init);
+    const response = await handler(url.pathname, method, init);
     return response instanceof Response ? response : responseJson(response);
   }) as typeof fetch;
 
@@ -648,4 +694,10 @@ function referenceResponse(ref: string) {
       sha: targetSha
     }
   };
+}
+
+function waitForEventLoopTurn(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }

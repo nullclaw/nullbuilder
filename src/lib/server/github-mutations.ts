@@ -2,6 +2,7 @@ import { findConfiguredRepoSlug, normalizeRepoSlug, type RepoSlug } from '../rep
 import { readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
 import type { NullbuilderConfig } from './config';
+import { settleStarted } from './concurrency';
 import {
   assertFullGitSha,
   isFullGitSha,
@@ -84,14 +85,14 @@ export async function buildPrTag(
   const prNumber = assertPositivePrNumber(options.prNumber);
   const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
   const requestedTagName = options.tagName ? sanitizeBuildPrTagName(options.tagName) : undefined;
-  const [repository, pull] = await Promise.all([
+  const [repository, pull] = await settleStarted([
     githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`, {
       useCache: false
     }),
     githubRequest<GitHubPullDetailResponse>(config, `/repos/${repo}/pulls/${prNumber}`, {
       useCache: false
     })
-  ]);
+  ] as const);
   const defaultBranch = sanitizeGitBranchName(repository.default_branch, 'default branch');
   assertTrustedPullRequest(repo, defaultBranch, pull, options);
   const headSha = assertFullGitSha(pullHeadSha(pull), 'pull request head SHA');

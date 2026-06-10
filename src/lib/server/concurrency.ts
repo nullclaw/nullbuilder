@@ -27,14 +27,29 @@ export async function mapWithConcurrency<T, R>(
     workers.push(runMapWorker(values, results, state, mapper));
   }
 
-  const workerResults = await Promise.allSettled(workers);
-  for (const result of workerResults) {
-    if (result.status === 'rejected') {
-      throw result.reason;
-    }
-  }
+  await settleStarted(workers);
 
   return results;
+}
+
+export function settleStarted<T1, T2>(
+  reads: readonly [Promise<T1>, Promise<T2>]
+): Promise<[T1, T2]>;
+export function settleStarted<T1, T2, T3, T4>(
+  reads: readonly [Promise<T1>, Promise<T2>, Promise<T3>, Promise<T4>]
+): Promise<[T1, T2, T3, T4]>;
+export function settleStarted<T>(reads: readonly Promise<T>[]): Promise<T[]>;
+export async function settleStarted(reads: readonly Promise<unknown>[]): Promise<unknown[]> {
+  const results = await Promise.allSettled(reads);
+  return results.map(fulfilledValue);
+}
+
+function fulfilledValue<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === 'rejected') {
+    throw result.reason;
+  }
+
+  return result.value;
 }
 
 type MapWorkerState = {

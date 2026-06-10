@@ -6,7 +6,7 @@ import {
 } from '../repositories';
 import { readObjectRecord } from '../record-safety';
 import type { NullbuilderConfig } from './config';
-import { mapWithConcurrency } from './concurrency';
+import { mapWithConcurrency, settleStarted } from './concurrency';
 import {
   buildDashboard,
   GITHUB_WORK_ITEMS_PAGE_SIZE,
@@ -18,8 +18,7 @@ import {
   type GitHubIssueResponse,
   type GitHubPullResponse,
   type GitHubRepositoryResponse,
-  type RepositorySummary,
-  type StarGrowthSummary
+  type RepositorySummary
 } from './github-dashboard';
 import { githubGetPages, githubRequest } from './github-client';
 import { getStarGrowth } from './github-star-growth';
@@ -163,7 +162,7 @@ function repoName(repo: RepoSlug): string {
 export async function getRepositorySummary(config: NullbuilderConfig, repo: RepoSlug): Promise<RepositorySummary> {
   try {
     const repository = await githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`);
-    const [issues, pulls, runs, starGrowth] = await settleRepositoryDetailReads([
+    const [issues, pulls, runs, starGrowth] = await settleStarted([
       githubGetPages<GitHubIssueResponse>(
         config,
         `/repos/${repo}/issues?state=open&per_page=${GITHUB_WORK_ITEMS_PAGE_SIZE}`,
@@ -180,37 +179,12 @@ export async function getRepositorySummary(config: NullbuilderConfig, repo: Repo
       ),
       githubRequest<unknown>(config, `/repos/${repo}/actions/runs?per_page=100`),
       getStarGrowth(config, repo, repository.stargazers_count)
-    ]);
+    ] as const);
 
     return mapRepositorySummary(repo, repository, issues, pulls, safeWorkflowRunsPayload(runs), starGrowth, config.webBaseUrl);
   } catch (error) {
     return makeErrorRepository(config, repo, error);
   }
-}
-
-async function settleRepositoryDetailReads(
-  reads: readonly [
-    Promise<GitHubIssueResponse[]>,
-    Promise<GitHubPullResponse[]>,
-    Promise<unknown>,
-    Promise<StarGrowthSummary>
-  ]
-): Promise<[GitHubIssueResponse[], GitHubPullResponse[], unknown, StarGrowthSummary]> {
-  const results = await Promise.allSettled(reads);
-  return [
-    fulfilledValue(results[0]),
-    fulfilledValue(results[1]),
-    fulfilledValue(results[2]),
-    fulfilledValue(results[3])
-  ];
-}
-
-function fulfilledValue<T>(result: PromiseSettledResult<T>): T {
-  if (result.status === 'rejected') {
-    throw result.reason;
-  }
-
-  return result.value;
 }
 
 function safeWorkflowRunsPayload(value: unknown): unknown[] {
