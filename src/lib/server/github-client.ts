@@ -20,6 +20,8 @@ type CacheEntry<T> = {
 
 export const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 256;
 export const GITHUB_JSON_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
+export const GITHUB_DEFAULT_MAX_PAGES = 20;
+export const GITHUB_ABSOLUTE_MAX_PAGES = 100;
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
@@ -28,12 +30,13 @@ export async function githubGetPages<T>(
   config: NullbuilderConfig,
   path: string,
   init: GitHubRequestOptions = {},
-  maxPages = 20
+  maxPages = GITHUB_DEFAULT_MAX_PAGES
 ): Promise<T[]> {
   const values: T[] = [];
   let next: string | null = path;
+  const pageLimit = normalizeMaxPages(maxPages);
 
-  for (let page = 0; next && page < maxPages; page += 1) {
+  for (let page = 0; next && page < pageLimit; page += 1) {
     const result: GitHubFetchResult<T[]> = await githubFetchJson<T[]>(config, next, init);
     appendPageValues(values, result.data);
     next = result.next;
@@ -433,6 +436,18 @@ function appendPageValues<T>(values: T[], page: readonly T[]): void {
   for (const value of page) {
     values.push(value);
   }
+}
+
+function normalizeMaxPages(value: number): number {
+  if (!Number.isFinite(value)) {
+    return GITHUB_DEFAULT_MAX_PAGES;
+  }
+
+  if (value <= 0) {
+    return 0;
+  }
+
+  return Math.min(GITHUB_ABSOLUTE_MAX_PAGES, Math.floor(value));
 }
 
 function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | undefined {

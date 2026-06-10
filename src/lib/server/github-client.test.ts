@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
 import {
+  GITHUB_ABSOLUTE_MAX_PAGES,
+  GITHUB_DEFAULT_MAX_PAGES,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
   GitHubApiError,
@@ -116,6 +118,34 @@ test('githubGetPages appends large pages without spreading array arguments', asy
   assert.equal(values.length, page.length);
   assert.equal(values[0], 0);
   assert.equal(values.at(-1), page.length - 1);
+});
+
+test('githubGetPages normalizes unsafe page limits', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://bounded-pages.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  async function countRequests(maxPages: number): Promise<number> {
+    let requests = 0;
+    globalThis.fetch = (async () => {
+      requests += 1;
+      return new Response(JSON.stringify([{ id: requests }]), {
+        headers: {
+          Link: `<https://bounded-pages.example.test/repos?page=${requests + 1}>; rel="next"`
+        }
+      });
+    }) as typeof fetch;
+
+    await githubGetPages<{ id: number }>(config, '/repos', {}, maxPages);
+    return requests;
+  }
+
+  assert.equal(await countRequests(0), 0);
+  assert.equal(await countRequests(2.8), 2);
+  assert.equal(await countRequests(Number.POSITIVE_INFINITY), GITHUB_DEFAULT_MAX_PAGES);
+  assert.equal(await countRequests(GITHUB_ABSOLUTE_MAX_PAGES + 1), GITHUB_ABSOLUTE_MAX_PAGES);
 });
 
 test('githubRequest reuses fresh cached GET responses', async () => {
