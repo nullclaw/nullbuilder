@@ -29,10 +29,9 @@ pub const Dashboard = struct {
 
     pub fn totals(self: Dashboard) Totals {
         var result = Totals{};
+        var repo_iter = self.repositories();
 
-        for (self.items) |item| {
-            const repo = repositoryFromValue(item) orelse continue;
-            if (!repo.valid_slug) continue;
+        while (repo_iter.next()) |repo| {
             result.repositories += 1;
             if (!repo.loaded) continue;
             result.issues = saturatingAdd(result.issues, repo.open_issues);
@@ -42,6 +41,10 @@ pub const Dashboard = struct {
         }
 
         return result;
+    }
+
+    pub fn repositories(self: Dashboard) RepositoryIterator {
+        return RepositoryIterator.init(self);
     }
 };
 
@@ -56,6 +59,26 @@ pub const Repository = struct {
     has_failure: bool,
     issues: []const JsonValue,
     pull_requests: []const JsonValue,
+};
+
+pub const RepositoryIterator = struct {
+    items: []const JsonValue,
+    index: usize = 0,
+
+    pub fn init(dashboard: Dashboard) RepositoryIterator {
+        return .{ .items = dashboard.items };
+    }
+
+    pub fn next(self: *RepositoryIterator) ?Repository {
+        while (self.index < self.items.len) {
+            const index = self.index;
+            self.index += 1;
+            const repo = repositoryFromValue(self.items[index]) orelse continue;
+            if (repo.valid_slug) return repo;
+        }
+
+        return null;
+    }
 };
 
 pub const RunStatuses = dashboard_runs.RunStatuses;
@@ -338,6 +361,36 @@ test "dashboard totals ignore repositories without safe slugs" {
     try std.testing.expectEqual(@as(u64, 1), totals.pull_requests);
     try std.testing.expectEqual(@as(u64, 3), totals.stars);
     try std.testing.expectEqual(@as(u64, 1), totals.failing);
+}
+
+test "repository iterator yields only repositories with safe slugs" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    "invalid",
+        \\    {"slug": "bad\nslug"},
+        \\    {"slug": "missing-owner/"},
+        \\    {"slug": "nullclaw/loaded", "status": "ok", "openIssues": 2},
+        \\    {"slug": "nullclaw/errored", "status": "error", "openIssues": 99}
+        \\  ]
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const dashboard = Dashboard.init(parsed.value.object);
+    var repo_iter = dashboard.repositories();
+
+    const loaded = repo_iter.next().?;
+    try std.testing.expectEqualStrings("nullclaw/loaded", loaded.slug);
+    try std.testing.expect(loaded.loaded);
+    try std.testing.expectEqual(@as(u64, 2), loaded.open_issues);
+
+    const errored = repo_iter.next().?;
+    try std.testing.expectEqualStrings("nullclaw/errored", errored.slug);
+    try std.testing.expect(!errored.loaded);
+    try std.testing.expectEqual(@as(u64, 99), errored.open_issues);
+
+    try std.testing.expectEqual(null, repo_iter.next());
 }
 
 test "dashboard totals and work iterators ignore errored repository payload counters" {

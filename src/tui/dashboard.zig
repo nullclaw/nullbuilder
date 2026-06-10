@@ -67,9 +67,8 @@ pub fn render(
     });
     try out.writeAll("--------------------------------------------------------------------------------\n");
 
-    for (dashboard.items) |item| {
-        const repo = dashboard_model.repositoryFromValue(item) orelse continue;
-        if (!repo.valid_slug) continue;
+    var repo_iter = dashboard.repositories();
+    while (repo_iter.next()) |repo| {
         const repo_slug = try sanitizeTerminalText(arena, repo.slug);
         defer repo_slug.deinit(arena);
         var issues_buffer: [count_column_width]u8 = undefined;
