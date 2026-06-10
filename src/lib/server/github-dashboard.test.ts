@@ -122,6 +122,75 @@ test('mapRepositorySummary normalizes unsafe GitHub counters', () => {
   assert.equal(summary.latestRuns.ci?.id, null);
 });
 
+test('mapRepositorySummary tolerates malformed nested GitHub payloads', () => {
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository({
+      html_url: 42 as unknown as string,
+      name: 7 as unknown as string,
+      owner: null as unknown as GitHubRepositoryResponse['owner']
+    }),
+    [
+      null as unknown as GitHubIssueResponse,
+      issue({
+        title: 7 as unknown as string,
+        html_url: 42 as unknown as string,
+        user: 7 as unknown as GitHubIssueResponse['user'],
+        labels: [null, 42, {}, { name: 123, color: 123 }, ' bug '] as unknown as GitHubIssueResponse['labels'],
+        created_at: 42 as unknown as string
+      })
+    ],
+    [
+      null as unknown as GitHubPullResponse,
+      pull({
+        html_url: 42 as unknown as string,
+        user: false as unknown as GitHubPullResponse['user'],
+        labels: { name: 'bug' } as unknown as GitHubPullResponse['labels'],
+        base: null as unknown as GitHubPullResponse['base'],
+        head: { ref: 42 as unknown as string, sha: null as unknown as string }
+      })
+    ],
+    [
+      null as unknown as GitHubWorkflowRunResponse,
+      workflowRun({
+        status: 123 as unknown as string,
+        conclusion: undefined as unknown as GitHubWorkflowRunResponse['conclusion'],
+        html_url: 42 as unknown as string,
+        head_branch: 123 as unknown as string,
+        event: false as unknown as string,
+        created_at: 42 as unknown as string
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.owner, 'nullclaw');
+  assert.equal(summary.name, 'nullbuilder');
+  assert.equal(summary.url, 'https://github.com/nullclaw/nullbuilder');
+  assert.equal(summary.openIssues, 1);
+  assert.equal(summary.openPulls, 1);
+  assert.equal(summary.issues[0].title, 'Untitled issue');
+  assert.equal(summary.issues[0].url, 'https://github.com/nullclaw/nullbuilder/issues/1');
+  assert.deepEqual(summary.issues[0].labels, [
+    { name: 'label', color: 'd0d7de' },
+    { name: 'label', color: 'd0d7de' },
+    { name: 'bug', color: 'd0d7de' }
+  ]);
+  assert.equal(summary.issues[0].author, 'unknown');
+  assert.equal(summary.issues[0].createdAt, '');
+  assert.equal(summary.pullRequests[0].url, 'https://github.com/nullclaw/nullbuilder/pull/1');
+  assert.equal(summary.pullRequests[0].labels.length, 0);
+  assert.equal(summary.pullRequests[0].baseBranch, 'unknown');
+  assert.equal(summary.pullRequests[0].headBranch, 'unknown');
+  assert.equal(summary.pullRequests[0].headSha, 'unknown');
+  assert.equal(summary.latestRuns.ci?.status, 'unknown');
+  assert.equal(summary.latestRuns.ci?.conclusion, 'unknown');
+  assert.equal(summary.latestRuns.ci?.url, 'https://github.com/nullclaw/nullbuilder/actions');
+  assert.equal(summary.latestRuns.ci?.branch, 'unknown');
+  assert.equal(summary.latestRuns.ci?.event, 'unknown');
+  assert.equal(summary.latestRuns.ci?.createdAt, '');
+});
+
 test('mapRepositorySummary bounds and sanitizes labels from GitHub payloads', () => {
   const longLabel = 'x'.repeat(MAX_LABEL_NAME_LENGTH + 10);
   const labels = [

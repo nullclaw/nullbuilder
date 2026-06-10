@@ -43,14 +43,14 @@ export function mapRepositorySummary(
   starGrowth: StarGrowthSummary,
   webBaseUrl = 'https://github.com'
 ): RepositorySummary {
-  const urlContext = githubRepositoryUrlContext(webBaseUrl, repo, repository.html_url);
-  const openIssues = mapIssueSummaries(repo, issues, urlContext);
-  const pullRequests = mapPullRequestSummaries(repo, pulls, urlContext);
+  const urlContext = githubRepositoryUrlContext(webBaseUrl, repo, safeString(repository.html_url));
+  const openIssues = mapIssueSummaries(repo, safeArray(issues), urlContext);
+  const pullRequests = mapPullRequestSummaries(repo, safeArray(pulls), urlContext);
   const [fallbackOwner, fallbackName] = repo.split('/');
 
   return {
     slug: repo,
-    owner: safeDashboardText(repository.owner.login, fallbackOwner),
+    owner: safeObjectText(repository.owner, 'login', fallbackOwner),
     name: safeDashboardText(repository.name, fallbackName),
     fullName: safeDashboardText(repository.full_name, repo),
     url: urlContext.repositoryUrl,
@@ -68,7 +68,7 @@ export function mapRepositorySummary(
     issues: openIssues.items,
     pullRequests: pullRequests.items,
     starGrowth,
-    latestRuns: mapLatestRunsForRepository(workflowRuns, urlContext),
+    latestRuns: mapLatestRunsForRepository(safeArray(workflowRuns), urlContext),
     status: 'ok'
   };
 }
@@ -80,21 +80,15 @@ type BoundedWorkItems<T extends IssueSummary | PullRequestSummary> = {
 
 function mapIssueSummaries(
   repo: RepoSlug,
-  issues: GitHubIssueResponse[],
+  issues: unknown[],
   urlContext: GitHubWebUrlContext
 ): BoundedWorkItems<IssueSummary> {
-  return collectBoundedWorkItems(issues, (issue) => {
-    if (issue.pull_request) {
-      return null;
-    }
-
-    return mapIssue(repo, issue, urlContext);
-  });
+  return collectBoundedWorkItems(issues, (issue) => mapIssue(repo, issue, urlContext));
 }
 
 function mapPullRequestSummaries(
   repo: RepoSlug,
-  pulls: GitHubPullResponse[],
+  pulls: unknown[],
   urlContext: GitHubWebUrlContext
 ): BoundedWorkItems<PullRequestSummary> {
   return collectBoundedWorkItems(pulls, (pull) => mapPullRequest(repo, pull, urlContext));
@@ -129,11 +123,11 @@ function collectBoundedWorkItems<Input, Output extends IssueSummary | PullReques
 }
 
 export function mapLatestRuns(runs: GitHubWorkflowRunResponse[]): RepositoryLatestRuns {
-  return mapLatestRunsForRepository(runs, EMPTY_GITHUB_WEB_URL_CONTEXT);
+  return mapLatestRunsForRepository(safeArray(runs), EMPTY_GITHUB_WEB_URL_CONTEXT);
 }
 
 function mapLatestRunsForRepository(
-  runs: GitHubWorkflowRunResponse[],
+  runs: unknown[],
   urlContext: GitHubWebUrlContext
 ): RepositoryLatestRuns {
   return {
@@ -143,7 +137,12 @@ function mapLatestRunsForRepository(
   };
 }
 
-function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: GitHubWebUrlContext): IssueSummary | null {
+function mapIssue(repo: RepoSlug, value: unknown, urlContext: GitHubWebUrlContext): IssueSummary | null {
+  const issue = objectRecord(value);
+  if (!issue || issue.pull_request) {
+    return null;
+  }
+
   const number = safeWorkItemNumber(issue.number);
   if (number === null) {
     return null;
@@ -154,12 +153,12 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: GitHub
     number,
     title: safeWorkItemTitle(issue.title, 'Untitled issue'),
     url: safeGitHubWebUrl(
-      issue.html_url,
+      safeString(issue.html_url),
       `${urlContext.repositoryUrl}/issues/${number}`,
       urlContext.repositoryOrigin,
       urlContext.repositoryPathPrefix
     ),
-    author: safeDashboardText(issue.user?.login ?? '', 'unknown'),
+    author: safeObjectText(issue.user, 'login', 'unknown'),
     labels: mapLabels(issue.labels),
     comments: safeCount(issue.comments),
     createdAt: safeTimestamp(issue.created_at),
@@ -169,9 +168,14 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: GitHub
 
 function mapPullRequest(
   repo: RepoSlug,
-  pull: GitHubPullResponse,
+  value: unknown,
   urlContext: GitHubWebUrlContext
 ): PullRequestSummary | null {
+  const pull = objectRecord(value);
+  if (!pull) {
+    return null;
+  }
+
   const number = safeWorkItemNumber(pull.number);
   if (number === null) {
     return null;
@@ -182,24 +186,28 @@ function mapPullRequest(
     number,
     title: safeWorkItemTitle(pull.title, 'Untitled PR'),
     url: safeGitHubWebUrl(
-      pull.html_url,
+      safeString(pull.html_url),
       `${urlContext.repositoryUrl}/pull/${number}`,
       urlContext.repositoryOrigin,
       urlContext.repositoryPathPrefix
     ),
-    author: safeDashboardText(pull.user?.login ?? '', 'unknown'),
-    labels: mapLabels(pull.labels ?? []),
+    author: safeObjectText(pull.user, 'login', 'unknown'),
+    labels: mapLabels(pull.labels),
     comments: safeCount(pull.comments),
     createdAt: safeTimestamp(pull.created_at),
     updatedAt: safeTimestamp(pull.updated_at),
     draft: safeBoolean(pull.draft),
-    baseBranch: safeDashboardText(pull.base.ref, 'unknown'),
-    headBranch: safeDashboardText(pull.head.ref, 'unknown'),
-    headSha: safeDashboardText(pull.head.sha, 'unknown')
+    baseBranch: safeObjectText(pull.base, 'ref', 'unknown'),
+    headBranch: safeObjectText(pull.head, 'ref', 'unknown'),
+    headSha: safeObjectText(pull.head, 'sha', 'unknown')
   };
 }
 
-function mapLabels(labels: Array<string | { name?: string; color?: string }>): GitHubLabel[] {
+function mapLabels(labels: unknown): GitHubLabel[] {
+  if (!Array.isArray(labels)) {
+    return [];
+  }
+
   const mapped: GitHubLabel[] = [];
 
   for (const label of labels) {
@@ -215,17 +223,22 @@ function mapLabels(labels: Array<string | { name?: string; color?: string }>): G
       continue;
     }
 
+    const labelObject = objectRecord(label);
+    if (!labelObject) {
+      continue;
+    }
+
     mapped.push({
-      name: safeLabelName(label.name),
-      color: normalizeLabelColor(label.color)
+      name: safeLabelName(labelObject.name),
+      color: normalizeLabelColor(labelObject.color)
     });
   }
 
   return mapped;
 }
 
-function safeLabelName(value: string | undefined): string {
-  return sanitizeText(value ?? '', {
+function safeLabelName(value: unknown): string {
+  return sanitizeText(safeString(value), {
     maxLength: MAX_LABEL_NAME_LENGTH,
     fallback: 'label',
     trim: true
@@ -233,51 +246,55 @@ function safeLabelName(value: string | undefined): string {
 }
 
 function safeDashboardText(
-  value: string | null | undefined,
+  value: unknown,
   fallback: string,
   maxLength = MAX_DASHBOARD_TEXT_FIELD_LENGTH
 ): string {
-  return sanitizeText(value ?? '', {
+  return sanitizeText(safeString(value), {
     maxLength,
     fallback,
     trim: true
   });
 }
 
-function safeOptionalDashboardText(value: string | null | undefined): string | null {
+function safeOptionalDashboardText(value: unknown): string | null {
   const safe = safeDashboardText(value, '');
   return safe ? safe : null;
 }
 
-function safeWorkItemTitle(value: string, fallback: string): string {
+function safeWorkItemTitle(value: unknown, fallback: string): string {
   return safeDashboardText(value, fallback, MAX_WORK_ITEM_TITLE_LENGTH);
 }
 
-function safeTimestamp(value: string): string {
+function safeTimestamp(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
   return readSafeTextInput(value, { maxLength: MAX_TIMESTAMP_TEXT_LENGTH, trim: true }) ?? '';
 }
 
-function safeOptionalTimestamp(value: string | null): string | null {
+function safeOptionalTimestamp(value: unknown): string | null {
   return value === null ? null : safeTimestamp(value);
 }
 
-function normalizeLabelColor(color: string | undefined): string {
-  return color && LABEL_COLOR_PATTERN.test(color) ? color.toLowerCase() : DEFAULT_LABEL_COLOR;
+function normalizeLabelColor(color: unknown): string {
+  return typeof color === 'string' && LABEL_COLOR_PATTERN.test(color) ? color.toLowerCase() : DEFAULT_LABEL_COLOR;
 }
 
-function safeCount(value: number | null | undefined): number {
+function safeCount(value: unknown): number {
   return safeNonNegativeInteger(value) ?? 0;
 }
 
-function safeNullableCount(value: number | null | undefined): number | null {
+function safeNullableCount(value: unknown): number | null {
   return safeNonNegativeInteger(value);
 }
 
-function safeWorkItemNumber(value: number): number | null {
+function safeWorkItemNumber(value: unknown): number | null {
   return isSafePositiveInteger(value) ? value : null;
 }
 
-function safeWorkflowRunId(value: number): number | null {
+function safeWorkflowRunId(value: unknown): number | null {
   return isSafePositiveInteger(value) ? value : null;
 }
 
@@ -286,14 +303,19 @@ function safeBoolean(value: unknown): boolean {
 }
 
 function findRun(
-  runs: GitHubWorkflowRunResponse[],
+  runs: unknown[],
   nameKeywords: string[],
   pathKeywords: string[]
-): GitHubWorkflowRunResponse | null {
+): unknown | null {
   return (
     runs.find((run) => {
-      const name = safeDashboardText(run.name ?? '', '').toLowerCase();
-      const path = safeDashboardText(run.path ?? '', '').toLowerCase();
+      const runObject = objectRecord(run);
+      if (!runObject) {
+        return false;
+      }
+
+      const name = safeDashboardText(runObject.name, '').toLowerCase();
+      const path = safeDashboardText(runObject.path, '').toLowerCase();
       return (
         nameKeywords.some((keyword) => name.includes(keyword)) ||
         pathKeywords.some((keyword) => path.endsWith(keyword) || path.includes(`/${keyword}`))
@@ -302,7 +324,8 @@ function findRun(
   );
 }
 
-function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: GitHubWebUrlContext): WorkflowRunSummary | null {
+function mapRun(value: unknown, urlContext: GitHubWebUrlContext): WorkflowRunSummary | null {
+  const run = objectRecord(value);
   if (!run) {
     return null;
   }
@@ -315,7 +338,7 @@ function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: GitHubWebUrlC
     status: safeDashboardText(run.status, 'unknown'),
     conclusion: run.conclusion === null ? null : safeDashboardText(run.conclusion, 'unknown'),
     url: safeGitHubWebUrl(
-      run.html_url,
+      safeString(run.html_url),
       githubActionsUrl(urlContext),
       urlContext.repositoryOrigin,
       urlContext.repositoryPathPrefix
@@ -325,4 +348,20 @@ function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: GitHubWebUrlC
     createdAt: safeTimestamp(run.created_at),
     updatedAt: safeTimestamp(run.updated_at)
   };
+}
+
+function safeArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function safeObjectText(value: unknown, key: string, fallback: string): string {
+  return safeDashboardText(objectRecord(value)?.[key], fallback);
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+function safeString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
