@@ -79,26 +79,27 @@ export async function buildPrTag(
     allowNonDefaultBase?: boolean;
   }
 ): Promise<BuildPrResult> {
+  const prNumber = assertPositivePrNumber(options.prNumber);
   const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
   const requestedTagName = options.tagName ? sanitizeBuildPrTagName(options.tagName) : undefined;
   const [repository, pull] = await Promise.all([
     githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`, {
       useCache: false
     }),
-    githubRequest<GitHubPullDetailResponse>(config, `/repos/${repo}/pulls/${options.prNumber}`, {
+    githubRequest<GitHubPullDetailResponse>(config, `/repos/${repo}/pulls/${prNumber}`, {
       useCache: false
     })
   ]);
   const defaultBranch = sanitizeReleaseTargetRef(repository.default_branch, 'default branch');
   assertTrustedPullRequest(repo, defaultBranch, pull, options);
   const headSha = assertFullSha(pull.head.sha, 'pull request head SHA');
-  const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(options.prNumber, headSha));
+  const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(prNumber, headSha));
   const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
   const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
 
   const result: BuildPrResult = {
     repo,
-    prNumber: pull.number,
+    prNumber,
     prTitle: pull.title,
     headSha,
     headBranch: pull.head.ref,
@@ -313,6 +314,14 @@ async function createOrMoveTagRef(
 
 function isValidationError(error: unknown): boolean {
   return error instanceof GitHubApiError && error.status === 422;
+}
+
+function assertPositivePrNumber(value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error('Invalid pull request number.');
+  }
+
+  return value;
 }
 
 function assertFullSha(value: string, label: string): string {

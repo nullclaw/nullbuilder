@@ -101,6 +101,26 @@ test('buildPrTag rejects unsafe API head SHAs before creating tag refs', async (
   );
 });
 
+test('buildPrTag rejects unsafe PR numbers before fetching GitHub', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  for (const prNumber of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN]) {
+    await assert.rejects(
+      () =>
+        buildPrTag(config, {
+          repo: 'nullbuilder',
+          prNumber
+        }),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid pull request number.'
+    );
+  }
+
+  assert.deepEqual(requests, []);
+});
+
 test('buildPrTag rejects unsafe API default branches before trust messages', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
