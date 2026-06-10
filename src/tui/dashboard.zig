@@ -185,6 +185,9 @@ fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) ![]u8 {
         const byte = value[index];
         if (byte == ascii_escape) {
             index = skipAnsiEscape(value, index);
+        } else if (isUtf8C1Control(value, index)) {
+            try sanitized.append(' ');
+            index += 2;
         } else {
             try sanitized.append(if (isTerminalControlByte(byte)) ' ' else byte);
             index += 1;
@@ -226,12 +229,25 @@ fn isTerminalControlByte(byte: u8) bool {
     return byte < 0x20 or byte == 0x7f;
 }
 
+fn isUtf8C1Control(value: []const u8, index: usize) bool {
+    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+}
+
 test "clipUtf8 does not split multibyte sequences" {
     const text = "repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82";
 
     try std.testing.expectEqualStrings("repo-", clipUtf8(text, 6));
     try std.testing.expectEqualStrings("repo-\xd0\xbf", clipUtf8(text, 7));
     try std.testing.expectEqualStrings("", clipUtf8(text, 0));
+}
+
+test "sanitizeTerminalText replaces UTF-8 encoded C1 controls" {
+    const safe = try sanitizeTerminalText(std.testing.allocator, "safe\xc2\x9bcontrol\xc2\x85next");
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("safe control next", safe);
+    try std.testing.expect(std.mem.indexOf(u8, safe, "\xc2\x9b") == null);
+    try std.testing.expect(std.mem.indexOf(u8, safe, "\xc2\x85") == null);
 }
 
 test "printStatus honors requested display width" {
