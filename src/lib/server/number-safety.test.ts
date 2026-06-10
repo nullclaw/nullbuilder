@@ -29,6 +29,15 @@ test('normalizeBoundedPositiveInteger applies fallback and upper bound', () => {
   assert.equal(normalizeBoundedPositiveInteger(Number.POSITIVE_INFINITY, 2, 10), 2);
 });
 
+test('normalizeBoundedPositiveInteger normalizes malformed runtime options', () => {
+  assert.equal(normalizeBoundedPositiveInteger(null, 2, 10), 2);
+  assert.equal(normalizeBoundedPositiveInteger('5', 2, 10), 2);
+  assert.equal(normalizeBoundedPositiveInteger(5, 'fallback', 10), 5);
+  assert.equal(normalizeBoundedPositiveInteger(null, 'fallback', 10), 1);
+  assert.equal(normalizeBoundedPositiveInteger(50, 2, 'max'), 2);
+  assert.equal(normalizeBoundedPositiveInteger(50, 20, 10), 20);
+});
+
 test('safeNonNegativeInteger preserves only safe non-negative numbers', () => {
   assert.equal(safeNonNegativeInteger(42), 42);
   assert.equal(safeNonNegativeInteger(0), 0);
@@ -41,4 +50,11 @@ test('saturatingSafeIntegerAdd clamps overflow and ignores unsafe increments', (
   assert.equal(saturatingSafeIntegerAdd(Number.MAX_SAFE_INTEGER, 1), Number.MAX_SAFE_INTEGER);
   assert.equal(saturatingSafeIntegerAdd(10, -1), 10);
   assert.equal(saturatingSafeIntegerAdd(10, Number.NaN), 10);
+});
+
+test('saturatingSafeIntegerAdd normalizes malformed runtime base values', () => {
+  assert.equal(saturatingSafeIntegerAdd(null, 2), 0);
+  assert.equal(saturatingSafeIntegerAdd('10', 2), 0);
+  assert.equal(saturatingSafeIntegerAdd(-1, 2), 0);
+  assert.equal(saturatingSafeIntegerAdd(Number.NaN, 2), 0);
 });

@@ -6,20 +6,27 @@ export function isSafeNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
-export function normalizeBoundedPositiveInteger(value: number, fallback: number, max: number): number {
+export function normalizeBoundedPositiveInteger(value: unknown, fallback: unknown, max: unknown): number {
+  const safeFallback = isSafePositiveInteger(fallback) ? fallback : 1;
+  const safeMax = isSafePositiveInteger(max) ? Math.max(max, safeFallback) : safeFallback;
+
   if (!isSafePositiveInteger(value)) {
-    return fallback;
+    return safeFallback;
   }
 
-  return Math.min(value, max);
+  return Math.min(value, safeMax);
 }
 
 export function safeNonNegativeInteger(value: unknown): number | null {
   return isSafeNonNegativeInteger(value) ? value : null;
 }
 
-export function saturatingSafeIntegerAdd(left: number, right: number): number {
-  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || right < 0) {
+export function saturatingSafeIntegerAdd(left: unknown, right: unknown): number {
+  if (!isSafeNonNegativeInteger(left)) {
+    return 0;
+  }
+
+  if (!isSafeNonNegativeInteger(right)) {
     return left;
   }
 
