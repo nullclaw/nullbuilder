@@ -98,7 +98,7 @@ fn validateValueToken(flag: []const u8, value: []const u8) error{InvalidArgument
         return error.InvalidArguments;
     }
 
-    if (isOversizedValueToken(value)) {
+    if (hasInvalidValueLength(value)) {
         printDiagnostic("invalid value for {s}\n", flag);
         return error.InvalidArguments;
     }
@@ -121,8 +121,8 @@ fn hasUnsafeOptionControl(value: []const u8) bool {
     return action_text.hasControl(value);
 }
 
-fn isOversizedValueToken(value: []const u8) bool {
-    return value.len > MAX_VALUE_TOKEN_BYTES;
+fn hasInvalidValueLength(value: []const u8) bool {
+    return value.len == 0 or value.len > MAX_VALUE_TOKEN_BYTES;
 }
 
 fn hasUnsafeValueControl(value: []const u8) bool {
@@ -174,10 +174,16 @@ test "option scanner rejects too many options" {
 test "value tokens are bounded before duplication" {
     const max_value = [_]u8{'a'} ** MAX_VALUE_TOKEN_BYTES;
     const oversized_value = [_]u8{'a'} ** (MAX_VALUE_TOKEN_BYTES + 1);
+    const empty_argv = [_][*:0]const u8{ "action", "" };
+    var empty_iterator = std.process.Args.Iterator.init(.{ .vector = &empty_argv });
 
     try validateValueToken("--flag", max_value[0..]);
-    try std.testing.expect(!isOversizedValueToken(max_value[0..]));
-    try std.testing.expect(isOversizedValueToken(oversized_value[0..]));
+    try std.testing.expect(!hasInvalidValueLength(max_value[0..]));
+    try std.testing.expect(hasInvalidValueLength(""));
+    try std.testing.expect(hasInvalidValueLength(oversized_value[0..]));
+
+    try std.testing.expectEqualStrings("action", empty_iterator.next().?);
+    try std.testing.expectError(error.InvalidArguments, takeValue(&empty_iterator, std.testing.allocator, "--flag"));
 }
 
 test "value tokens reject terminal controls before duplication" {
