@@ -67,23 +67,27 @@ fn hashBytesSha256(bytes: []const u8) Sha256Digest {
 }
 
 fn hashArtifactFileSha256(io: std.Io, dir: std.Io.Dir, binary_path: []const u8) !Sha256Digest {
+    return hashArtifactFileSha256Limited(io, dir, binary_path, MAX_BINARY_BYTES);
+}
+
+fn hashArtifactFileSha256Limited(io: std.Io, dir: std.Io.Dir, binary_path: []const u8, max_bytes: u64) !Sha256Digest {
     var file = try dir.openFile(io, binary_path, .{ .allow_directory = false });
     defer file.close(io);
-
-    const stat = try file.stat(io);
-    if (stat.size > MAX_BINARY_BYTES) return error.StreamTooLong;
 
     var hasher = std.crypto.hash.sha2.Sha256.init(.{});
     var buffer: [SHA256_READ_BUFFER_BYTES]u8 = undefined;
     var offset: u64 = 0;
 
-    while (offset < stat.size) {
-        const chunk_len: usize = @intCast(@min(stat.size - offset, buffer.len));
+    while (true) {
+        if (offset >= max_bytes) return error.StreamTooLong;
+
+        const chunk_len: usize = @intCast(@min(max_bytes - offset, buffer.len));
         const bytes_read = try file.readPositionalAll(io, buffer[0..chunk_len], offset);
-        if (bytes_read == 0) return error.EndOfStream;
+        if (bytes_read == 0) break;
 
         hasher.update(buffer[0..bytes_read]);
         offset += bytes_read;
+        if (bytes_read < chunk_len) break;
     }
 
     var digest: Sha256Digest = undefined;
@@ -388,6 +392,22 @@ test "package artifact hashes binary files with bounded stack memory" {
     const expected = hashBytesSha256("streamed bytes");
     const actual = try hashArtifactFileSha256(std.testing.io, tmp.dir, "artifact.bin");
     try std.testing.expectEqualSlices(u8, expected[0..], actual[0..]);
+}
+
+test "package artifact rejects binary files that reach the hash byte limit" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "artifact.bin",
+        .data = "abcd",
+    });
+
+    const expected = hashBytesSha256("abcd");
+    const actual = try hashArtifactFileSha256Limited(std.testing.io, tmp.dir, "artifact.bin", 5);
+    try std.testing.expectEqualSlices(u8, expected[0..], actual[0..]);
+    try std.testing.expectError(error.StreamTooLong, hashArtifactFileSha256Limited(std.testing.io, tmp.dir, "artifact.bin", 4));
+    try std.testing.expectError(error.StreamTooLong, hashArtifactFileSha256Limited(std.testing.io, tmp.dir, "artifact.bin", 3));
 }
 
 test "package artifact builds parseable manifest" {
