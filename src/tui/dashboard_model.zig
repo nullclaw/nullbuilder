@@ -28,9 +28,9 @@ pub const Dashboard = struct {
         for (self.items) |item| {
             const repo = repositoryFromValue(item) orelse continue;
             result.repositories += 1;
-            result.issues += repo.open_issues;
-            result.pull_requests += repo.open_pulls;
-            result.stars += repo.stars;
+            result.issues = saturatingAdd(result.issues, repo.open_issues);
+            result.pull_requests = saturatingAdd(result.pull_requests, repo.open_pulls);
+            result.stars = saturatingAdd(result.stars, repo.stars);
             if (repo.has_failure) result.failing += 1;
         }
 
@@ -189,6 +189,10 @@ fn emptyJsonValues() []const JsonValue {
     return empty_values[0..];
 }
 
+fn saturatingAdd(a: u64, b: u64) u64 {
+    return a +| b;
+}
+
 test "dashboard model collects repository totals and run statuses" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
@@ -241,6 +245,26 @@ test "dashboard model collects repository totals and run statuses" {
     try std.testing.expectEqualStrings("beta", load_error.repo);
     try std.testing.expectEqualStrings("rate limited", load_error.message);
     try std.testing.expectEqual(null, errors.next());
+}
+
+test "dashboard totals saturate untrusted counters" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    {"slug": "alpha", "openIssues": 9223372036854775807, "openPulls": 9223372036854775807, "stars": 9223372036854775807},
+        \\    {"slug": "beta", "openIssues": 9223372036854775807, "openPulls": 9223372036854775807, "stars": 9223372036854775807},
+        \\    {"slug": "gamma", "openIssues": 10, "openPulls": 10, "stars": 10}
+        \\  ]
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const dashboard = try Dashboard.init(parsed.value.object);
+    const totals = dashboard.totals();
+
+    try std.testing.expectEqual(std.math.maxInt(u64), totals.issues);
+    try std.testing.expectEqual(std.math.maxInt(u64), totals.pull_requests);
+    try std.testing.expectEqual(std.math.maxInt(u64), totals.stars);
 }
 
 test "work item iterator skips invalid rows across repositories" {
