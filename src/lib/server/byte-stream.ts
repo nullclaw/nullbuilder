@@ -82,7 +82,8 @@ function joinByteChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
 
   const bytes = new Uint8Array(totalBytes);
   let offset = 0;
-  for (const chunk of chunks) {
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }

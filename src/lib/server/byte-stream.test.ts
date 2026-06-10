@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { arrayBufferFromBytes, readBoundedByteStream } from './byte-stream';
 
+const originalArrayIterator = Array.prototype[Symbol.iterator];
+
 test('readBoundedByteStream returns empty bytes for absent and empty streams', async () => {
   assert.deepEqual(await readBoundedByteStream(null, 16), {
     ok: true,
@@ -30,6 +32,32 @@ test('readBoundedByteStream joins chunks without changing byte order', async () 
   const first = new TextEncoder().encode('web');
   const second = new TextEncoder().encode('Token');
   const result = await readBoundedByteStream(byteStream([first, second]), 16);
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(new TextDecoder().decode(result.bytes), 'webToken');
+  }
+});
+
+test('readBoundedByteStream joins chunks without array iterators', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('web'));
+      controller.enqueue(new TextEncoder().encode('Token'));
+      controller.close();
+    }
+  });
+
+  Array.prototype[Symbol.iterator] = function arrayIteratorShouldNotBeCalled(): ArrayIterator<unknown> {
+    throw new Error('Array.prototype iterator should not be called.');
+  };
+
+  let result: Awaited<ReturnType<typeof readBoundedByteStream>>;
+  try {
+    result = await readBoundedByteStream(stream, 16);
+  } finally {
+    Array.prototype[Symbol.iterator] = originalArrayIterator;
+  }
 
   assert.equal(result.ok, true);
   if (result.ok) {
