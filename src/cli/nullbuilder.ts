@@ -1,11 +1,36 @@
+import { pathToFileURL } from 'node:url';
 import { formatCliError } from './output';
-import { runCli } from './runner';
+import { runCli, type CliRunResult } from './runner';
+
+export type CliOutputWriters = {
+  stdout: (line: string) => void;
+  stderr: (line: string) => void;
+};
 
 async function main() {
   const result = await runCli(process.argv.slice(2));
-  result.stdout.forEach((line) => console.log(line));
-  result.stderr.forEach((line) => console.error(line));
+  writeCliRunResult(result);
   setExitCode(result.exitCode);
+}
+
+export function writeCliRunResult(
+  result: CliRunResult,
+  writers: CliOutputWriters = {
+    stdout: (line) => console.log(line),
+    stderr: (line) => console.error(line)
+  }
+): void {
+  for (const line of result.stdout) {
+    writers.stdout(line);
+  }
+
+  for (const line of result.stderr) {
+    writers.stderr(line);
+  }
+}
+
+export function isCliEntrypoint(moduleUrl: string, argvPath: string | undefined = process.argv[1]): boolean {
+  return argvPath !== undefined && pathToFileURL(argvPath).href === moduleUrl;
 }
 
 function setExitCode(exitCode: number | null): void {
@@ -14,7 +39,9 @@ function setExitCode(exitCode: number | null): void {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(formatCliError(error));
-  process.exit(1);
-});
+if (isCliEntrypoint(import.meta.url)) {
+  main().catch((error: unknown) => {
+    console.error(formatCliError(error));
+    process.exit(1);
+  });
+}
