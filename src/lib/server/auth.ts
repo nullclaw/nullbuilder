@@ -64,6 +64,7 @@ export class LoginRateLimiter {
         failures: 1,
         resetAt: now + this.options.windowMs
       });
+      this.#prune(now);
       return;
     }
 

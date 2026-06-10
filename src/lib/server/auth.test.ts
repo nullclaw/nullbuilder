@@ -118,3 +118,20 @@ test('login rate limiter blocks repeated failures and prunes old attempts', () =
   assert.equal(limiter.isAllowed('client'), true);
   assert.equal(limiter.size, 0);
 });
+
+test('login rate limiter bounds distinct failed clients immediately', () => {
+  const limiter = new LoginRateLimiter({
+    windowMs: 1000,
+    maxFailures: 2,
+    maxKeys: 2,
+    now: () => 10_000
+  });
+
+  limiter.recordFailure('client-a');
+  limiter.recordFailure('client-b');
+  limiter.recordFailure('client-c');
+
+  assert.equal(limiter.size, 2);
+  assert.equal(limiter.isAllowed('client-a'), true);
+  assert.equal(limiter.size, 2);
+});
