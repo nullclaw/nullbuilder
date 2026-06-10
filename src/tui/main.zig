@@ -3,6 +3,12 @@ const std = @import("std");
 const app = @import("app.zig");
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    if (try runMain(init)) |exit_code| {
+        std.process.exit(exit_code);
+    }
+}
+
+fn runMain(init: std.process.Init.Minimal) !?u8 {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const gpa = debug_allocator.allocator();
@@ -29,9 +35,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const cli_path = environ_map.get("NULLBUILDER_NODE_CLI") orelse "./bin/nullbuilder.js";
     const no_color = environ_map.get("NO_COLOR") != null;
 
-    if (try runAppAndFlush(gpa, arena, io, out, cli_path, no_color, args)) |exit_code| {
-        std.process.exit(exit_code);
-    }
+    return runAppAndFlush(gpa, arena, io, out, cli_path, no_color, args);
 }
 
 fn runAppAndFlush(
