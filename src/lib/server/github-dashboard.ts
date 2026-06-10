@@ -93,7 +93,11 @@ function summarizeRepositories(repositories: RepositorySummary[]): DashboardRepo
   let starCount = 0;
   let failingRuns = 0;
 
-  for (const repo of repositories) {
+  for (let repoIndex = 0; repoIndex < repositories.length; repoIndex += 1) {
+    const repo = repositories[repoIndex];
+    if (!repo) {
+      continue;
+    }
     if (repo.status !== 'ok') {
       continue;
     }
@@ -110,11 +114,11 @@ function summarizeRepositories(repositories: RepositorySummary[]): DashboardRepo
       failingRuns += 1;
     }
 
-    for (const issue of repo.issues) {
-      issues.add(issue);
+    for (let issueIndex = 0; issueIndex < repo.issues.length; issueIndex += 1) {
+      issues.add(repo.issues[issueIndex]);
     }
-    for (const pullRequest of repo.pullRequests) {
-      pullRequests.add(pullRequest);
+    for (let pullRequestIndex = 0; pullRequestIndex < repo.pullRequests.length; pullRequestIndex += 1) {
+      pullRequests.add(repo.pullRequests[pullRequestIndex]);
     }
   }
 

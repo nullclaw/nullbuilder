@@ -662,6 +662,51 @@ test('buildDashboard summarizes loaded error and failing repositories', () => {
   assert.equal(errorRepo.error, 'GitHub API authorization or rate-limit error (403).');
 });
 
+test('buildDashboard avoids user-controlled repository iterators', () => {
+  class UnsafeIteratorArray<T> extends Array<T> {
+    override [Symbol.iterator](): ArrayIterator<T> {
+      throw new Error('iterator should not be called');
+    }
+  }
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+  const issues = new UnsafeIteratorArray(
+    workItem(1, '2026-06-08T00:00:00Z'),
+    workItem(2, '2026-06-09T00:00:00Z')
+  );
+  const pullRequests = new UnsafeIteratorArray(pullRequestSummary(3, '2026-06-09T01:00:00Z'));
+  const repositories = new UnsafeIteratorArray(
+    repositorySummary({
+      openIssues: 2,
+      openPulls: 1,
+      stars: 12,
+      issues,
+      pullRequests
+    })
+  );
+
+  const dashboard = buildDashboard(config, config.repos, repositories, '2026-06-09T02:00:00Z');
+
+  assert.deepEqual(
+    dashboard.issues.map((item) => item.number),
+    [2, 1]
+  );
+  assert.deepEqual(
+    dashboard.pullRequests.map((item) => item.number),
+    [3]
+  );
+  assert.deepEqual(dashboard.totals, {
+    repositories: 1,
+    loadedRepositories: 1,
+    erroredRepositories: 0,
+    issues: 2,
+    pullRequests: 1,
+    stars: 12,
+    failingRuns: 0
+  });
+});
+
 test('buildDashboard validates generated and error timestamps before emitting', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder'
