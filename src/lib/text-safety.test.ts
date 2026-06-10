@@ -40,6 +40,22 @@ test('sanitizeText strips terminal controls and applies bounded fallback text', 
   assert.equal(sanitizeText('safe\uD800spoof\uDC00 text', { maxLength: 64, trim: true }), 'safe spoof  text');
 });
 
+test('sanitizeText strips ANSI string control payloads', () => {
+  const escOutput = sanitizeText(
+    'start\x1bPprivate-dcs\x1b\\mid\x1bXprivate-sos\x1b\\pm\x1b^private-pm\x07apc\x1b_private-apc\x1b\\end',
+    { maxLength: 128 }
+  );
+  const rawOutput = sanitizeText(
+    'start\x90private-dcs\x9cmid\x98private-sos\x1b\\pm\x9eprivate-pm\x07apc\x9fprivate-apc\x9cend\x9dprivate-osc\x9cdone',
+    { maxLength: 128 }
+  );
+
+  assert.equal(escOutput, 'startmidpmapcend');
+  assert.equal(rawOutput, 'startmidpmapcenddone');
+  assert.equal(escOutput.includes('private'), false);
+  assert.equal(rawOutput.includes('private'), false);
+});
+
 test('sanitizeTerminalLine truncates by code point without splitting surrogate pairs', () => {
   const output = sanitizeTerminalLine('🙂'.repeat(3000), 2048);
 

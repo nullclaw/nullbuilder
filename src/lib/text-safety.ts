@@ -1,4 +1,5 @@
-const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\|$)|[@-Z\\-_])/g;
+const ANSI_STRING_CONTROL_PATTERN = /(?:\x1b[\]PX^_]|\x90|\x98|\x9d|\x9e|\x9f)(?:[^\x07\x1b\x9c]|\x1b(?!\\))*?(?:\x07|\x1b\\|\x9c|$)/g;
+const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])/g;
 const BIDI_FORMAT_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const BIDI_FORMAT_CONTROL_TEST_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
@@ -47,7 +48,11 @@ export function parsePositiveIntegerText(value: string): number | null {
 export function sanitizeText(value: string, options: SafeTextOptions): string {
   const sanitized = truncateText(
     replaceLoneSurrogates(
-      value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' ').replace(BIDI_FORMAT_CONTROL_PATTERN, ' ')
+      value
+        .replace(ANSI_STRING_CONTROL_PATTERN, '')
+        .replace(ANSI_ESCAPE_PATTERN, '')
+        .replace(CONTROL_CHARACTER_PATTERN, ' ')
+        .replace(BIDI_FORMAT_CONTROL_PATTERN, ' ')
     ),
     options.maxLength,
     options.suffix ?? ''
