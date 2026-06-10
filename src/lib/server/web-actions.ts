@@ -629,7 +629,12 @@ function webActionFormContentType(headers: Headers): string | null {
   }
 
   const mediaType = webActionContentMediaTypeRange(safeValue);
-  return mediaType && isSupportedWebActionMediaType(safeValue, mediaType.start, mediaType.end) ? safeValue : null;
+  if (!mediaType) {
+    return null;
+  }
+
+  const supportedMediaType = supportedWebActionMediaType(safeValue, mediaType.start, mediaType.end);
+  return supportedMediaType ? `${supportedMediaType}${safeValue.slice(mediaType.parametersStart)}` : null;
 }
 
 function webActionFormDataHeaders(contentType: string): Headers {
@@ -638,13 +643,13 @@ function webActionFormDataHeaders(contentType: string): Headers {
   return headers;
 }
 
-function webActionContentMediaTypeRange(value: string): { start: number; end: number } | null {
+function webActionContentMediaTypeRange(value: string): { start: number; end: number; parametersStart: number } | null {
   const separatorIndex = value.indexOf(';');
   const rawEnd = separatorIndex === -1 ? value.length : separatorIndex;
   const start = skipHttpHeaderSpaces(value, 0);
   const end = trimHttpHeaderSpacesEnd(value, start, rawEnd);
 
-  return end > start ? { start, end } : null;
+  return end > start ? { start, end, parametersStart: rawEnd } : null;
 }
 
 function skipHttpHeaderSpaces(value: string, start: number): number {
@@ -663,11 +668,16 @@ function trimHttpHeaderSpacesEnd(value: string, start: number, end: number): num
   return index;
 }
 
-function isSupportedWebActionMediaType(value: string, start: number, end: number): boolean {
-  return (
-    asciiRangeEqualsIgnoreCase(value, start, end, WEB_ACTION_FORM_URLENCODED_MEDIA_TYPE) ||
-    asciiRangeEqualsIgnoreCase(value, start, end, WEB_ACTION_MULTIPART_MEDIA_TYPE)
-  );
+function supportedWebActionMediaType(value: string, start: number, end: number): string | null {
+  if (asciiRangeEqualsIgnoreCase(value, start, end, WEB_ACTION_FORM_URLENCODED_MEDIA_TYPE)) {
+    return WEB_ACTION_FORM_URLENCODED_MEDIA_TYPE;
+  }
+
+  if (asciiRangeEqualsIgnoreCase(value, start, end, WEB_ACTION_MULTIPART_MEDIA_TYPE)) {
+    return WEB_ACTION_MULTIPART_MEDIA_TYPE;
+  }
+
+  return null;
 }
 
 function asciiRangeEqualsIgnoreCase(value: string, start: number, end: number, expected: string): boolean {
