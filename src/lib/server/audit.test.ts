@@ -35,7 +35,7 @@ test('getAuditReport normalizes repository and workflow URLs from GitHub payload
           name: 'ci.yml',
           path: '.github/workflows/ci.yml',
           type: 'file',
-          html_url: 'javascript:alert(1)'
+          html_url: 'https://github.example.test/other/repo/blob/main/.github/workflows/ci.yml'
         }
       ];
     }

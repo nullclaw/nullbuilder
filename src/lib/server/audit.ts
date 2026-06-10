@@ -170,7 +170,12 @@ async function loadWorkflowFiles(
       return {
         name: item.name,
         path: item.path,
-        url: safeGitHubWebUrl(item.html_url, githubActionsUrl(urlContext), urlContext.repositoryOrigin),
+        url: safeGitHubWebUrl(
+          item.html_url,
+          githubActionsUrl(urlContext),
+          urlContext.repositoryOrigin,
+          urlContext.repositoryPathPrefix
+        ),
         content: decodeGitHubContent(file.data)
       };
     })

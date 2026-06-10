@@ -9,11 +9,13 @@ export const MAX_GITHUB_WEB_URL_LENGTH = 2048;
 export type GitHubWebUrlContext = {
   repositoryUrl: string;
   repositoryOrigin: string;
+  repositoryPathPrefix: string;
 };
 
 export const EMPTY_GITHUB_WEB_URL_CONTEXT: GitHubWebUrlContext = {
   repositoryUrl: '',
-  repositoryOrigin: ''
+  repositoryOrigin: '',
+  repositoryPathPrefix: ''
 };
 
 export function githubRepositoryWebUrl(webBaseUrl: string, repo: RepoSlug): string {
@@ -35,9 +37,16 @@ export function githubRepositoryUrlContext(
   repositoryHtmlUrl = ''
 ): GitHubWebUrlContext {
   const repositoryUrlFallback = githubRepositoryWebUrl(webBaseUrl, repo);
-  const repositoryOrigin = new URL(repositoryUrlFallback).origin;
-  const repositoryUrl = safeGitHubWebUrl(repositoryHtmlUrl, repositoryUrlFallback, repositoryOrigin);
-  return { repositoryUrl, repositoryOrigin };
+  const fallbackUrl = new URL(repositoryUrlFallback);
+  const repositoryOrigin = fallbackUrl.origin;
+  const repositoryPathPrefix = fallbackUrl.pathname;
+  const repositoryUrl = safeGitHubWebUrl(
+    repositoryHtmlUrl,
+    repositoryUrlFallback,
+    repositoryOrigin,
+    repositoryPathPrefix
+  );
+  return { repositoryUrl, repositoryOrigin, repositoryPathPrefix };
 }
 
 export function githubActionsUrl(context: GitHubWebUrlContext): string {
@@ -54,11 +63,11 @@ export function githubActionsBranchQueryUrl(context: GitHubWebUrlContext, branch
     : '';
 }
 
-export function safeGitHubWebUrl(value: string, fallback: string, allowedOrigin = ''): string {
-  return isSafeGitHubWebUrl(value, allowedOrigin) ? value : fallback;
+export function safeGitHubWebUrl(value: string, fallback: string, allowedOrigin = '', allowedPathPrefix = ''): string {
+  return isSafeGitHubWebUrl(value, allowedOrigin, allowedPathPrefix) ? value : fallback;
 }
 
-function isSafeGitHubWebUrl(value: string, allowedOrigin: string): boolean {
+function isSafeGitHubWebUrl(value: string, allowedOrigin: string, allowedPathPrefix: string): boolean {
   if (
     value.length === 0 ||
     value.length > MAX_GITHUB_WEB_URL_LENGTH ||
@@ -82,7 +91,11 @@ function isSafeGitHubWebUrl(value: string, allowedOrigin: string): boolean {
     return false;
   }
 
-  return allowedOrigin === '' || url.origin === allowedOrigin;
+  if (allowedOrigin !== '' && url.origin !== allowedOrigin) {
+    return false;
+  }
+
+  return allowedPathPrefix === '' || isPathWithinPrefix(url.pathname, allowedPathPrefix);
 }
 
 function safeOwner(owner: string): string {
@@ -91,4 +104,8 @@ function safeOwner(owner: string): string {
   } catch {
     return DEFAULT_OWNER;
   }
+}
+
+function isPathWithinPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }

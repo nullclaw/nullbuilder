@@ -224,6 +224,10 @@ test('mapRepositorySummary validates dashboard URLs from GitHub payloads', () =>
       issue({
         number: 8,
         html_url: 'https://user:pass@github.example.test/nullclaw/nullbuilder/issues/7'
+      }),
+      issue({
+        number: 10,
+        html_url: `${webBaseUrl}/other/repo/issues/10`
       })
     ],
     [
@@ -234,7 +238,7 @@ test('mapRepositorySummary validates dashboard URLs from GitHub payloads', () =>
     ],
     [
       workflowRun({
-        html_url: `${repositoryUrl}/actions/runs/1 bad`
+        html_url: `${webBaseUrl}/other/repo/actions/runs/1`
       }),
       workflowRun({
         id: 2,
@@ -250,7 +254,7 @@ test('mapRepositorySummary validates dashboard URLs from GitHub payloads', () =>
   assert.equal(summary.url, repositoryUrl);
   assert.deepEqual(
     summary.issues.map((item) => item.url),
-    [`${repositoryUrl}/issues/7`, `${repositoryUrl}/issues/8`]
+    [`${repositoryUrl}/issues/7`, `${repositoryUrl}/issues/8`, `${repositoryUrl}/issues/10`]
   );
   assert.equal(summary.pullRequests[0].url, `${repositoryUrl}/pull/9`);
   assert.equal(summary.latestRuns.ci?.url, `${repositoryUrl}/actions`);

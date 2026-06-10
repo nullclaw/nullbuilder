@@ -22,6 +22,7 @@ test('github web URL helpers build repository owner and mutation URLs', () => {
   assert.equal(githubRepositoryWebUrl('https://github.example.test/', REPO), 'https://github.example.test/nullclaw/nullbuilder');
   assert.equal(context.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
   assert.equal(context.repositoryOrigin, 'https://github.example.test');
+  assert.equal(context.repositoryPathPrefix, '/nullclaw/nullbuilder');
   assert.equal(githubActionsUrl(context), 'https://github.example.test/nullclaw/nullbuilder/actions');
   assert.equal(
     githubReleaseTagUrl(context, 'v1.2.3'),
@@ -56,18 +57,34 @@ test('safeGitHubWebUrl rejects unsafe URLs before they become hrefs', () => {
     safeGitHubWebUrl(
       'https://github.example.test/nullclaw/nullbuilder/actions?query=branch%3Amain',
       fallback,
-      allowedOrigin
+      allowedOrigin,
+      '/nullclaw/nullbuilder'
     ),
     'https://github.example.test/nullclaw/nullbuilder/actions?query=branch%3Amain'
+  );
+  assert.equal(
+    safeGitHubWebUrl(
+      'https://github.example.test/other/repo/actions?query=branch%3Amain',
+      fallback,
+      allowedOrigin,
+      '/nullclaw/nullbuilder'
+    ),
+    fallback
   );
 });
 
 test('githubRepositoryUrlContext falls back to configured repository URLs', () => {
-  const context = githubRepositoryUrlContext(
+  const crossOriginContext = githubRepositoryUrlContext(
     'https://github.example.test',
     REPO,
     'https://evil.example/nullclaw/nullbuilder'
   );
+  const wrongPathContext = githubRepositoryUrlContext(
+    'https://github.example.test',
+    REPO,
+    'https://github.example.test/other/repo'
+  );
 
-  assert.equal(context.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
+  assert.equal(crossOriginContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
+  assert.equal(wrongPathContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
 });

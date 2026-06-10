@@ -155,7 +155,8 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: GitHub
     url: safeGitHubWebUrl(
       issue.html_url,
       `${urlContext.repositoryUrl}/issues/${number}`,
-      urlContext.repositoryOrigin
+      urlContext.repositoryOrigin,
+      urlContext.repositoryPathPrefix
     ),
     author: safeDashboardText(issue.user?.login ?? '', 'unknown'),
     labels: mapLabels(issue.labels),
@@ -182,7 +183,8 @@ function mapPullRequest(
     url: safeGitHubWebUrl(
       pull.html_url,
       `${urlContext.repositoryUrl}/pull/${number}`,
-      urlContext.repositoryOrigin
+      urlContext.repositoryOrigin,
+      urlContext.repositoryPathPrefix
     ),
     author: safeDashboardText(pull.user?.login ?? '', 'unknown'),
     labels: mapLabels(pull.labels ?? []),
@@ -315,7 +317,8 @@ function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: GitHubWebUrlC
     url: safeGitHubWebUrl(
       run.html_url,
       githubActionsUrl(urlContext),
-      urlContext.repositoryOrigin
+      urlContext.repositoryOrigin,
+      urlContext.repositoryPathPrefix
     ),
     branch: safeDashboardText(run.head_branch, 'unknown'),
     event: safeDashboardText(run.event, 'unknown'),
