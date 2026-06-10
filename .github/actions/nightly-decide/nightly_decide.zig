@@ -156,15 +156,15 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 
     while (iterator.next()) |arg| {
         if (std.mem.eql(u8, arg, "--runs-json")) {
-            runs_json_path = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &runs_json_path, arg);
         } else if (std.mem.eql(u8, arg, "--current-run-id")) {
-            current_run_id = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &current_run_id, arg);
         } else if (std.mem.eql(u8, arg, "--head-sha")) {
-            head_sha = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &head_sha, arg);
         } else if (std.mem.eql(u8, arg, "--workflow-name")) {
-            workflow_name = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &workflow_name, arg);
         } else if (std.mem.eql(u8, arg, "--force")) {
-            force = true;
+            try action_args.setFlagOnce(&force, arg);
         } else {
             return action_args.unexpectedOption(arg);
         }
@@ -388,6 +388,38 @@ test "nightly decision output rejects non-url matched run URLs" {
 
     try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
     try std.testing.expectEqualStrings("", out.writer.buffered());
+}
+
+test "nightly rejects duplicate options" {
+    const argv = [_][*:0]const u8{
+        "nightly_decide",
+        "--runs-json",
+        "previous-nightly-runs.json",
+        "--runs-json",
+        "other-nightly-runs.json",
+    };
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+    _ = iterator.next();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    try std.testing.expectError(error.InvalidArguments, parseArgs(&iterator, arena_state.allocator()));
+}
+
+test "nightly rejects duplicate force flag" {
+    const argv = [_][*:0]const u8{
+        "nightly_decide",
+        "--force",
+        "--force",
+    };
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+    _ = iterator.next();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    try std.testing.expectError(error.InvalidArguments, parseArgs(&iterator, arena_state.allocator()));
 }
 
 test "nightly parses workflow run API payload with unknown fields" {

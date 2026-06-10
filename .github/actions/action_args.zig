@@ -18,6 +18,29 @@ pub fn takeValue(
     return try allocator.dupe(u8, value);
 }
 
+pub fn takeValueOnce(
+    iterator: *std.process.Args.Iterator,
+    allocator: std.mem.Allocator,
+    slot: *?[]const u8,
+    flag: []const u8,
+) !void {
+    if (slot.* != null) {
+        printDiagnostic("duplicate option: {s}\n", flag);
+        return error.InvalidArguments;
+    }
+
+    slot.* = try takeValue(iterator, allocator, flag);
+}
+
+pub fn setFlagOnce(slot: *bool, flag: []const u8) error{InvalidArguments}!void {
+    if (slot.*) {
+        printDiagnostic("duplicate option: {s}\n", flag);
+        return error.InvalidArguments;
+    }
+
+    slot.* = true;
+}
+
 pub fn required(value: ?[]const u8, flag: []const u8) ![]const u8 {
     return value orelse {
         printDiagnostic("missing required option: {s}\n", flag);
@@ -107,6 +130,34 @@ test "value tokens reject terminal controls before duplication" {
     try std.testing.expect(hasUnsafeValueControl("bad\x1b[31mvalue"));
     try std.testing.expect(hasUnsafeValueControl("bad\xc2\x85value"));
     try std.testing.expect(hasUnsafeValueControl("bad\x85value"));
+}
+
+test "value tokens reject duplicate options before overwrite" {
+    const argv = [_][*:0]const u8{ "action", "first", "second" };
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+
+    try std.testing.expectEqualStrings("action", iterator.next().?);
+
+    var value: ?[]const u8 = null;
+    try takeValueOnce(&iterator, std.testing.allocator, &value, "--flag");
+    defer std.testing.allocator.free(value.?);
+
+    try std.testing.expectEqualStrings("first", value.?);
+    try std.testing.expectError(
+        error.InvalidArguments,
+        takeValueOnce(&iterator, std.testing.allocator, &value, "--flag"),
+    );
+    try std.testing.expectEqualStrings("first", value.?);
+    try std.testing.expectEqualStrings("second", iterator.next().?);
+}
+
+test "boolean flags reject duplicate options" {
+    var enabled = false;
+
+    try setFlagOnce(&enabled, "--force");
+    try std.testing.expect(enabled);
+    try std.testing.expectError(error.InvalidArguments, setFlagOnce(&enabled, "--force"));
+    try std.testing.expect(enabled);
 }
 
 test "diagnostic tokens replace controls and bound output" {

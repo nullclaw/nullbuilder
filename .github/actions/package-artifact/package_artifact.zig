@@ -137,23 +137,23 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 
     while (iterator.next()) |arg| {
         if (std.mem.eql(u8, arg, "--binary")) {
-            binary_path = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &binary_path, arg);
         } else if (std.mem.eql(u8, arg, "--target")) {
-            target = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &target, arg);
         } else if (std.mem.eql(u8, arg, "--zig-target")) {
-            zig_target = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &zig_target, arg);
         } else if (std.mem.eql(u8, arg, "--version")) {
-            version = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &version, arg);
         } else if (std.mem.eql(u8, arg, "--repository")) {
-            repository = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &repository, arg);
         } else if (std.mem.eql(u8, arg, "--commit")) {
-            commit = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &commit, arg);
         } else if (std.mem.eql(u8, arg, "--run-id")) {
-            run_id = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &run_id, arg);
         } else if (std.mem.eql(u8, arg, "--server-url")) {
-            server_url = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &server_url, arg);
         } else if (std.mem.eql(u8, arg, "--built-at")) {
-            built_at = try action_args.takeValue(iterator, allocator, arg);
+            try action_args.takeValueOnce(iterator, allocator, &built_at, arg);
         } else {
             return action_args.unexpectedOption(arg);
         }
@@ -331,6 +331,23 @@ test "package artifact formats safe generated paths" {
     const long_safe_target = "t" ** 128;
     try std.testing.expect(action_paths.isSafeLabel(long_safe_target));
     try std.testing.expectError(error.InvalidGeneratedPath, formatManifestPath(std.testing.allocator, long_safe_binary, long_safe_target));
+}
+
+test "package artifact rejects duplicate options" {
+    const argv = [_][*:0]const u8{
+        "package_artifact",
+        "--binary",
+        "nightly-artifacts/nullclaw-linux-x86_64",
+        "--binary",
+        "nightly-artifacts/other",
+    };
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+    _ = iterator.next();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    try std.testing.expectError(error.InvalidArguments, parseArgs(&iterator, arena_state.allocator()));
 }
 
 test "package artifact validates package options before filesystem writes" {
