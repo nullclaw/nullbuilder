@@ -8,7 +8,7 @@ import {
 } from '$lib/server/auth';
 import { buildPrTag, createReleaseTag, discoverRepositories, getDashboard, publicErrorMessage } from '$lib/server/github';
 import { readConfig } from '$lib/server/config';
-import { buildDashboardPageState, resolveDashboardAccess } from '$lib/server/web-page-state';
+import { buildDashboardPageState, resolveDashboardAccess, settleDashboardPagePayload } from '$lib/server/web-page-state';
 import {
   runBuildPrWebMutation,
   runLoginWebAction,
@@ -42,9 +42,12 @@ export const load: PageServerLoad = async ({ cookies }) => {
     repos,
     discoverRepos: false
   };
-  const [dashboard, audit] = await Promise.all([getDashboard(readConfigWithRepos), getAuditReport(readConfigWithRepos)]);
+  const payload = await settleDashboardPagePayload({
+    dashboard: getDashboard(readConfigWithRepos),
+    audit: getAuditReport(readConfigWithRepos)
+  });
 
-  return buildDashboardPageState(config, access, { dashboard, audit });
+  return buildDashboardPageState(config, access, payload);
 };
 
 export const actions: Actions = {

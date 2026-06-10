@@ -2,6 +2,7 @@ import type { Cookies } from '@sveltejs/kit';
 import type { AuditReport } from './audit-types';
 import { resolveAuthContext } from './auth';
 import type { NullbuilderConfig } from './config';
+import { settleStarted } from './concurrency';
 import type { DashboardData } from './github-dashboard';
 import { githubOwnerWebUrl } from './github-web-urls';
 
@@ -30,6 +31,18 @@ export type DashboardPageState = {
   ownerUrl: string;
   csrfToken: string | null;
 };
+
+export async function settleDashboardPagePayload(reads: {
+  dashboard: Promise<DashboardData>;
+  audit: Promise<AuditReport>;
+}): Promise<DashboardPagePayload> {
+  const [dashboard, audit] = await settleStarted([reads.dashboard, reads.audit] as const);
+
+  return {
+    dashboard,
+    audit
+  };
+}
 
 export function resolveDashboardAccess(config: NullbuilderConfig, cookies: Cookies): DashboardAccessState {
   const authRequired = Boolean(config.webToken || config.token);

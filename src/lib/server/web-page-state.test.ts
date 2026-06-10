@@ -5,7 +5,7 @@ import type { AuditReport } from './audit-types';
 import { AUTH_COOKIE, createSessionToken } from './auth';
 import { readConfig } from './config';
 import type { DashboardData } from './github-dashboard';
-import { buildDashboardPageState, resolveDashboardAccess } from './web-page-state';
+import { buildDashboardPageState, resolveDashboardAccess, settleDashboardPagePayload } from './web-page-state';
 
 test('dashboard page state blocks token-backed data until web auth is valid', () => {
   const config = readConfig({
@@ -128,6 +128,33 @@ test('dashboard page state keeps logout csrf available when mutations are disabl
   assert.equal(state.webMutationsEnabled, false);
   assert.equal(state.webMutationsAvailable, false);
   assert.equal(typeof state.csrfToken, 'string');
+});
+
+test('dashboard page payload waits for all started reads before rethrowing', async () => {
+  const failure = new Error('dashboard failed');
+  let releaseAudit!: () => void;
+  let settled = false;
+  const audit = new Promise<AuditReport>((resolve) => {
+    releaseAudit = () => resolve(pagePayload().audit);
+  });
+  const payload = settleDashboardPagePayload({
+    dashboard: Promise.reject(failure),
+    audit
+  });
+  payload
+    .finally(() => {
+      settled = true;
+    })
+    .catch(() => undefined);
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(settled, false);
+  releaseAudit();
+
+  await assert.rejects(payload, (error: unknown) => error === failure);
+  assert.equal(settled, true);
 });
 
 function pagePayload(): { dashboard: DashboardData; audit: AuditReport } {
