@@ -79,6 +79,14 @@ pub const RepositoryIterator = struct {
 
         return null;
     }
+
+    pub fn nextLoaded(self: *RepositoryIterator) ?Repository {
+        while (self.next()) |repo| {
+            if (repo.loaded) return repo;
+        }
+
+        return null;
+    }
 };
 
 pub const RunStatuses = dashboard_runs.RunStatuses;
@@ -103,50 +111,39 @@ pub const WorkItem = struct {
 };
 
 pub const WorkItemIterator = struct {
-    dashboard: Dashboard,
+    repositories: RepositoryIterator,
     kind: WorkKind,
-    repo_index: usize = 0,
+    current_repo_slug: []const u8 = "",
+    current_items: []const JsonValue = dashboard_json.emptyValues(),
     item_index: usize = 0,
 
     pub fn init(dashboard: Dashboard, kind: WorkKind) WorkItemIterator {
         return .{
-            .dashboard = dashboard,
+            .repositories = dashboard.repositories(),
             .kind = kind,
         };
     }
 
     pub fn next(self: *WorkItemIterator) ?WorkItem {
-        while (self.repo_index < self.dashboard.items.len) {
-            const repo = repositoryFromValue(self.dashboard.items[self.repo_index]) orelse {
-                self.repo_index += 1;
-                self.item_index = 0;
-                continue;
-            };
-            if (!repo.valid_slug) {
-                self.repo_index += 1;
-                self.item_index = 0;
-                continue;
-            }
-            if (!repo.loaded) {
-                self.repo_index += 1;
-                self.item_index = 0;
-                continue;
-            }
-            const list = workItems(repo, self.kind);
-
-            while (self.item_index < list.len) {
+        while (true) {
+            while (self.item_index < self.current_items.len) {
                 const index = self.item_index;
                 self.item_index += 1;
-                if (workItemFromValue(list[index], repo.slug)) |item| {
+                if (workItemFromValue(self.current_items[index], self.current_repo_slug)) |item| {
                     return item;
                 }
             }
 
-            self.repo_index += 1;
-            self.item_index = 0;
+            if (!self.loadNextRepository()) return null;
         }
+    }
 
-        return null;
+    fn loadNextRepository(self: *WorkItemIterator) bool {
+        const repo = self.repositories.nextLoaded() orelse return false;
+        self.current_repo_slug = repo.slug;
+        self.current_items = workItems(repo, self.kind);
+        self.item_index = 0;
+        return true;
     }
 };
 
