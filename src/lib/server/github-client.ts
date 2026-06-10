@@ -594,7 +594,8 @@ function isPublicValidationMessage(message: string): boolean {
 
 function cacheKey(config: NullbuilderConfig, url: string, accept: string): string {
   const tokenKey = config.token ? createHash('sha256').update(config.token).digest('hex') : 'anonymous';
-  return `${config.apiBaseUrl}|${tokenKey}|${accept}|${url}`;
+  const keyMaterial = JSON.stringify([config.apiBaseUrl, tokenKey, accept, url]);
+  return createHash('sha256').update(keyMaterial).digest('hex');
 }
 
 function touchCacheEntry<T>(key: string, entry: CacheEntry<T>): void {

@@ -308,6 +308,58 @@ test('githubRequest keeps cached responses isolated by GitHub token', async () =
   ]);
 });
 
+test('githubRequest keeps cache keys structured across delimiter-bearing inputs', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://cache-key.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: Array<{ url: string; accept: string | null }> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    requests.push({
+      url,
+      accept: new Headers(init?.headers).get('Accept')
+    });
+    return new Response(JSON.stringify({ id: requests.length, url }));
+  }) as typeof fetch;
+
+  const first = await githubRequest<{ id: number; url: string }>(config, '/repos/first', {
+    accept: 'first|https://cache-key.example.test/repos/second'
+  });
+  const second = await githubRequest<{ id: number; url: string }>(
+    config,
+    '/repos/second|https://cache-key.example.test/repos/first',
+    {
+      accept: 'first'
+    }
+  );
+  const firstAgain = await githubRequest<{ id: number; url: string }>(config, '/repos/first', {
+    accept: 'first|https://cache-key.example.test/repos/second'
+  });
+
+  assert.deepEqual(first, {
+    id: 1,
+    url: 'https://cache-key.example.test/repos/first'
+  });
+  assert.deepEqual(second, {
+    id: 2,
+    url: 'https://cache-key.example.test/repos/second|https://cache-key.example.test/repos/first'
+  });
+  assert.deepEqual(firstAgain, first);
+  assert.deepEqual(requests, [
+    {
+      url: 'https://cache-key.example.test/repos/first',
+      accept: 'first|https://cache-key.example.test/repos/second'
+    },
+    {
+      url: 'https://cache-key.example.test/repos/second|https://cache-key.example.test/repos/first',
+      accept: 'first'
+    }
+  ]);
+});
+
 test('githubRequest strips caller-supplied credential headers before fetching GitHub', async () => {
   const anonymousConfig = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
