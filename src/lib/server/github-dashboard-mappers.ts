@@ -1,4 +1,4 @@
-import type { RepoSlug } from '../repositories';
+import { repoSlugParts, type RepoSlug } from '../repositories';
 import { safeUtcTimestampText } from '../date-safety';
 import { readBoundedArray, readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
@@ -51,12 +51,12 @@ export function mapRepositorySummary(
   const urlContext = githubRepositoryUrlContext(webBaseUrl, repo, safeString(repository.html_url));
   const openIssues = mapIssueSummaries(repo, issues, urlContext);
   const pullRequests = mapPullRequestSummaries(repo, pulls, urlContext);
-  const [fallbackOwner, fallbackName] = repo.split('/');
+  const fallback = repoSlugParts(repo);
 
   return {
     slug: repo,
-    owner: safeObjectText(repository.owner, 'login', fallbackOwner),
-    name: safeDashboardText(repository.name, fallbackName),
+    owner: safeObjectText(repository.owner, 'login', fallback.owner),
+    name: safeDashboardText(repository.name, fallback.name),
     fullName: safeDashboardText(repository.full_name, repo),
     url: urlContext.repositoryUrl,
     description: safeDashboardText(repository.description ?? '', ''),

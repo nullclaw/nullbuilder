@@ -1,5 +1,5 @@
 import { safeUtcTimestampText } from '../date-safety';
-import type { RepoSlug } from '../repositories';
+import { repoSlugParts, type RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { publicErrorMessage } from './github-client';
 import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary } from './github-dashboard-types';
@@ -136,7 +136,7 @@ export function makeErrorRepository(
   error: unknown,
   updatedAt = new Date().toISOString()
 ): RepositorySummary {
-  const [owner, name] = repo.split('/');
+  const { owner, name } = repoSlugParts(repo);
 
   return {
     slug: repo,

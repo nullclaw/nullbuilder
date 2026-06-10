@@ -23,6 +23,10 @@ export const DEFAULT_IGNORED_REPOSITORIES = [
 ] as const;
 
 export type RepoSlug = `${string}/${string}`;
+export type RepoSlugParts = {
+  owner: string;
+  name: string;
+};
 
 const OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const REPO_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
@@ -134,6 +138,18 @@ export function findConfiguredRepoSlug(
   }
 
   return null;
+}
+
+export function repoSlugParts(repo: RepoSlug): RepoSlugParts {
+  const slashIndex = repo.indexOf('/');
+  if (slashIndex <= 0 || slashIndex >= repo.length - 1 || slashIndex !== repo.lastIndexOf('/')) {
+    throw new Error('Invalid repository slug.');
+  }
+
+  return {
+    owner: repo.slice(0, slashIndex),
+    name: repo.slice(slashIndex + 1)
+  };
 }
 
 function repositoryListSource(value: unknown, fallback: readonly string[]): string {

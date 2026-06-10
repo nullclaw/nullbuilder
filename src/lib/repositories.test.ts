@@ -1,6 +1,12 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { findConfiguredRepoSlug, normalizeOwner, normalizeRepoSlug, parseRepositoryList } from './repositories';
+import {
+  findConfiguredRepoSlug,
+  normalizeOwner,
+  normalizeRepoSlug,
+  parseRepositoryList,
+  repoSlugParts
+} from './repositories';
 
 test('normalizeOwner rejects invalid owners', () => {
   assert.equal(normalizeOwner('NullClaw'), 'NullClaw');
@@ -65,6 +71,23 @@ test('findConfiguredRepoSlug normalizes candidates against configured repositori
   assert.equal(findConfiguredRepoSlug(repos, 'unconfigured', 'nullclaw'), null);
   assert.equal(findConfiguredRepoSlug(repos, 'bad\nrepo', 'nullclaw'), null);
   assert.equal(findConfiguredRepoSlug(repos, 42, 'nullclaw'), null);
+});
+
+test('repoSlugParts extracts owner and name from normalized repository slugs', () => {
+  assert.deepEqual(repoSlugParts(normalizeRepoSlug('NullClaw/NullBuilder')), {
+    owner: 'NullClaw',
+    name: 'NullBuilder'
+  });
+});
+
+test('repoSlugParts rejects impossible malformed slugs without echoing input', () => {
+  for (const repo of ['missing-slash', '/missing-owner', 'missing-name/', 'too/many/parts']) {
+    assert.throws(
+      () => repoSlugParts(repo as `${string}/${string}`),
+      (error: unknown) =>
+        error instanceof Error && error.message === 'Invalid repository slug.' && !error.message.includes(repo)
+    );
+  }
 });
 
 test('parseRepositoryList bounds configured repository input', () => {

@@ -1,4 +1,9 @@
-import { MAX_REPOSITORY_LIST_ENTRIES, normalizeRepoSlug, type RepoSlug } from '../repositories';
+import {
+  MAX_REPOSITORY_LIST_ENTRIES,
+  normalizeRepoSlug,
+  repoSlugParts,
+  type RepoSlug
+} from '../repositories';
 import { readObjectRecord } from '../record-safety';
 import type { NullbuilderConfig } from './config';
 import { mapWithConcurrency } from './concurrency';
@@ -151,7 +156,7 @@ function repoKey(repo: RepoSlug): string {
 }
 
 function repoName(repo: RepoSlug): string {
-  return repo.slice(repo.indexOf('/') + 1).toLowerCase();
+  return repoSlugParts(repo).name.toLowerCase();
 }
 
 export async function getRepositorySummary(config: NullbuilderConfig, repo: RepoSlug): Promise<RepositorySummary> {
