@@ -285,10 +285,29 @@ test('formatters truncate by code point without splitting surrogate pairs', () =
 });
 
 test('formatAuditReport includes per-repository counts and finding details', () => {
-  const output = formatAuditReport(auditReportFixture());
+  const baseFinding = auditReportFixture().findings[0];
+  const output = formatAuditReport(
+    auditReportFixture({
+      findings: [
+        baseFinding,
+        {
+          ...baseFinding,
+          id: 'nullclaw/nullbuilder:permissions:warning:Broad workflow permissions',
+          severity: 'warning',
+          title: 'Broad workflow permissions'
+        },
+        {
+          ...baseFinding,
+          id: 'nullclaw/nullbuilder:metadata:info:Missing repository topics',
+          severity: 'info',
+          title: 'Missing repository topics'
+        }
+      ]
+    })
+  );
 
   assert.match(output, /repo\s+state\s+score\s+critical/);
-  assert.match(output, /nullclaw\/nullbuilder\s+ok\s+65\s+1/);
+  assert.match(output, /nullclaw\/nullbuilder\s+ok\s+65\s+1\s+1\s+1/);
   assert.match(output, /\[critical\] nullclaw\/nullbuilder: Mutable workflow ref/);
   assert.match(output, /Pin reusable workflows to immutable SHAs\./);
 });

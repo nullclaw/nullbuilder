@@ -1,4 +1,5 @@
-import type { AuditFinding, AuditReport, AuditSeverity } from '../lib/server/audit';
+import type { AuditFinding, AuditReport } from '../lib/server/audit';
+import { countFindings } from '../lib/server/audit-summary';
 import {
   GitHubApiError,
   publicErrorMessage,
@@ -93,7 +94,7 @@ export function formatAuditReport(report: AuditReport): string {
     report.repositories,
     ['repo', 'state', 'score', 'critical', 'warning', 'info', 'top'],
     (repo) => {
-      const counts = countAuditFindings(repo.findings);
+      const counts = countFindings(repo.findings);
       return {
         repo: repo.repo,
         state: repo.status,
@@ -338,16 +339,6 @@ function formatAuditFindings(findings: readonly AuditFinding[]): string {
   }
 
   return lines.join('\n');
-}
-
-function countAuditFindings(findings: AuditFinding[]): Record<AuditSeverity, number> {
-  return findings.reduce(
-    (counts, finding) => {
-      counts[finding.severity] += 1;
-      return counts;
-    },
-    { critical: 0, warning: 0, info: 0 }
-  );
 }
 
 function printableLength(value: string): number {
