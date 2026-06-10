@@ -25,6 +25,21 @@ test('evaluateAuditChecks reports missing repository security controls', () => {
     })
   );
 
+  assert.deepEqual(
+    checks.map(({ id }) => id),
+    [
+      'repository-active',
+      'security-policy',
+      'dependabot',
+      'codeowners',
+      'branch-protection',
+      'nullbuilder-workflows',
+      'workflow-dangerous-triggers',
+      'workflow-permissions',
+      'workflow-pinning',
+      'nullbuilder-workflow-ref'
+    ]
+  );
   assert.equal(check(checks, 'repository-active').status, 'warning');
   assert.equal(check(checks, 'security-policy').status, 'warning');
   assert.equal(check(checks, 'dependabot').status, 'warning');

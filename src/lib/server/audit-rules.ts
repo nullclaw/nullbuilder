@@ -19,7 +19,7 @@ export type {
   WorkflowFile
 } from './audit-rule-kit';
 
-const RULES: AuditRule[] = [
+const RULES = [
   {
     id: 'repository-active',
     title: 'Repository is active',
@@ -173,8 +173,14 @@ const RULES: AuditRule[] = [
     area: 'release',
     evaluate: mutableNullbuilderWorkflowRefFindings
   }
-];
+] satisfies readonly AuditRule[];
 
 export function evaluateAuditChecks(context: AuditContext): AuditCheckResult[] {
-  return RULES.map((rule) => evaluateAuditRule(rule, context));
+  const checks: AuditCheckResult[] = [];
+
+  for (const rule of RULES) {
+    checks.push(evaluateAuditRule(rule, context));
+  }
+
+  return checks;
 }
