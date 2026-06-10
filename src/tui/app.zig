@@ -34,8 +34,7 @@ pub fn run(
         return 2;
     }
 
-    const command = classifyCommand(args);
-    switch (command) {
+    switch (classifyCommand(args)) {
         .help => {
             try printHelp(out);
             return null;
@@ -44,19 +43,23 @@ pub fn run(
             try out.writeAll("invalid command\n");
             return 2;
         },
-        .dashboard, .tag => {},
-    }
+        .dashboard => {
+            if (!isSafeCliPath(cli_path)) {
+                try out.writeAll("invalid NULLBUILDER_NODE_CLI\n");
+                return 2;
+            }
 
-    if (!isSafeCliPath(cli_path)) {
-        try out.writeAll("invalid NULLBUILDER_NODE_CLI\n");
-        return 2;
-    }
+            return renderDashboard(gpa, arena, io, out, cli_path, no_color);
+        },
+        .tag => |tag_args| {
+            if (!isSafeCliPath(cli_path)) {
+                try out.writeAll("invalid NULLBUILDER_NODE_CLI\n");
+                return 2;
+            }
 
-    return switch (command) {
-        .dashboard => renderDashboard(gpa, arena, io, out, cli_path, no_color),
-        .tag => |tag_args| forwardTagCommand(gpa, arena, io, out, cli_path, tag_args),
-        .help, .invalid => unreachable,
-    };
+            return forwardTagCommand(gpa, arena, io, out, cli_path, tag_args);
+        },
+    }
 }
 
 fn classifyCommand(args: []const []const u8) Command {
@@ -251,6 +254,25 @@ test "top-level app arguments are bounded before command classification" {
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\ncommand" }));
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\xc2\x85command" }));
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\xe2\x80\xaecommand" }));
+}
+
+test "help command returns before validating node cli path" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const exit_code = try run(
+        std.testing.allocator,
+        std.testing.allocator,
+        undefined,
+        &out.writer,
+        "-e",
+        true,
+        &.{ "nullbuilder-tui", "--help" },
+    );
+
+    try std.testing.expectEqual(@as(?u8, null), exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "nullbuilder-tui") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "invalid NULLBUILDER_NODE_CLI") == null);
 }
 
 test "run rejects unsafe top-level arguments before command handling" {
