@@ -119,6 +119,33 @@ test('mutation form parsers reject control-bearing text fields', () => {
   });
 });
 
+test('mutation form parsers reject duplicate fields without echoing values', () => {
+  const buildFormData = new FormData();
+  buildFormData.append('repo', 'nullbuilder');
+  buildFormData.append('repo', 'other');
+  buildFormData.set('prNumber', '17');
+
+  assert.throws(() => parseBuildPrMutationForm(buildFormData), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Duplicate form field.');
+    assert.doesNotMatch(error.message, /nullbuilder|other/);
+    return true;
+  });
+
+  const releaseFormData = new FormData();
+  releaseFormData.set('repo', 'nullbuilder');
+  releaseFormData.set('tagName', 'v1.2.3');
+  releaseFormData.append('targetRef', 'main');
+  releaseFormData.append('targetRef', 'release/v1');
+
+  assert.throws(() => parseReleaseTagMutationForm(releaseFormData), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Duplicate form field.');
+    assert.doesNotMatch(error.message, /release\/v1|main/);
+    return true;
+  });
+});
+
 test('mutationAccessError enforces enablement authentication and CSRF order', () => {
   const disabled = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
@@ -184,6 +211,22 @@ test('runLoginWebAction records failures and blocks rate-limited clients', () =>
   });
 });
 
+test('runLoginWebAction rejects duplicate web token fields', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret'
+  });
+  const formData = new FormData();
+  formData.append('webToken', 'web-secret');
+  formData.append('webToken', 'web-secret');
+
+  assert.deepEqual(runLoginWebAction(config, testLoginRateLimiter(), 'client', formData), {
+    ok: false,
+    status: 403,
+    message: 'Invalid web token.'
+  });
+});
+
 test('runLoginWebAction rejects missing web token configuration', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder'
@@ -202,6 +245,16 @@ test('runLogoutWebAction enforces CSRF only for authenticated web sessions', () 
     NULLBUILDER_WEB_TOKEN: 'web-secret'
   });
   const session = createSessionToken('web-secret');
+  const cookies = cookiesWith(session);
+  const duplicateCsrfForm = new FormData();
+  const csrfToken = createCsrfToken(cookies, config);
+
+  if (!csrfToken) {
+    throw new Error('Expected authenticated test context to create a CSRF token.');
+  }
+
+  duplicateCsrfForm.append('csrfToken', csrfToken);
+  duplicateCsrfForm.append('csrfToken', csrfToken);
 
   assert.deepEqual(runLogoutWebAction(config, cookiesWith(session), new FormData()), {
     ok: false,
@@ -210,6 +263,11 @@ test('runLogoutWebAction enforces CSRF only for authenticated web sessions', () 
   });
   assert.deepEqual(runLogoutWebAction(config, cookiesWith(), new FormData()), {
     ok: true
+  });
+  assert.deepEqual(runLogoutWebAction(config, cookies, duplicateCsrfForm), {
+    ok: false,
+    status: 403,
+    message: 'Invalid request token.'
   });
 });
 
@@ -271,6 +329,64 @@ test('runBuildPrWebMutation rejects invalid form data before executor', async ()
     status: 400,
     field: 'buildError',
     message: 'Repository and a positive PR number are required.'
+  });
+});
+
+test('runBuildPrWebMutation rejects duplicate form fields before executor', async () => {
+  const { config, cookies, csrfToken } = authorizedMutationContext();
+  const formData = new FormData();
+  formData.set('csrfToken', csrfToken);
+  formData.append('repo', 'nullbuilder');
+  formData.append('repo', 'other');
+  formData.set('prNumber', '17');
+  let executed = false;
+
+  const result = await runBuildPrWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    field: 'buildError',
+    message: 'Invalid form data.'
+  });
+});
+
+test('runBuildPrWebMutation rejects duplicate csrf token fields before executor', async () => {
+  const { config, cookies, csrfToken } = authorizedMutationContext();
+  const formData = new FormData();
+  formData.append('csrfToken', csrfToken);
+  formData.append('csrfToken', csrfToken);
+  formData.set('repo', 'nullbuilder');
+  formData.set('prNumber', '17');
+  let executed = false;
+
+  const result = await runBuildPrWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 403,
+    field: 'buildError',
+    message: 'Invalid request token.'
   });
 });
 
@@ -408,6 +524,35 @@ test('runReleaseTagWebMutation rejects tampered repository tag and target ref be
     status: 400,
     field: 'releaseError',
     message: 'Invalid target ref.'
+  });
+});
+
+test('runReleaseTagWebMutation rejects duplicate form fields before executor', async () => {
+  const { config, cookies, csrfToken } = authorizedMutationContext();
+  const formData = mutationForm(csrfToken, {
+    repo: 'nullbuilder',
+    tagName: 'v1.2.3'
+  });
+  formData.append('tagName', 'v2.0.0');
+  let executed = false;
+
+  const result = await runReleaseTagWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    field: 'releaseError',
+    message: 'Invalid form data.'
   });
 });
 
