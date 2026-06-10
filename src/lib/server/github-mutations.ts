@@ -90,7 +90,8 @@ export async function buildPrTag(
     })
   ]);
   assertTrustedPullRequest(repo, repository.default_branch, pull, options);
-  const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(options.prNumber, pull.head.sha));
+  const headSha = assertFullSha(pull.head.sha, 'pull request head SHA');
+  const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(options.prNumber, headSha));
   const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
   const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
 
@@ -98,7 +99,7 @@ export async function buildPrTag(
     repo,
     prNumber: pull.number,
     prTitle: pull.title,
-    headSha: pull.head.sha,
+    headSha,
     headBranch: pull.head.ref,
     tagName,
     tagUrl,
@@ -113,7 +114,7 @@ export async function buildPrTag(
     return result;
   }
 
-  const tagState = await createOrMoveTagRef(config, repo, tagName, pull.head.sha, Boolean(options.force));
+  const tagState = await createOrMoveTagRef(config, repo, tagName, headSha, Boolean(options.force));
 
   return {
     ...result,
@@ -213,7 +214,7 @@ function assertTrustedPullRequest(
 
 async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targetRef: string): Promise<string> {
   if (FULL_SHA_PATTERN.test(targetRef)) {
-    return targetRef;
+    return assertFullSha(targetRef, 'target SHA');
   }
 
   const branch = await githubRequest<GitHubBranchResponse>(
@@ -224,7 +225,7 @@ async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targe
     }
   );
 
-  return branch.commit.sha;
+  return assertFullSha(branch.commit.sha, 'branch commit SHA');
 }
 
 function sanitizeReleaseTargetRef(value: string): string {
@@ -270,13 +271,15 @@ async function createOrMoveTagRef(
   sha: string,
   force: boolean
 ): Promise<{ created: boolean; forced: boolean }> {
+  const targetSha = assertFullSha(sha, 'tag target SHA');
+
   try {
     await githubRequest<unknown>(config, `/repos/${repo}/git/refs`, {
       useCache: false,
       method: 'POST',
       body: JSON.stringify({
         ref: `refs/tags/${tagName}`,
-        sha
+        sha: targetSha
       })
     });
     return {
@@ -295,7 +298,7 @@ async function createOrMoveTagRef(
       useCache: false,
       method: 'PATCH',
       body: JSON.stringify({
-        sha,
+        sha: targetSha,
         force: true
       })
     });
@@ -309,4 +312,12 @@ async function createOrMoveTagRef(
 
 function isValidationError(error: unknown): boolean {
   return error instanceof GitHubApiError && error.status === 422;
+}
+
+function assertFullSha(value: string, label: string): string {
+  if (!FULL_SHA_PATTERN.test(value)) {
+    throw new Error(`Invalid ${label}.`);
+  }
+
+  return value;
 }

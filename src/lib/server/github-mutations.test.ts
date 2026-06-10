@@ -70,6 +70,37 @@ test('buildPrTag returns dry-run metadata without mutating refs', async () => {
   );
 });
 
+test('buildPrTag rejects unsafe API head SHAs before creating tag refs', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse({
+        headSha: 'not-a-sha'
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  await assert.rejects(
+    () =>
+      buildPrTag(config, {
+        repo: 'nullbuilder',
+        prNumber: 7,
+        confirm: true
+      }),
+    /Invalid pull request head SHA/
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder', 'GET /repos/nullclaw/nullbuilder/pulls/7']
+  );
+});
+
 test('createReleaseTag reports forced tag moves separately from creation', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
@@ -119,6 +150,40 @@ test('createReleaseTag reports forced tag moves separately from creation', async
       'GET /repos/nullclaw/nullbuilder/git/ref/tags/v1.2.3',
       'PATCH /repos/nullclaw/nullbuilder/git/refs/tags/v1.2.3'
     ]
+  );
+});
+
+test('createReleaseTag rejects unsafe API branch SHAs before creating tag refs', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/branches/main') {
+      return {
+        name: 'main',
+        commit: {
+          sha: 'not-a-sha'
+        }
+      };
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  await assert.rejects(
+    () =>
+      createReleaseTag(config, {
+        repo: 'nullbuilder',
+        tagName: 'v1.2.3',
+        confirm: true
+      }),
+    /Invalid branch commit SHA/
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder', 'GET /repos/nullclaw/nullbuilder/branches/main']
   );
 });
 
@@ -235,11 +300,13 @@ function repositoryResponse() {
 function pullResponse({
   draft = false,
   baseRef = 'main',
-  headRepo = 'nullclaw/nullbuilder'
+  headRepo = 'nullclaw/nullbuilder',
+  headSha: pullHeadSha = headSha
 }: {
   draft?: boolean;
   baseRef?: string;
   headRepo?: string;
+  headSha?: string;
 } = {}) {
   return {
     number: 7,
@@ -261,7 +328,7 @@ function pullResponse({
     },
     head: {
       ref: 'feature',
-      sha: headSha,
+      sha: pullHeadSha,
       repo: {
         full_name: headRepo
       }
