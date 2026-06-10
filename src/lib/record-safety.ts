@@ -1,14 +1,18 @@
 export function readObjectRecord(value: unknown): Record<string, unknown> | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (value === null || typeof value !== 'object' || isRuntimeArray(value)) {
     return null;
   }
 
-  const prototype = Object.getPrototypeOf(value);
+  const prototype = objectPrototype(value);
+  if (prototype === undefined) {
+    return null;
+  }
+
   return prototype === Object.prototype || prototype === null ? (value as Record<string, unknown>) : null;
 }
 
 export function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
+  return isRuntimeArray(value) ? value : [];
 }
 
 export function readBoundedArray(value: unknown, maxItems: unknown): unknown[] {
@@ -21,7 +25,7 @@ export function readBoundedArray(value: unknown, maxItems: unknown): unknown[] {
   const bounded: unknown[] = [];
   const count = Math.min(values.length, limit);
   for (let index = 0; index < count; index += 1) {
-    bounded.push(values[index]);
+    bounded[index] = values[index];
   }
 
   return bounded;
@@ -29,4 +33,20 @@ export function readBoundedArray(value: unknown, maxItems: unknown): unknown[] {
 
 function normalizeArrayLimit(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0;
+}
+
+function isRuntimeArray(value: unknown): value is unknown[] {
+  try {
+    return Array.isArray(value);
+  } catch {
+    return false;
+  }
+}
+
+function objectPrototype(value: object): object | null | undefined {
+  try {
+    return Object.getPrototypeOf(value) as object | null;
+  } catch {
+    return undefined;
+  }
 }
