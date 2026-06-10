@@ -3,7 +3,7 @@ import { getAuditReport } from '$lib/server/audit';
 import {
   AUTH_COOKIE,
   AUTH_COOKIE_DELETE_OPTIONS,
-  authCookieOptions,
+  authCookieOptionsForRuntimeEnv,
   LoginRateLimiter
 } from '$lib/server/auth';
 import { buildPrTag, createReleaseTag, discoverRepositories, getDashboard, publicErrorMessage } from '$lib/server/github';
@@ -69,7 +69,7 @@ export const actions: Actions = {
       });
     }
 
-    cookies.set(AUTH_COOKIE, login.sessionToken, authCookieOptions(process.env.NODE_ENV === 'production'));
+    cookies.set(AUTH_COOKIE, login.sessionToken, authCookieOptionsForRuntimeEnv(process.env.NODE_ENV));
 
     return {
       authenticated: true

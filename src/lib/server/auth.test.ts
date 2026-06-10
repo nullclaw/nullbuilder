@@ -8,6 +8,7 @@ import {
   AUTH_COOKIE_DELETE_OPTIONS,
   AUTH_MAX_AGE_SECONDS,
   authCookieOptions,
+  authCookieOptionsForRuntimeEnv,
   createCsrfToken,
   createSessionToken,
   isAuthenticated,
@@ -107,6 +108,15 @@ test('auth cookie options keep session cookie policy centralized', () => {
   assert.deepEqual(AUTH_COOKIE_DELETE_OPTIONS, {
     path: '/'
   });
+});
+
+test('auth cookie options derive secure policy from literal production runtime env', () => {
+  assert.equal(authCookieOptionsForRuntimeEnv('production').secure, true);
+  assert.equal(authCookieOptionsForRuntimeEnv('development').secure, false);
+  assert.equal(authCookieOptionsForRuntimeEnv(' production ').secure, false);
+  assert.equal(authCookieOptionsForRuntimeEnv('PRODUCTION').secure, false);
+  assert.equal(authCookieOptionsForRuntimeEnv(undefined).secure, false);
+  assert.equal(authCookieOptionsForRuntimeEnv({ toString: () => 'production' }).secure, false);
 });
 
 test('authentication requires a valid web token session when token-backed data is configured', () => {

@@ -263,6 +263,10 @@ export function authCookieOptions(isProduction: boolean): AuthCookieOptions {
   };
 }
 
+export function authCookieOptionsForRuntimeEnv(nodeEnv: unknown): AuthCookieOptions {
+  return authCookieOptions(nodeEnv === 'production');
+}
+
 export function createSessionToken(secret: string, now = Date.now()): string {
   const timestamp = normalizeSessionTimestamp(now);
   if (timestamp === null) {
