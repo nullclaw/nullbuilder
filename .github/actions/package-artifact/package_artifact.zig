@@ -72,6 +72,21 @@ fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
     });
 }
 
+fn formatSha256Path(allocator: std.mem.Allocator, binary_path: []const u8) ![]u8 {
+    return try std.fmt.allocPrint(allocator, "{s}.sha256", .{binary_path});
+}
+
+fn formatManifestPath(allocator: std.mem.Allocator, binary_path: []const u8, target: []const u8) ![]u8 {
+    if (std.Io.Dir.path.dirname(binary_path)) |artifact_dir| {
+        return try std.fmt.allocPrint(allocator, "{s}/manifest-{s}.json", .{
+            artifact_dir,
+            target,
+        });
+    }
+
+    return try std.fmt.allocPrint(allocator, "manifest-{s}.json", .{target});
+}
+
 fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
     if (!action_paths.isSafeRelativePath(options.binary_path)) return error.InvalidBinaryPath;
     if (!action_paths.isSafeLabel(options.target)) return error.InvalidTargetLabel;
@@ -196,14 +211,10 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
     const sha_text = try formatSha256Line(allocator, binary_bytes, binary_name);
     defer allocator.free(sha_text);
 
-    const sha_path = try std.fmt.allocPrint(allocator, "{s}.sha256", .{options.binary_path});
+    const sha_path = try formatSha256Path(allocator, options.binary_path);
     defer allocator.free(sha_path);
 
-    const artifact_dir = std.Io.Dir.path.dirname(options.binary_path) orelse ".";
-    const manifest_path = try std.fmt.allocPrint(allocator, "{s}/manifest-{s}.json", .{
-        artifact_dir,
-        options.target,
-    });
+    const manifest_path = try formatManifestPath(allocator, options.binary_path, options.target);
     defer allocator.free(manifest_path);
 
     const manifest = try buildManifest(allocator, options);
@@ -256,6 +267,23 @@ test "package artifact builds parseable manifest" {
         "https://github.com/nullclaw/nullclaw/actions/runs/123",
         parsed.value.object.get("run_url").?.string,
     );
+}
+
+test "package artifact formats safe generated paths" {
+    const nested_sha_path = try formatSha256Path(std.testing.allocator, "nightly-artifacts/nullclaw-linux-x86_64");
+    defer std.testing.allocator.free(nested_sha_path);
+    try std.testing.expectEqualStrings("nightly-artifacts/nullclaw-linux-x86_64.sha256", nested_sha_path);
+    try std.testing.expect(action_paths.isSafeRelativePath(nested_sha_path));
+
+    const nested_manifest_path = try formatManifestPath(std.testing.allocator, "nightly-artifacts/nullclaw-linux-x86_64", "linux-x86_64");
+    defer std.testing.allocator.free(nested_manifest_path);
+    try std.testing.expectEqualStrings("nightly-artifacts/manifest-linux-x86_64.json", nested_manifest_path);
+    try std.testing.expect(action_paths.isSafeRelativePath(nested_manifest_path));
+
+    const root_manifest_path = try formatManifestPath(std.testing.allocator, "nullclaw-linux-x86_64", "linux-x86_64");
+    defer std.testing.allocator.free(root_manifest_path);
+    try std.testing.expectEqualStrings("manifest-linux-x86_64.json", root_manifest_path);
+    try std.testing.expect(action_paths.isSafeRelativePath(root_manifest_path));
 }
 
 test "package artifact validates package options before filesystem writes" {
