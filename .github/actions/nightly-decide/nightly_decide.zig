@@ -82,7 +82,7 @@ fn decideShouldBuild(
     workflow_name: []const u8,
     force: bool,
 ) Decision {
-    if (force) return .{ .should_build = true, .reason = "forced" };
+    if (force) return forcedDecision();
 
     const current_id = parseCurrentRunId(current_run_id);
 
@@ -102,7 +102,7 @@ fn decideShouldBuildFromPayload(
     workflow_name: []const u8,
     force: bool,
 ) Decision {
-    if (force) return .{ .should_build = true, .reason = "forced" };
+    if (force) return forcedDecision();
 
     const current_id = parseCurrentRunId(current_run_id);
 
@@ -114,6 +114,10 @@ fn decideShouldBuildFromPayload(
     }
 
     return .{ .should_build = true, .reason = "new-sha" };
+}
+
+fn forcedDecision() Decision {
+    return .{ .should_build = true, .reason = "forced" };
 }
 
 fn parseCurrentRunId(current_run_id: []const u8) ?u64 {
@@ -288,6 +292,13 @@ fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !
         },
     };
 
+    const decision = try decideFromValidatedOptions(io, allocator, options);
+    try printDecision(io, decision);
+}
+
+fn decideFromValidatedOptions(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !Decision {
+    if (options.force) return forcedDecision();
+
     const json_bytes = try std.Io.Dir.cwd().readFileAlloc(
         io,
         options.runs_json_path,
@@ -304,9 +315,9 @@ fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !
         options.current_run_id,
         options.head_sha,
         options.workflow_name,
-        options.force,
+        false,
     );
-    try printDecision(io, decision);
+    return decision;
 }
 
 pub fn main(init: std.process.Init) !u8 {
@@ -403,6 +414,21 @@ test "nightly decide force overrides existing success" {
 
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("forced", decision.reason);
+}
+
+test "nightly decide force skips workflow run file reads" {
+    const decision = try decideFromValidatedOptions(undefined, std.testing.allocator, .{
+        .runs_json_path = "missing-previous-nightly-runs.json",
+        .current_run_id = "10",
+        .head_sha = TEST_HEAD_SHA,
+        .workflow_name = "Nightly",
+        .force = true,
+    });
+
+    try std.testing.expect(decision.should_build);
+    try std.testing.expectEqualStrings("forced", decision.reason);
+    try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
+    try std.testing.expectEqualStrings("", decision.matched_run_url);
 }
 
 test "nightly decide scans only bounded workflow history" {
