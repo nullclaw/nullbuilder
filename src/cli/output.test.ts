@@ -92,6 +92,29 @@ test('formatters sanitize terminal control characters from external text', () =>
   assert.match(buildPr, /head: de0fac2e4500dabe0009e67214ff5f5447ce83dd \(featurebranch\)/);
 });
 
+test('formatters bound terminal output from external text', () => {
+  const oversized = 'x'.repeat(10_000);
+  const output = formatDashboard(
+    'issues',
+    dashboardFixture({
+      issues: [
+        {
+          ...dashboardFixture().issues[0],
+          title: oversized,
+          url: `https://github.example.test/nullclaw/nullbuilder/issues/3/${oversized}`
+        }
+      ]
+    })
+  );
+  const cliError = formatCliError(new Error(oversized));
+
+  assert.equal(cliError.length, 2048);
+  assert.match(cliError, /^x+\.\.\.$/);
+  assert.equal(output.length < 3000, true);
+  assert.doesNotMatch(output, /x{300}/);
+  assert.match(output, /x{20}\.\.\./);
+});
+
 test('formatAuditReport includes per-repository counts and finding details', () => {
   const output = formatAuditReport(auditReportFixture());
 

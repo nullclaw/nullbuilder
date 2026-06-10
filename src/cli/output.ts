@@ -11,6 +11,9 @@ import type { Command } from './options';
 
 const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\|$)|[@-Z\\-_])/g;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
+const MAX_TERMINAL_CELL_LENGTH = 240;
+const MAX_TERMINAL_LINE_LENGTH = 2048;
+const TRUNCATION_SUFFIX = '...';
 
 export function selectDashboardJson(command: Command, dashboard: DashboardData) {
   const errors = dashboard.repositories
@@ -277,12 +280,32 @@ function sanitizeRows(rows: Array<Record<string, string>>, columns: string[]): A
   return rows.map((row) => {
     const sanitized: Record<string, string> = {};
     for (const column of columns) {
-      sanitized[column] = terminalLine(row[column] ?? '');
+      sanitized[column] = terminalCell(row[column] ?? '');
     }
     return sanitized;
   });
 }
 
 function terminalLine(value: string): string {
-  return value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' ');
+  return truncateTerminalText(
+    value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' '),
+    MAX_TERMINAL_LINE_LENGTH
+  );
+}
+
+function terminalCell(value: string): string {
+  return truncateTerminalText(terminalLine(value), MAX_TERMINAL_CELL_LENGTH);
+}
+
+function truncateTerminalText(value: string, maxLength: number): string {
+  const characters = Array.from(value);
+  if (characters.length <= maxLength) {
+    return value;
+  }
+
+  if (maxLength <= TRUNCATION_SUFFIX.length) {
+    return characters.slice(0, maxLength).join('');
+  }
+
+  return `${characters.slice(0, maxLength - TRUNCATION_SUFFIX.length).join('')}${TRUNCATION_SUFFIX}`;
 }
