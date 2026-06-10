@@ -74,12 +74,7 @@ runs:
           "${force_args[@]}" > "${decision_file}"
 
         cat "${decision_file}"
-        for key in should_build reason matched_run_id matched_run_url; do
-          line="$(grep -m1 "^${key}=" "${decision_file}" || true)"
-          if [ -n "${line}" ]; then
-            printf '%s\n' "${line}" >> "$GITHUB_OUTPUT"
-          fi
-        done
+        cat "${decision_file}" >> "$GITHUB_OUTPUT"
 
         reason="$(grep -m1 '^reason=' "${decision_file}" | cut -d= -f2-)"
         should_build="$(grep -m1 '^should_build=' "${decision_file}" | cut -d= -f2-)"

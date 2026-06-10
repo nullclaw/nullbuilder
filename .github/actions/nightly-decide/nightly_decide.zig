@@ -496,6 +496,22 @@ test "nightly decision output formats GitHub output lines" {
     , out.writer.buffered());
 }
 
+test "nightly decision output omits absent optional fields" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try writeDecision(&out.writer, .{
+        .should_build = true,
+        .reason = "new-sha",
+    });
+
+    try std.testing.expectEqualStrings(
+        \\should_build=true
+        \\reason=new-sha
+        \\
+    , out.writer.buffered());
+}
+
 test "nightly decision output rejects multiline values before writing" {
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
