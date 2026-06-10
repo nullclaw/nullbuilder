@@ -31,7 +31,8 @@ export function nullbuilderWorkflowFindings(
 
   const findings: AuditFinding[] = [];
 
-  for (const workflow of NULLBUILDER_WORKFLOWS) {
+  for (let index = 0; index < NULLBUILDER_WORKFLOWS.length; index += 1) {
+    const workflow = NULLBUILDER_WORKFLOWS[index];
     const hasWorkflow = hasWorkflowFileContent(
       context,
       `nullclaw/nullbuilder/.github/workflows/${workflow.file}@`
@@ -126,7 +127,8 @@ export function workflowPinningFindings(context: AuditContext, finding: AuditFin
     let fileFindings = 0;
     const usesLines = findActionUses(file.content);
 
-    for (const action of usesLines) {
+    for (let index = 0; index < usesLines.length; index += 1) {
+      const action = usesLines[index];
       if (!shouldRequireShaPin(action.target, action.ref)) {
         continue;
       }
@@ -161,7 +163,8 @@ export function mutableNullbuilderWorkflowRefFindings(
     let fileFindings = 0;
     const references = findNullbuilderWorkflowRefs(file.content);
 
-    for (const reference of references) {
+    for (let index = 0; index < references.length; index += 1) {
+      const reference = references[index];
       if (!isMutableRef(reference.ref)) {
         continue;
       }

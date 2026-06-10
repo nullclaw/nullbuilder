@@ -12,6 +12,8 @@ import {
   workflowPinningFindings
 } from './audit-workflow-policy';
 
+const originalArrayIterator = Array.prototype[Symbol.iterator];
+
 test('nullbuilderWorkflowFindings reports only missing reusable workflow callers', () => {
   const findings = nullbuilderWorkflowFindings(
     auditContext({
@@ -156,6 +158,54 @@ jobs:
       'Missing nullbuilder ci workflow',
       'Missing nullbuilder nightly workflow',
       'Missing nullbuilder release workflow'
+    ]
+  );
+});
+
+test('workflow policy helpers avoid array iterators', () => {
+  const context = auditContext({
+    workflowFiles: [
+      workflowFile(`
+permissions: read-all
+jobs:
+  ci:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@main
+  test:
+    steps:
+      - uses: actions/setup-node@v4
+`)
+    ]
+  });
+
+  Array.prototype[Symbol.iterator] = function arrayIteratorShouldNotBeCalled(): ArrayIterator<unknown> {
+    throw new Error('Array.prototype iterator should not be called.');
+  };
+
+  let missing: AuditFinding[] = [];
+  let pinning: AuditFinding[] = [];
+  let mutable: AuditFinding[] = [];
+  try {
+    missing = nullbuilderWorkflowFindings(context, testFinding);
+    pinning = workflowPinningFindings(context, testFinding);
+    mutable = mutableNullbuilderWorkflowRefFindings(context, testFinding);
+  } finally {
+    Array.prototype[Symbol.iterator] = originalArrayIterator;
+  }
+
+  assert.deepEqual(
+    missing.map((finding) => finding.title),
+    ['Missing nullbuilder nightly workflow', 'Missing nullbuilder release workflow']
+  );
+  assert.deepEqual(
+    pinning.map((finding) => finding.detail),
+    [
+      '.github/workflows/ci.yml uses actions/setup-node@v4; pin third-party actions to immutable commits for stronger supply-chain guarantees.'
+    ]
+  );
+  assert.deepEqual(
+    mutable.map((finding) => finding.detail),
+    [
+      '.github/workflows/ci.yml references zig-ci.yml@main; use a release tag for predictable cross-repository behavior.'
     ]
   );
 });
