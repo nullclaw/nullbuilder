@@ -1,7 +1,10 @@
+import { readSafeTextInput } from '../text-safety';
+
 const FULL_GIT_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const MAX_GIT_REF_NAME_LENGTH = 255;
 const MAX_GIT_REF_INPUT_LENGTH = 1024;
 const UNSAFE_GIT_REF_NAME_PATTERN = /[\u0000-\u001f\u007f ~^:?*[\]\\]/;
+const UTF8_ENCODER = new TextEncoder();
 
 export function assertFullGitSha(value: unknown, label: string): string {
   if (!isFullGitSha(value)) {
@@ -20,11 +23,7 @@ export function isFullGitSha(value: unknown): value is string {
 }
 
 export function sanitizeGitBranchName(value: unknown, label = 'branch'): string {
-  if (typeof value !== 'string' || value.length > MAX_GIT_REF_INPUT_LENGTH) {
-    throw new Error(`Invalid ${label}.`);
-  }
-
-  const branchName = value.trim();
+  const branchName = readSafeGitRefText(value, label);
 
   if (!isSafeGitBranchName(branchName)) {
     throw new Error(`Invalid ${label}.`);
@@ -42,11 +41,7 @@ export function safeGitBranchName(value: unknown, fallback: string): string {
 }
 
 export function sanitizeGitTargetRef(value: unknown, label = 'target ref'): string {
-  if (typeof value !== 'string' || value.length > MAX_GIT_REF_INPUT_LENGTH) {
-    throw new Error(`Invalid ${label}.`);
-  }
-
-  const targetRef = value.trim();
+  const targetRef = readSafeGitRefText(value, label);
 
   if (isFullGitSha(targetRef) || isSafeGitBranchName(targetRef)) {
     return targetRef;
@@ -55,12 +50,29 @@ export function sanitizeGitTargetRef(value: unknown, label = 'target ref'): stri
   throw new Error(`Invalid ${label}.`);
 }
 
+function readSafeGitRefText(value: unknown, label: string): string {
+  const safeValue = readSafeTextInput(value, {
+    maxLength: MAX_GIT_REF_INPUT_LENGTH,
+    trim: true
+  });
+  if (!safeValue) {
+    throw new Error(`Invalid ${label}.`);
+  }
+
+  return safeValue;
+}
+
 function isSafeGitBranchName(branchName: string): boolean {
-  if (!branchName || branchName.length > MAX_GIT_REF_NAME_LENGTH) {
+  if (
+    !branchName ||
+    branchName.length > MAX_GIT_REF_NAME_LENGTH ||
+    utf8ByteLength(branchName) > MAX_GIT_REF_NAME_LENGTH
+  ) {
     return false;
   }
 
   if (
+    branchName === '@' ||
     branchName.startsWith('refs/') ||
     branchName.startsWith('/') ||
     branchName.endsWith('/') ||
@@ -75,6 +87,10 @@ function isSafeGitBranchName(branchName: string): boolean {
   }
 
   return hasSafeGitBranchSegments(branchName);
+}
+
+function utf8ByteLength(value: string): number {
+  return UTF8_ENCODER.encode(value).byteLength;
 }
 
 function hasSafeGitBranchSegments(branchName: string): boolean {

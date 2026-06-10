@@ -15,6 +15,7 @@ test('git ref helpers accept branch names and full SHAs where appropriate', () =
   assert.equal(assertFullGitSha(SHA, 'target SHA'), SHA);
   assert.equal(sanitizeGitBranchName(' release/v1.2.3 '), 'release/v1.2.3');
   assert.equal(sanitizeGitBranchName('feature/lock-step'), 'feature/lock-step');
+  assert.equal(sanitizeGitBranchName('release/\u043f\u0443\u0442\u044c'), 'release/\u043f\u0443\u0442\u044c');
   assert.equal(sanitizeGitTargetRef(SHA), SHA);
   assert.equal(sanitizeGitTargetRef(' main '), 'main');
 });
@@ -31,6 +32,10 @@ test('git ref helpers reject unsafe branch names without echoing input', () => {
     'release//next',
     'release/../main',
     'release/@{upstream}',
+    '@',
+    'main\u202ebranch',
+    'main\ud800branch',
+    `branch-${'\ud83d\ude42'.repeat(63)}`,
     'main\ninjected',
     `branch-${'x'.repeat(260)}`,
     `${' '.repeat(1025)}main`
