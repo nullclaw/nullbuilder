@@ -9,6 +9,13 @@ const max_forwarded_arg_count = 64;
 const max_forwarded_arg_bytes = 4096;
 const max_forwarded_args_total_bytes = 64 * 1024;
 
+const Command = union(enum) {
+    dashboard,
+    help,
+    tag: []const []const u8,
+    invalid,
+};
+
 pub fn run(
     gpa: std.mem.Allocator,
     arena: std.mem.Allocator,
@@ -18,9 +25,17 @@ pub fn run(
     no_color: bool,
     args: []const []const u8,
 ) !?u8 {
-    if (isHelpCommand(args)) {
-        try printHelp(out);
-        return null;
+    const command = classifyCommand(args);
+    switch (command) {
+        .help => {
+            try printHelp(out);
+            return null;
+        },
+        .invalid => {
+            try out.writeAll("invalid command\n");
+            return 2;
+        },
+        .dashboard, .tag => {},
     }
 
     if (!isSafeCliPath(cli_path)) {
@@ -28,15 +43,23 @@ pub fn run(
         return 2;
     }
 
-    if (args.len > 1 and isTagCommand(args[1])) {
-        return forwardTagCommand(gpa, arena, io, out, cli_path, args[1..]);
-    }
-
-    return renderDashboard(gpa, arena, io, out, cli_path, no_color);
+    return switch (command) {
+        .dashboard => renderDashboard(gpa, arena, io, out, cli_path, no_color),
+        .tag => |tag_args| forwardTagCommand(gpa, arena, io, out, cli_path, tag_args),
+        .help, .invalid => unreachable,
+    };
 }
 
-fn isHelpCommand(args: []const []const u8) bool {
-    return args.len > 1 and (std.mem.eql(u8, args[1], "--help") or std.mem.eql(u8, args[1], "help"));
+fn classifyCommand(args: []const []const u8) Command {
+    if (args.len <= 1) return .dashboard;
+
+    if (isHelpArg(args[1])) return .help;
+    if (isTagCommand(args[1])) return .{ .tag = args[1..] };
+    return .invalid;
+}
+
+fn isHelpArg(value: []const u8) bool {
+    return std.mem.eql(u8, value, "--help") or std.mem.eql(u8, value, "help");
 }
 
 fn isTagCommand(value: []const u8) bool {
@@ -132,6 +155,30 @@ fn forwardTagCommand(
 
     try cli.writeCaptured(out, result);
     return null;
+}
+
+test "commands are classified without falling through to dashboard" {
+    try std.testing.expectEqual(Command.dashboard, classifyCommand(&.{}));
+    try std.testing.expectEqual(Command.dashboard, classifyCommand(&.{"nullbuilder-tui"}));
+    try std.testing.expectEqual(Command.help, classifyCommand(&.{ "nullbuilder-tui", "--help" }));
+    try std.testing.expectEqual(Command.help, classifyCommand(&.{ "nullbuilder-tui", "help" }));
+    try std.testing.expectEqual(Command.invalid, classifyCommand(&.{ "nullbuilder-tui", "repos" }));
+    try std.testing.expectEqual(Command.invalid, classifyCommand(&.{ "nullbuilder-tui", "unknown" }));
+
+    const build_pr_args = &.{ "nullbuilder-tui", "build-pr", "nullclaw/nullbuilder", "--pr", "7" };
+    switch (classifyCommand(build_pr_args)) {
+        .tag => |tag_args| {
+            try std.testing.expectEqualStrings("build-pr", tag_args[0]);
+            try std.testing.expectEqualStrings("nullclaw/nullbuilder", tag_args[1]);
+        },
+        else => return error.UnexpectedCommand,
+    }
+
+    const release_tag_args = &.{ "nullbuilder-tui", "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3" };
+    switch (classifyCommand(release_tag_args)) {
+        .tag => |tag_args| try std.testing.expectEqualStrings("release-tag", tag_args[0]),
+        else => return error.UnexpectedCommand,
+    }
 }
 
 test "tag commands are detected explicitly" {
