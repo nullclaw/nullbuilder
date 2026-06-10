@@ -201,12 +201,21 @@ fn validateGeneratedPath(path: []const u8) error{InvalidGeneratedPath}!void {
     if (!action_paths.isSafeRelativePath(path)) return error.InvalidGeneratedPath;
 }
 
+fn validateGeneratedOutputPaths(binary_path: []const u8, sha_path: []const u8, manifest_path: []const u8) error{InvalidGeneratedPath}!void {
+    try validateGeneratedPath(sha_path);
+    try validateGeneratedPath(manifest_path);
+    if (std.mem.eql(u8, binary_path, sha_path)) return error.InvalidGeneratedPath;
+    if (std.mem.eql(u8, binary_path, manifest_path)) return error.InvalidGeneratedPath;
+    if (std.mem.eql(u8, sha_path, manifest_path)) return error.InvalidGeneratedPath;
+}
+
 fn preparePackageOutputPlan(allocator: std.mem.Allocator, options: PackageOptions) !PackageOutputPlan {
     const sha_path = try formatSha256Path(allocator, options.binary_path);
     errdefer allocator.free(sha_path);
 
     const manifest_path = try formatManifestPath(allocator, options.binary_path, options.target);
     errdefer allocator.free(manifest_path);
+    try validateGeneratedOutputPaths(options.binary_path, sha_path, manifest_path);
 
     const manifest = try buildManifest(allocator, options);
     errdefer allocator.free(manifest);
@@ -530,6 +539,16 @@ test "package artifact formats safe generated paths" {
     try std.testing.expectEqualStrings("manifest-linux-x86_64.json", root_manifest_path);
     try std.testing.expect(action_paths.isSafeRelativePath(root_manifest_path));
 
+    try validateGeneratedOutputPaths("artifact.bin", "artifact.bin.sha256", "manifest-linux-x86_64.json");
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        validateGeneratedOutputPaths("artifact.bin", "artifact.bin", "manifest-linux-x86_64.json"),
+    );
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        validateGeneratedOutputPaths("manifest-linux-x86_64.json", "manifest-linux-x86_64.json.sha256", "manifest-linux-x86_64.json"),
+    );
+
     const long_safe_binary =
         ("a" ** 128) ++ "/" ++
         ("b" ** 128) ++ "/" ++
@@ -579,6 +598,13 @@ test "package artifact prepares output metadata before reading binary bytes" {
     var unsafe_generated_options = valid_options;
     unsafe_generated_options.binary_path = long_safe_binary;
     try std.testing.expectError(error.InvalidGeneratedPath, preparePackageOutputPlan(std.testing.allocator, unsafe_generated_options));
+
+    var self_overwriting_manifest_options = valid_options;
+    self_overwriting_manifest_options.binary_path = "nightly-artifacts/manifest-linux-x86_64.json";
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        preparePackageOutputPlan(std.testing.allocator, self_overwriting_manifest_options),
+    );
 }
 
 test "package artifact rejects duplicate options" {
