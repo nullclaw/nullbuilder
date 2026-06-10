@@ -12,6 +12,7 @@ import type { Command } from './options';
 
 const MAX_TERMINAL_CELL_LENGTH = 240;
 const MAX_TERMINAL_LINE_LENGTH = 2048;
+const MAX_TERMINAL_TABLE_ROWS = 1000;
 
 export function selectDashboardJson(command: Command, dashboard: DashboardData) {
   const errors = dashboard.repositories
@@ -226,7 +227,8 @@ function formatTable(rows: Array<Record<string, string>>, columns: string[]): st
     return 'No rows.';
   }
 
-  const safeRows = sanitizeRows(rows, columns);
+  const omittedRows = Math.max(0, rows.length - MAX_TERMINAL_TABLE_ROWS);
+  const safeRows = sanitizeRows(rows.slice(0, MAX_TERMINAL_TABLE_ROWS), columns);
   const widths = columnWidths(safeRows, columns);
   const lines = [
     columns.map((column, index) => column.padEnd(widths[index])).join('  '),
@@ -235,6 +237,10 @@ function formatTable(rows: Array<Record<string, string>>, columns: string[]): st
 
   for (const row of safeRows) {
     lines.push(columns.map((column, index) => (row[column] ?? '').padEnd(widths[index])).join('  '));
+  }
+
+  if (omittedRows > 0) {
+    lines.push(terminalLine(`... ${omittedRows} rows omitted; use --json for full output.`));
   }
 
   return lines.join('\n');

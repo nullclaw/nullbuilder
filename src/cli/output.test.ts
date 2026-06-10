@@ -144,7 +144,7 @@ test('formatDashboard validates dates before rendering CLI tables', () => {
   assert.doesNotMatch(formatDashboard('runs', dashboard), /invalid-run/);
 });
 
-test('formatDashboard formats large tables without spreading row widths', () => {
+test('formatDashboard bounds large terminal tables without spreading row widths', () => {
   const issueCount = 150_000;
   const baseIssue = dashboardFixture().issues[0];
   const output = formatDashboard(
@@ -159,8 +159,11 @@ test('formatDashboard formats large tables without spreading row widths', () => 
   );
 
   assert.match(output, /^repo\s+issue\s+updated\s+title\s+url/m);
-  assert.match(output, /#150000/);
-  assert.equal(output.includes('Issue 150000'), true);
+  assert.match(output, /\.\.\. 149000 rows omitted; use --json for full output\./);
+  assert.equal(output.includes('#1000'), true);
+  assert.equal(output.includes('#1001'), false);
+  assert.equal(output.includes('Issue 150000'), false);
+  assert.equal(output.length < 200_000, true);
 });
 
 test('formatters truncate by code point without splitting surrogate pairs', () => {
