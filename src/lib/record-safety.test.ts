@@ -2,13 +2,32 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { readArray, readBoundedArray, readObjectRecord } from './record-safety';
 
-test('readObjectRecord accepts non-array objects only', () => {
+test('readObjectRecord accepts plain data records only', () => {
   const object = { name: 'nullbuilder' };
+  const nullPrototypeObject = Object.create(null) as Record<string, unknown>;
+  nullPrototypeObject.name = 'nullbuilder';
 
   assert.equal(readObjectRecord(object), object);
-  assert.equal(readObjectRecord(Object.create(null)) !== null, true);
+  assert.equal(readObjectRecord(nullPrototypeObject), nullPrototypeObject);
 
-  for (const value of [null, undefined, 'object', 42, true, [], ['name']]) {
+  class CustomRecord {
+    name = 'nullbuilder';
+  }
+  const inherited = Object.create({ name: 'inherited' });
+
+  for (const value of [
+    null,
+    undefined,
+    'object',
+    42,
+    true,
+    [],
+    ['name'],
+    new Date(),
+    new Map(),
+    new CustomRecord(),
+    inherited
+  ]) {
     assert.equal(readObjectRecord(value), null);
   }
 });
