@@ -99,6 +99,35 @@ jobs:
   );
 });
 
+test('mutableNullbuilderWorkflowRefFindings caps noisy mutable reusable workflow refs per file', () => {
+  const content = Array.from(
+    { length: 8 },
+    (_, index) => `  workflow_${index}:\n    uses: nullclaw/nullbuilder/.github/workflows/zig-ci-${index}.yml@main`
+  ).join('\n');
+
+  const findings = mutableNullbuilderWorkflowRefFindings(
+    auditContext({
+      workflowFiles: [
+        workflowFile(`
+jobs:
+${content}
+`)
+      ]
+    }),
+    testFinding
+  );
+
+  assert.equal(findings.length, 5);
+  assert.deepEqual(
+    findings.map((finding) => finding.detail),
+    Array.from(
+      { length: 5 },
+      (_, index) =>
+        `.github/workflows/ci.yml references zig-ci-${index}.yml@main; use a release tag for predictable cross-repository behavior.`
+    )
+  );
+});
+
 function auditContext(overrides: Partial<AuditContext> = {}): AuditContext {
   return {
     repo: 'nullclaw/nullbuilder' as RepoSlug,

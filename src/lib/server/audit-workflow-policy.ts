@@ -12,6 +12,7 @@ const NULLBUILDER_WORKFLOWS = [
   { id: 'nightly', file: 'zig-nightly.yml', severity: 'info' as const },
   { id: 'release', file: 'zig-release.yml', severity: 'info' as const }
 ];
+const MAX_WORKFLOW_FINDINGS_PER_FILE = 5;
 
 export function nullbuilderWorkflowFindings(
   context: AuditContext,
@@ -128,9 +129,13 @@ export function workflowPinningFindings(context: AuditContext, finding: AuditFin
           file.path
         )
       );
+
+      if (findings.length >= MAX_WORKFLOW_FINDINGS_PER_FILE) {
+        break;
+      }
     }
 
-    return findings.slice(0, 5);
+    return findings;
   });
 }
 
@@ -156,6 +161,10 @@ export function mutableNullbuilderWorkflowRefFindings(
           file.path
         )
       );
+
+      if (findings.length >= MAX_WORKFLOW_FINDINGS_PER_FILE) {
+        break;
+      }
     }
 
     return findings;

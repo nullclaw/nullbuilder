@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 const DEFAULT_MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
+export const MAX_WORKFLOW_REFERENCE_MATCHES = 200;
 
 export type WorkflowActionUse = {
   target: string;
@@ -17,12 +18,16 @@ export type EncodedGitHubContent = {
   encoding?: string;
 };
 
-export function findActionUses(content: string): WorkflowActionUse[] {
+export function findActionUses(
+  content: string,
+  maxMatches = MAX_WORKFLOW_REFERENCE_MATCHES
+): WorkflowActionUse[] {
   const actions: WorkflowActionUse[] = [];
+  const matchLimit = normalizeMatchLimit(maxMatches);
   const regex = /^\s*(?:-\s*)?uses:\s*['"]?([^@\s'"]+)@([^'"\s#]+)['"]?/gm;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(content)) !== null) {
+  while (actions.length < matchLimit && (match = regex.exec(content)) !== null) {
     actions.push({
       target: match[1],
       ref: match[2]
@@ -32,12 +37,16 @@ export function findActionUses(content: string): WorkflowActionUse[] {
   return actions;
 }
 
-export function findNullbuilderWorkflowRefs(content: string): NullbuilderWorkflowRef[] {
+export function findNullbuilderWorkflowRefs(
+  content: string,
+  maxMatches = MAX_WORKFLOW_REFERENCE_MATCHES
+): NullbuilderWorkflowRef[] {
   const references: NullbuilderWorkflowRef[] = [];
+  const matchLimit = normalizeMatchLimit(maxMatches);
   const regex = /nullclaw\/nullbuilder\/\.github\/workflows\/([^@\s'"]+)@([^'"\s#]+)/g;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(content)) !== null) {
+  while (references.length < matchLimit && (match = regex.exec(content)) !== null) {
     references.push({
       workflow: match[1],
       ref: match[2]
@@ -86,6 +95,10 @@ export function encodeGitHubPath(path: string): string {
 
 function normalizeByteLimit(maxBytes: number): number {
   return Number.isSafeInteger(maxBytes) && maxBytes > 0 ? maxBytes : 0;
+}
+
+function normalizeMatchLimit(maxMatches: number): number {
+  return Number.isSafeInteger(maxMatches) && maxMatches > 0 ? maxMatches : 0;
 }
 
 function boundedBase64Content(content: string, maxBytes: number): string {

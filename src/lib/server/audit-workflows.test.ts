@@ -6,6 +6,7 @@ import {
   findActionUses,
   findNullbuilderWorkflowRefs,
   isMutableRef,
+  MAX_WORKFLOW_REFERENCE_MATCHES,
   shouldRequireShaPin
 } from './audit-workflows';
 
@@ -33,6 +34,32 @@ jobs:
 `),
     [{ workflow: 'zig-ci.yml', ref: 'main' }]
   );
+});
+
+test('workflow reference parsers bound noisy workflow files', () => {
+  const actionContent = Array.from(
+    { length: MAX_WORKFLOW_REFERENCE_MATCHES + 20 },
+    (_, index) => `  - uses: owner/action-${index}@v1`
+  ).join('\n');
+  const actions = findActionUses(actionContent);
+
+  assert.equal(actions.length, MAX_WORKFLOW_REFERENCE_MATCHES);
+  assert.deepEqual(actions[actions.length - 1], {
+    target: `owner/action-${MAX_WORKFLOW_REFERENCE_MATCHES - 1}`,
+    ref: 'v1'
+  });
+
+  const workflowContent = Array.from(
+    { length: MAX_WORKFLOW_REFERENCE_MATCHES + 20 },
+    (_, index) => `  uses: nullclaw/nullbuilder/.github/workflows/zig-ci-${index}.yml@main`
+  ).join('\n');
+  const references = findNullbuilderWorkflowRefs(workflowContent);
+
+  assert.equal(references.length, MAX_WORKFLOW_REFERENCE_MATCHES);
+  assert.deepEqual(references[references.length - 1], {
+    workflow: `zig-ci-${MAX_WORKFLOW_REFERENCE_MATCHES - 1}.yml`,
+    ref: 'main'
+  });
 });
 
 test('shouldRequireShaPin ignores local docker and nullbuilder workflow references', () => {
