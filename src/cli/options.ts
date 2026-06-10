@@ -69,9 +69,9 @@ Environment:
                         Token for private repos and write operations
 `;
 
-export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
-  assertCliArgVector(argv);
-  const rawCommand = argv[0] ?? 'help';
+export function parseCommandLine(argv: unknown): ParsedCommandLine {
+  const args = readCliArgVector(argv);
+  const rawCommand = args[0] ?? 'help';
 
   if (rawCommand === 'help' || rawCommand === '--help' || rawCommand === '-h') {
     return { kind: 'help' };
@@ -88,12 +88,12 @@ export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
   return {
     kind: 'command',
     command: rawCommand,
-    options: parseOptions(readArgTail(argv, 1))
+    options: parseOptions(readArgTail(args, 1))
   };
 }
 
-export function parseOptions(args: readonly string[]): CliOptions {
-  assertCliArgVector(args);
+export function parseOptions(args: unknown): CliOptions {
+  const values = readCliArgVector(args);
   const options: CliOptions = {
     json: false,
     discover: false,
@@ -106,10 +106,10 @@ export function parseOptions(args: readonly string[]): CliOptions {
   };
   const seenOptions = new Set<string>();
 
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
+  for (let index = 0; index < values.length; index += 1) {
+    const arg = values[index];
     if (arg === '--') {
-      appendPositionalsFrom(options, args, index + 1);
+      appendPositionalsFrom(options, values, index + 1);
       break;
     }
 
@@ -123,16 +123,16 @@ export function parseOptions(args: readonly string[]): CliOptions {
       options.discover = true;
     } else if (arg === '--repo') {
       markOptionOnce(seenOptions, arg);
-      options.repo = readTextValue(args, (index += 1), '--repo');
+      options.repo = readTextValue(values, (index += 1), '--repo');
     } else if (arg === '--pr') {
       markOptionOnce(seenOptions, arg);
-      options.pr = parsePositiveInteger(readValue(args, (index += 1), '--pr'), '--pr');
+      options.pr = parsePositiveInteger(readValue(values, (index += 1), '--pr'), '--pr');
     } else if (arg === '--tag') {
       markOptionOnce(seenOptions, arg);
-      options.tag = readTextValue(args, (index += 1), '--tag');
+      options.tag = readTextValue(values, (index += 1), '--tag');
     } else if (arg === '--ref') {
       markOptionOnce(seenOptions, arg);
-      options.targetRef = readTextValue(args, (index += 1), '--ref');
+      options.targetRef = readTextValue(values, (index += 1), '--ref');
     } else if (arg === '--confirm') {
       markOptionOnce(seenOptions, arg);
       options.confirm = true;
@@ -156,16 +156,32 @@ export function parseOptions(args: readonly string[]): CliOptions {
   return options;
 }
 
-function assertCliArgVector(args: readonly unknown[]): asserts args is readonly string[] {
-  if (args.length > MAX_CLI_ARGS) {
+function readCliArgVector(value: unknown): string[] {
+  const values = readRuntimeArray(value);
+  if (values === null) {
+    throw new Error('Invalid CLI argument.');
+  }
+
+  const length = readRuntimeArrayLength(values);
+  if (length === null) {
+    throw new Error('Invalid CLI argument.');
+  }
+
+  if (length > MAX_CLI_ARGS) {
     throw new Error('Too many CLI arguments.');
   }
 
-  for (let index = 0; index < args.length; index += 1) {
-    if (typeof args[index] !== 'string') {
+  const args: string[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const entry = readRuntimeArrayItem(values, index);
+    if (!entry.ok || typeof entry.value !== 'string') {
       throw new Error('Invalid CLI argument.');
     }
+
+    args[args.length] = entry.value;
   }
+
+  return args;
 }
 
 function readArgTail(args: readonly string[], start: number): string[] {
@@ -175,6 +191,34 @@ function readArgTail(args: readonly string[], start: number): string[] {
   }
 
   return tail;
+}
+
+function readRuntimeArrayLength(value: readonly unknown[]): number | null {
+  try {
+    const length = value.length;
+    return Number.isSafeInteger(length) && length >= 0 ? length : null;
+  } catch {
+    return null;
+  }
+}
+
+function readRuntimeArrayItem(
+  values: readonly unknown[],
+  index: number
+): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: values[index] };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function readRuntimeArray(value: unknown): readonly unknown[] | null {
+  try {
+    return Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function markOptionOnce(seenOptions: Set<string>, option: string): void {

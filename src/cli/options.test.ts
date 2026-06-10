@@ -55,6 +55,38 @@ test('parseCommandLine avoids user-controlled argv array methods', () => {
   });
 });
 
+test('parseCommandLine copies argv before parsing', () => {
+  let reads = 0;
+  const argv = new Proxy(['repos', '--', '--literal'], {
+    get(target, property, receiver) {
+      if (property === '0' || property === '1' || property === '2') {
+        reads += 1;
+        if (reads > 3) {
+          throw new Error('argv should not be read after validation');
+        }
+      }
+
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  assert.deepEqual(parseCommandLine(argv), {
+    kind: 'command',
+    command: 'repos',
+    options: {
+      json: false,
+      discover: false,
+      confirm: false,
+      force: false,
+      allowDraft: false,
+      allowFork: false,
+      allowNonDefaultBase: false,
+      positionals: ['--literal']
+    }
+  });
+  assert.equal(reads, 3);
+});
+
 test('parseCommandLine and parseOptions avoid global array push hooks', () => {
   const originalPush = Array.prototype.push;
   let pushCalls = 0;
@@ -130,6 +162,12 @@ test('parseCommandLine bounds argument vectors before parsing', () => {
 });
 
 test('parseCommandLine rejects malformed runtime argument vectors', () => {
+  assert.throws(() => parseCommandLine(null), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid CLI argument.');
+    return true;
+  });
+
   assert.throws(() => parseCommandLine([null] as unknown as string[]), (error) => {
     assert(error instanceof Error);
     assert.equal(error.message, 'Invalid CLI argument.');
@@ -141,6 +179,36 @@ test('parseCommandLine rejects malformed runtime argument vectors', () => {
     assert.equal(error.message, 'Invalid CLI argument.');
     return true;
   });
+});
+
+test('parseCommandLine rejects hostile runtime argument vectors', () => {
+  for (const argv of [
+    new Proxy(['repos'], {
+      get(target, property, receiver) {
+        if (property === 'length') {
+          throw new Error('secret argv length');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    }),
+    new Proxy(['repos', '--json'], {
+      get(target, property, receiver) {
+        if (property === '1') {
+          throw new Error('secret argv item');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    })
+  ]) {
+    assert.throws(() => parseCommandLine(argv), (error) => {
+      assert(error instanceof Error);
+      assert.equal(error.message, 'Invalid CLI argument.');
+      assert.doesNotMatch(error.message, /secret/u);
+      return true;
+    });
+  }
 });
 
 test('parseOptions rejects unknown options without echoing raw input', () => {
@@ -165,12 +233,68 @@ test('parseOptions bounds option vectors before scanning values', () => {
 });
 
 test('parseOptions rejects malformed runtime option vectors before scanning', () => {
+  assert.throws(() => parseOptions({ '--repo': 'nullbuilder' }), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid CLI argument.');
+    assert.doesNotMatch(error.message, /nullbuilder/);
+    return true;
+  });
+
   assert.throws(() => parseOptions(['--repo', { value: 'nullbuilder' }] as unknown as string[]), (error) => {
     assert(error instanceof Error);
     assert.equal(error.message, 'Invalid CLI argument.');
     assert.doesNotMatch(error.message, /nullbuilder/);
     return true;
   });
+});
+
+test('parseOptions rejects hostile runtime option vectors before scanning', () => {
+  for (const args of [
+    new Proxy(['--repo', 'nullbuilder'], {
+      get(target, property, receiver) {
+        if (property === 'length') {
+          throw new Error('secret option length');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    }),
+    new Proxy(['--repo', 'nullbuilder'], {
+      get(target, property, receiver) {
+        if (property === '1') {
+          throw new Error('secret option item');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    })
+  ]) {
+    assert.throws(() => parseOptions(args), (error) => {
+      assert(error instanceof Error);
+      assert.equal(error.message, 'Invalid CLI argument.');
+      assert.doesNotMatch(error.message, /secret|nullbuilder/u);
+      return true;
+    });
+  }
+});
+
+test('parseOptions copies option vectors before scanning', () => {
+  let reads = 0;
+  const args = new Proxy(['--repo', 'nullbuilder'], {
+    get(target, property, receiver) {
+      if (property === '0' || property === '1') {
+        reads += 1;
+        if (reads > 2) {
+          throw new Error('options should not be read after validation');
+        }
+      }
+
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  assert.equal(parseOptions(args).repo, 'nullbuilder');
+  assert.equal(reads, 2);
 });
 
 test('parseOptions rejects duplicate options without overwriting earlier values', () => {
