@@ -70,11 +70,13 @@ pub fn render(
         const repo = dashboard_model.repositoryFromValue(item) orelse continue;
         const repo_slug = try sanitizeTerminalText(arena, repo.slug);
         defer repo_slug.deinit(arena);
+        var issues_buffer: [count_column_width]u8 = undefined;
+        var pulls_buffer: [count_column_width]u8 = undefined;
 
-        try out.print("{s:<[3]} {d:>[4]} {d:>[4]} ", .{
+        try out.print("{s:<[3]} {s:>[4]} {s:>[4]} ", .{
             terminal.clipUtf8(repo_slug.value, repo_column_width),
-            repo.open_issues,
-            repo.open_pulls,
+            formatBoundedNumber(issues_buffer[0..], repo.open_issues),
+            formatBoundedNumber(pulls_buffer[0..], repo.open_pulls),
             repo_column_width,
             count_column_width,
         });
@@ -126,10 +128,11 @@ fn printWorkItems(
         defer work_repo.deinit(arena);
         const title = try sanitizeTerminalText(arena, work.title);
         defer title.deinit(arena);
+        var number_buffer: [work_number_width]u8 = undefined;
 
-        try out.print("  {s:<[3]} #{d:<[4]} {s}\n", .{
+        try out.print("  {s:<[3]} #{s:<[4]} {s}\n", .{
             terminal.clipUtf8(work_repo.value, repo_column_width),
-            work.number,
+            formatBoundedNumber(number_buffer[0..], work.number),
             terminal.clipUtf8(title.value, work_title_width),
             repo_column_width,
             work_number_width,
@@ -164,6 +167,23 @@ fn color(no_color: bool, code: []const u8) []const u8 {
     return if (no_color) "" else code;
 }
 
+fn formatBoundedNumber(buffer: []u8, value: u64) []const u8 {
+    if (buffer.len == 0) return "";
+    return std.fmt.bufPrint(buffer, "{d}", .{value}) catch overflowNumberLabel(buffer);
+}
+
+fn overflowNumberLabel(buffer: []u8) []const u8 {
+    if (buffer.len == 0) return "";
+    if (buffer.len == 1) {
+        buffer[0] = '+';
+        return buffer;
+    }
+
+    @memset(buffer[0 .. buffer.len - 1], '9');
+    buffer[buffer.len - 1] = '+';
+    return buffer;
+}
+
 fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) !terminal.SanitizedText {
     return terminal.sanitizeMaybeAlloc(arena, value, .{});
 }
@@ -188,6 +208,16 @@ test "printStatus honors requested display width" {
     out.clearRetainingCapacity();
     try printStatus(std.testing.allocator, &out.writer, true, "in_progress", 4);
     try std.testing.expectEqualStrings("in_p", out.writer.buffered());
+}
+
+test "formatBoundedNumber keeps terminal columns fixed" {
+    var count_buffer: [count_column_width]u8 = undefined;
+    var work_number_buffer: [work_number_width]u8 = undefined;
+
+    try std.testing.expectEqualStrings("42", formatBoundedNumber(count_buffer[0..], 42));
+    try std.testing.expectEqualStrings("999999", formatBoundedNumber(count_buffer[0..], 999_999));
+    try std.testing.expectEqualStrings("99999+", formatBoundedNumber(count_buffer[0..], 1_000_000));
+    try std.testing.expectEqualStrings("9999+", formatBoundedNumber(work_number_buffer[0..], 100_000));
 }
 
 test "render prints repository rows recent work and load errors" {
@@ -228,6 +258,29 @@ test "render prints repository rows recent work and load errors" {
     try expectContains(output, "#9");
     try expectContains(output, "Load errors");
     try expectContains(output, "rate limited");
+}
+
+test "render caps numeric columns from external dashboard json" {
+    const json =
+        \\{
+        \\  "items": [
+        \\    {
+        \\      "slug": "alpha",
+        \\      "openIssues": 1000000,
+        \\      "openPulls": 9223372036854775807,
+        \\      "issues": [{"repo": "alpha", "number": 100000, "title": "Large external number"}]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try render(std.testing.allocator, &out.writer, json, true);
+    const output = out.writer.buffered();
+
+    try expectContains(output, "99999+ 99999+");
+    try expectContains(output, "#9999+");
 }
 
 test "render sanitizes terminal control characters from external text" {
