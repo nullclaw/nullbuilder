@@ -377,6 +377,39 @@ test('discoverRepositories preserves configured slugs when discovery returns dup
   assert.deepEqual(await discoverRepositories(config), ['nullclaw/NullBuilder', 'nullclaw/nullthing']);
 });
 
+test('discoverRepositories avoids user-controlled configured repository iterators', async () => {
+  const baseConfig = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://discover-config-iterators.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const config = {
+    ...baseConfig,
+    repos: new UnsafeIteratorArray<RepoSlug>('nullclaw/nullbuilder' as RepoSlug),
+    ignoredRepos: new UnsafeIteratorArray<RepoSlug>('nullclaw/ignored' as RepoSlug)
+  };
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          name: 'nullthing',
+          full_name: 'nullclaw/nullthing',
+          language: 'TypeScript',
+          archived: false
+        },
+        {
+          name: 'ignored',
+          full_name: 'nullclaw/ignored',
+          language: 'Zig',
+          archived: false
+        }
+      ])
+    )) as typeof fetch;
+
+  assert.deepEqual(await discoverRepositories(config), ['nullclaw/nullbuilder', 'nullclaw/nullthing']);
+});
+
 test('discoverRepositories caps discovered repositories before dashboard fan-out', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
@@ -451,4 +484,10 @@ function waitForEventLoopTurn(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
+}
+
+class UnsafeIteratorArray<T> extends Array<T> {
+  override [Symbol.iterator](): ArrayIterator<T> {
+    throw new Error('iterator should not be called');
+  }
 }

@@ -64,8 +64,8 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
       MAX_REPOSITORY_LIST_ENTRIES
     );
 
-    for (const repo of repos) {
-      const discoveredRepo = safeDiscoveredRepository(repo);
+    for (let index = 0; index < repos.length; index += 1) {
+      const discoveredRepo = safeDiscoveredRepository(repos[index]);
       if (!discoveredRepo) {
         continue;
       }
@@ -91,10 +91,10 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
       }
     }
   } catch {
-    return config.repos;
+    return copyRepositorySlugs(config.repos);
   }
 
-  return [...configured.values()].sort((left, right) => left.localeCompare(right));
+  return sortedRepositoryValues(configured);
 }
 
 function safeDiscoveredRepository(value: unknown): {
@@ -131,7 +131,8 @@ function normalizeDiscoveredRepoSlug(fullName: string, defaultOwner: string): Re
 function repositorySlugMap(repos: readonly RepoSlug[]): Map<string, RepoSlug> {
   const slugs = new Map<string, RepoSlug>();
 
-  for (const repo of repos) {
+  for (let index = 0; index < repos.length; index += 1) {
+    const repo = repos[index];
     const key = repoKey(repo);
     if (!slugs.has(key)) {
       slugs.set(key, repo);
@@ -144,11 +145,28 @@ function repositorySlugMap(repos: readonly RepoSlug[]): Map<string, RepoSlug> {
 function repositoryKeySet(repos: readonly RepoSlug[]): Set<string> {
   const keys = new Set<string>();
 
-  for (const repo of repos) {
-    keys.add(repoKey(repo));
+  for (let index = 0; index < repos.length; index += 1) {
+    keys.add(repoKey(repos[index]));
   }
 
   return keys;
+}
+
+function sortedRepositoryValues(repositories: ReadonlyMap<string, RepoSlug>): RepoSlug[] {
+  const values: RepoSlug[] = [];
+  repositories.forEach((repo) => {
+    values.push(repo);
+  });
+  values.sort((left, right) => left.localeCompare(right));
+  return values;
+}
+
+function copyRepositorySlugs(repos: readonly RepoSlug[]): RepoSlug[] {
+  const copy: RepoSlug[] = [];
+  for (let index = 0; index < repos.length; index += 1) {
+    copy.push(repos[index]);
+  }
+  return copy;
 }
 
 function repoKey(repo: RepoSlug): string {
