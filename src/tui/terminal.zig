@@ -90,7 +90,11 @@ pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
     var index: usize = 0;
     while (index < value.len) {
         const byte = value[index];
-        if (byte == ascii_escape or text_safety.isUtf8C1Control(value, index) or isUnsafeTerminalControlByte(byte, options)) {
+        if (byte == ascii_escape or
+            text_safety.isUtf8C1Control(value, index) or
+            text_safety.isInvalidUtf8SequenceStart(value, index) or
+            isUnsafeTerminalControlByte(byte, options))
+        {
             return true;
         }
         index += text_safety.utf8SequenceLength(value, index);
@@ -117,6 +121,12 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
     }
 
     if (isUnsafeTerminalControlByte(byte, options)) {
+        index.* += 1;
+        buffer[0] = ' ';
+        return buffer[0..1];
+    }
+
+    if (text_safety.isInvalidUtf8SequenceStart(value, index.*)) {
         index.* += 1;
         buffer[0] = ' ';
         return buffer[0..1];
@@ -182,6 +192,8 @@ test "terminal control detector skips safe UTF-8 sequences" {
     try std.testing.expect(hasUnsafeControl("bad\x1b[31mvalue", .{ .preserve_newlines = true }));
     try std.testing.expect(hasUnsafeControl("bad\xc2\x85value", .{}));
     try std.testing.expect(hasUnsafeControl("bad\x85value", .{}));
+    try std.testing.expect(hasUnsafeControl("bad\xc0\x85value", .{}));
+    try std.testing.expect(hasUnsafeControl("bad\xe2\x82value", .{}));
 }
 
 test "terminal sanitizer borrows already safe text" {
@@ -208,6 +220,13 @@ test "terminal sanitizer allocates only when text changes" {
 
     try std.testing.expect(safe.allocated);
     try std.testing.expectEqualStrings("badred", safe.value);
+}
+
+test "terminal sanitizer replaces malformed UTF-8 bytes" {
+    const safe = try sanitizeAlloc(std.testing.allocator, "bad\xc0\x85next\xe2\x82done", .{});
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("bad  next  done", safe);
 }
 
 test "terminal sanitizer can preserve newlines for child output" {

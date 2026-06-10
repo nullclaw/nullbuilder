@@ -5,7 +5,7 @@ pub const ascii_escape: u8 = 0x1b;
 pub fn hasControl(value: []const u8) bool {
     var index: usize = 0;
     while (index < value.len) {
-        if (isControlByte(value[index]) or isUtf8C1Control(value, index)) {
+        if (isControlByte(value[index]) or isUtf8C1Control(value, index) or isInvalidUtf8SequenceStart(value, index)) {
             return true;
         }
         index += utf8SequenceLength(value, index);
@@ -25,11 +25,11 @@ pub fn utf8SequenceLength(value: []const u8, index: usize) usize {
     const byte = value[index];
     if (byte < 0x80) return 1;
 
-    const expected_len: usize = if (byte & 0b1110_0000 == 0b1100_0000)
+    const expected_len: usize = if (byte >= 0xc2 and byte <= 0xdf)
         2
-    else if (byte & 0b1111_0000 == 0b1110_0000)
+    else if (byte >= 0xe0 and byte <= 0xef)
         3
-    else if (byte & 0b1111_1000 == 0b1111_0000)
+    else if (byte >= 0xf0 and byte <= 0xf4)
         4
     else
         return 1;
@@ -38,11 +38,33 @@ pub fn utf8SequenceLength(value: []const u8, index: usize) usize {
     for (value[index + 1 .. index + expected_len]) |continuation| {
         if (!isUtf8ContinuationByte(continuation)) return 1;
     }
+    if (!hasValidUtf8ScalarRange(value[index..][0..expected_len])) return 1;
     return expected_len;
 }
 
 pub fn isUtf8ContinuationByte(byte: u8) bool {
     return byte & 0b1100_0000 == 0b1000_0000;
+}
+
+pub fn isInvalidUtf8SequenceStart(value: []const u8, index: usize) bool {
+    return value[index] >= 0x80 and utf8SequenceLength(value, index) == 1;
+}
+
+fn hasValidUtf8ScalarRange(sequence: []const u8) bool {
+    return switch (sequence.len) {
+        2 => true,
+        3 => switch (sequence[0]) {
+            0xe0 => sequence[1] >= 0xa0,
+            0xed => sequence[1] <= 0x9f,
+            else => true,
+        },
+        4 => switch (sequence[0]) {
+            0xf0 => sequence[1] >= 0x90,
+            0xf4 => sequence[1] <= 0x8f,
+            else => true,
+        },
+        else => false,
+    };
 }
 
 test "text safety detects ASCII and UTF-8 encoded control characters" {
@@ -53,6 +75,10 @@ test "text safety detects ASCII and UTF-8 encoded control characters" {
     try std.testing.expect(hasControl("escape\x1b[31m"));
     try std.testing.expect(hasControl("raw\x85control"));
     try std.testing.expect(hasControl("c1\xc2\x85control"));
+    try std.testing.expect(hasControl("overlong\xc0\x85control"));
+    try std.testing.expect(hasControl("truncated\xe2\x82"));
+    try std.testing.expect(hasControl("surrogate\xed\xa0\x80"));
+    try std.testing.expect(hasControl("too-large\xf4\x90\x80\x80"));
 }
 
 test "text safety counts only complete UTF-8 sequences" {
@@ -62,4 +88,10 @@ test "text safety counts only complete UTF-8 sequences" {
     try std.testing.expectEqual(@as(usize, 2), utf8SequenceLength(text, 5));
     try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength(text[0..6], 5));
     try std.testing.expect(isUtf8ContinuationByte(text[6]));
+
+    try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xc0\x85", 0));
+    try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xe2\x82", 0));
+    try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xed\xa0\x80", 0));
+    try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xf4\x90\x80\x80", 0));
+    try std.testing.expect(isInvalidUtf8SequenceStart("\xc0\x85", 0));
 }
