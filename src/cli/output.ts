@@ -13,6 +13,7 @@ import type { Command } from './options';
 const MAX_TERMINAL_CELL_LENGTH = 240;
 const MAX_TERMINAL_LINE_LENGTH = 2048;
 const MAX_TERMINAL_TABLE_ROWS = 1000;
+const RUN_KINDS = ['ci', 'nightly', 'release'] as const;
 
 export function selectDashboardJson(command: Command, dashboard: DashboardData) {
   const errors = dashboard.repositories
@@ -196,14 +197,17 @@ function formatPullRequests(dashboard: DashboardData): string {
 function formatRuns(dashboard: DashboardData): string {
   return formatTable(
     dashboard.repositories.flatMap((repo) =>
-      Object.entries(repo.latestRuns).map(([kind, run]) => ({
-        repo: repo.slug,
-        kind,
-        status: repo.status === 'error' ? 'unknown' : workflowRunLabel(run),
-        branch: run?.branch ?? '',
-        updated: run ? formatDate(run.updatedAt) : '',
-        url: run?.url ?? ''
-      }))
+      RUN_KINDS.map((kind) => {
+        const run = repo.latestRuns[kind];
+        return {
+          repo: repo.slug,
+          kind,
+          status: repo.status === 'error' ? 'unknown' : workflowRunLabel(run),
+          branch: run?.branch ?? '',
+          updated: run ? formatDate(run.updatedAt) : '',
+          url: run?.url ?? ''
+        };
+      })
     ),
     ['repo', 'kind', 'status', 'branch', 'updated', 'url']
   );

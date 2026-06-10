@@ -144,6 +144,32 @@ test('formatDashboard validates dates before rendering CLI tables', () => {
   assert.doesNotMatch(formatDashboard('runs', dashboard), /invalid-run/);
 });
 
+test('formatDashboard renders only canonical workflow run slots', () => {
+  const base = dashboardFixture();
+  const dashboard = dashboardFixture({
+    repositories: [
+      {
+        ...base.repositories[0],
+        latestRuns: {
+          ...base.repositories[0].latestRuns,
+          injected: {
+            ...base.repositories[0].latestRuns.ci!,
+            branch: 'secret-branch',
+            url: 'https://evil.example.test/actions'
+          }
+        } as DashboardData['repositories'][number]['latestRuns']
+      }
+    ],
+    hasReadErrors: false
+  });
+  const output = formatDashboard('runs', dashboard);
+
+  assert.match(output, /\bci\b/);
+  assert.match(output, /\bnightly\b/);
+  assert.match(output, /\brelease\b/);
+  assert.doesNotMatch(output, /injected|secret-branch|evil\.example/);
+});
+
 test('formatDashboard bounds large terminal tables without spreading row widths', () => {
   const issueCount = 150_000;
   const baseIssue = dashboardFixture().issues[0];
