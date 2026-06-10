@@ -205,15 +205,15 @@ function assertTrustedPullRequest(
   const headRepo = pullHeadRepositorySlug(pull);
 
   if (pullDraft(pull) !== false && !optionEnabled(options.allowDraft)) {
-    reasons.push('draft PRs are rejected by default');
+    reasons[reasons.length] = 'draft PRs are rejected by default';
   }
 
   if (pullBaseRef(pull) !== defaultBranch && !optionEnabled(options.allowNonDefaultBase)) {
-    reasons.push(`base branch must be ${defaultBranch}`);
+    reasons[reasons.length] = `base branch must be ${defaultBranch}`;
   }
 
   if ((headRepo === null || headRepo.toLowerCase() !== repo.toLowerCase()) && !optionEnabled(options.allowFork)) {
-    reasons.push('fork PRs are rejected by default');
+    reasons[reasons.length] = 'fork PRs are rejected by default';
   }
 
   if (reasons.length > 0) {

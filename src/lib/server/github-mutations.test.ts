@@ -5,11 +5,13 @@ import { buildPrTag, createReleaseTag } from './github-mutations';
 import { GitHubApiError } from './github-client';
 
 const originalFetch = globalThis.fetch;
+const originalArrayPush = Array.prototype.push;
 const headSha = 'de0fac2e4500dabe0009e67214ff5f5447ce83dd';
 const targetSha = '1111111111111111111111111111111111111111';
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  restoreArrayPush();
 });
 
 test('buildPrTag rejects untrusted PRs before creating tag refs', async () => {
@@ -72,6 +74,38 @@ test('buildPrTag treats only literal true allow flags as trust bypasses', async 
       }),
     /draft PRs are rejected by default; base branch must be main; fork PRs are rejected by default/
   );
+  assert.equal(requests.some((request) => request.method !== 'GET'), false);
+});
+
+test('buildPrTag collects trust rejection reasons without global array push hooks', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse({
+        draft: true,
+        baseRef: 'develop',
+        headRepo: 'external/nullbuilder'
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  const pushCalls = await withGuardedArrayPushRejects(
+    () =>
+      buildPrTag(config, {
+        repo: 'nullbuilder',
+        prNumber: 7,
+        confirm: true
+      }),
+    /draft PRs are rejected by default; base branch must be main; fork PRs are rejected by default/
+  );
+
+  assert.equal(pushCalls, 0);
   assert.equal(requests.some((request) => request.method !== 'GET'), false);
 });
 
@@ -602,10 +636,10 @@ function mockGitHub(
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = init?.method?.toUpperCase() ?? 'GET';
-    requests.push({
+    requests[requests.length] = {
       method,
       path: url.pathname
-    });
+    };
 
     const response = await handler(url.pathname, method, init);
     return response instanceof Response ? response : responseJson(response);
@@ -699,5 +733,35 @@ function referenceResponse(ref: string) {
 function waitForEventLoopTurn(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
+  });
+}
+
+async function withGuardedArrayPushRejects(
+  callback: () => Promise<unknown>,
+  expected: RegExp
+): Promise<number> {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    await assert.rejects(callback, expected);
+    return pushCalls;
+  } finally {
+    restoreArrayPush();
+  }
+}
+
+function restoreArrayPush(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
   });
 }
