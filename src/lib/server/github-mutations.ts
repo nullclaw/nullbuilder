@@ -201,7 +201,7 @@ function assertTrustedPullRequest(
   }
 ): void {
   const reasons: string[] = [];
-  const headRepo = pullHeadRepository(pull);
+  const headRepo = pullHeadRepositorySlug(pull);
 
   if (pullDraft(pull) !== false && !optionEnabled(options.allowDraft)) {
     reasons.push('draft PRs are rejected by default');
@@ -211,7 +211,7 @@ function assertTrustedPullRequest(
     reasons.push(`base branch must be ${defaultBranch}`);
   }
 
-  if ((!headRepo || headRepo.toLowerCase() !== repo.toLowerCase()) && !optionEnabled(options.allowFork)) {
+  if ((headRepo === null || headRepo.toLowerCase() !== repo.toLowerCase()) && !optionEnabled(options.allowFork)) {
     reasons.push('fork PRs are rejected by default');
   }
 
@@ -246,10 +246,18 @@ function pullHeadSha(pull: GitHubPullDetailResponse): unknown {
   return pullHeadObject(pull)?.sha;
 }
 
-function pullHeadRepository(pull: GitHubPullDetailResponse): string {
+function pullHeadRepositorySlug(pull: GitHubPullDetailResponse): RepoSlug | null {
   const repo = readObjectRecord(pullHeadObject(pull)?.repo);
   const value = repo?.full_name;
-  return typeof value === 'string' ? value : '';
+  if (typeof value !== 'string' || !value.includes('/')) {
+    return null;
+  }
+
+  try {
+    return normalizeRepoSlug(value);
+  } catch {
+    return null;
+  }
 }
 
 async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targetRef: string): Promise<string> {

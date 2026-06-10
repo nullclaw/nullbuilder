@@ -253,6 +253,40 @@ test('buildPrTag rejects malformed API head repository metadata before creating 
   );
 });
 
+test('buildPrTag bounds API head repository slugs before trust comparison', async () => {
+  const config = testConfig();
+  const requests = mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse({
+        headRepo: `nullclaw/${'a'.repeat(600)}`
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  await assert.rejects(
+    () =>
+      buildPrTag(config, {
+        repo: 'nullbuilder',
+        prNumber: 7,
+        confirm: true
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Pull request is not trusted: fork PRs are rejected by default.' &&
+      !error.message.includes('aaaa')
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.path}`),
+    ['GET /repos/nullclaw/nullbuilder', 'GET /repos/nullclaw/nullbuilder/pulls/7']
+  );
+});
+
 test('buildPrTag rejects unsafe PR numbers before fetching GitHub', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
