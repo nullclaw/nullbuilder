@@ -1,4 +1,5 @@
 const std = @import("std");
+const text_safety = @import("text_safety");
 
 pub const max_owner_segment_bytes = 39;
 pub const max_repo_segment_bytes = 100;
@@ -26,7 +27,7 @@ pub fn isOwnerSegment(value: []const u8) bool {
 
 pub fn isRepoSegment(value: []const u8) bool {
     if (value.len == 0 or value.len > max_repo_segment_bytes) return false;
-    if (endsWithAsciiIgnoreCase(value, ".git")) return false;
+    if (text_safety.endsWithAsciiIgnoreCase(value, ".git")) return false;
 
     var previous_dot = false;
     for (value, 0..) |byte, index| {
@@ -39,17 +40,6 @@ pub fn isRepoSegment(value: []const u8) bool {
     }
 
     return !previous_dot;
-}
-
-fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
-    if (value.len < suffix.len) return false;
-
-    const tail = value[value.len - suffix.len ..];
-    for (tail, suffix) |left_byte, right_byte| {
-        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
-    }
-
-    return true;
 }
 
 test "repository safety validates repository slugs" {

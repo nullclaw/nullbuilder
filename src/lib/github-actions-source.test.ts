@@ -148,4 +148,5 @@ function assertActionHelperDependencies(modules: Map<string, string[]>) {
   assertDependencies(modules, 'action_paths', ['text_safety']);
   assertDependencies(modules, 'action_values', ['action_text', 'repository_safety', 'text_safety']);
   assertDependencies(modules, 'action_text', ['text_safety']);
+  assertDependencies(modules, 'repository_safety', ['text_safety']);
 }

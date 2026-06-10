@@ -31,6 +31,12 @@ pub fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
     return true;
 }
 
+pub fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
+    if (value.len < suffix.len) return false;
+
+    return eqlAsciiIgnoreCase(value[value.len - suffix.len ..], suffix);
+}
+
 pub fn isUtf8C1Control(value: []const u8, index: usize) bool {
     return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
 }
@@ -192,6 +198,11 @@ test "text safety compares ASCII text without case sensitivity" {
     try std.testing.expect(eqlAsciiIgnoreCase("Com1", "com1"));
     try std.testing.expect(!eqlAsciiIgnoreCase("host", "hosts"));
     try std.testing.expect(!eqlAsciiIgnoreCase("local-host", "local_host"));
+
+    try std.testing.expect(endsWithAsciiIgnoreCase("nullbuilder.GIT", ".git"));
+    try std.testing.expect(endsWithAsciiIgnoreCase(".git", ".git"));
+    try std.testing.expect(!endsWithAsciiIgnoreCase("git", ".git"));
+    try std.testing.expect(!endsWithAsciiIgnoreCase("nullbuilder.zip", ".git"));
 }
 
 test "text safety identifies ANSI string control boundaries" {
