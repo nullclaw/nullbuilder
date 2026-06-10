@@ -63,7 +63,9 @@ jobs:
           -Maction_paths=.github/actions/action_paths.zig
           --dep action_text
           -Maction_values=.github/actions/action_values.zig
+          --dep text_safety
           -Maction_text=.github/actions/action_text.zig
+          -Mtext_safety=src/zig/text_safety.zig
 
       - name: Test artifact package helper
         run: >-
@@ -80,4 +82,6 @@ jobs:
           -Maction_paths=.github/actions/action_paths.zig
           --dep action_text
           -Maction_values=.github/actions/action_values.zig
+          --dep text_safety
           -Maction_text=.github/actions/action_text.zig
+          -Mtext_safety=src/zig/text_safety.zig
