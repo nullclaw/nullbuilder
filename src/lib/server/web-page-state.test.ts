@@ -96,7 +96,7 @@ test('dashboard page state exposes mutations only for authenticated web sessions
   assert.equal(typeof state.csrfToken, 'string');
 });
 
-test('dashboard page state keeps mutation csrf tied to authenticated access', () => {
+test('dashboard page state keeps csrf tied to authenticated access without payload', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
     NULLBUILDER_WEB_TOKEN: 'web-secret',
@@ -109,6 +109,22 @@ test('dashboard page state keeps mutation csrf tied to authenticated access', ()
   assert.equal(state.dashboard, null);
   assert.equal(state.audit, null);
   assert.equal(state.webMutationsAvailable, true);
+  assert.equal(typeof state.csrfToken, 'string');
+});
+
+test('dashboard page state keeps logout csrf available when mutations are disabled', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret',
+    NULLBUILDER_ENABLE_MUTATIONS: 'false'
+  });
+  const cookies = cookiesWith(createSessionToken('web-secret'));
+  const access = resolveDashboardAccess(config, cookies);
+  const state = buildDashboardPageState(config, cookies, access, pagePayload());
+
+  assert.equal(state.authenticated, true);
+  assert.equal(state.webMutationsEnabled, false);
+  assert.equal(state.webMutationsAvailable, false);
   assert.equal(typeof state.csrfToken, 'string');
 });
 

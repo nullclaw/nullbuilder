@@ -50,6 +50,7 @@ export function buildDashboardPageState(
 ): DashboardPageState {
   const visiblePayload = access.canReadData ? payload : undefined;
   const webMutationsAvailable = config.enableWebMutations && access.authConfigured && access.authenticated;
+  const csrfToken = access.authConfigured && access.authenticated ? createCsrfToken(cookies, config) : null;
 
   return {
     dashboard: visiblePayload?.dashboard ?? null,
@@ -61,6 +62,6 @@ export function buildDashboardPageState(
     webMutationsAvailable,
     hasGitHubToken: Boolean(config.token),
     ownerUrl: githubOwnerWebUrl(config.webBaseUrl, config.owner),
-    csrfToken: webMutationsAvailable ? createCsrfToken(cookies, config) : null
+    csrfToken
   };
 }
