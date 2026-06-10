@@ -75,6 +75,27 @@ fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.j
     });
 }
 
+fn readRunsJsonBytes(
+    io: std.Io,
+    dir: std.Io.Dir,
+    allocator: std.mem.Allocator,
+    path: []const u8,
+) ![]u8 {
+    const stat = try dir.statFile(io, path, .{});
+    if (stat.kind != .file) return error.RunsJsonNotFile;
+    if (stat.size > MAX_RUNS_JSON_BYTES) return error.RunsJsonTooLarge;
+
+    return dir.readFileAlloc(
+        io,
+        path,
+        allocator,
+        .limited(MAX_RUNS_JSON_BYTES + 1),
+    ) catch |err| switch (err) {
+        error.StreamTooLong => error.RunsJsonTooLarge,
+        else => err,
+    };
+}
+
 fn decideShouldBuild(
     runs: []const Run,
     current_run_id: []const u8,
@@ -299,12 +320,7 @@ fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !
 fn decideFromValidatedOptions(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !Decision {
     if (options.force) return forcedDecision();
 
-    const json_bytes = try std.Io.Dir.cwd().readFileAlloc(
-        io,
-        options.runs_json_path,
-        allocator,
-        .limited(MAX_RUNS_JSON_BYTES),
-    );
+    const json_bytes = try readRunsJsonBytes(io, std.Io.Dir.cwd(), allocator, options.runs_json_path);
     defer allocator.free(json_bytes);
 
     var parsed = try parseRunsPayload(allocator, json_bytes);
@@ -685,6 +701,20 @@ test "nightly rejects oversized runs payloads at the parser boundary" {
     @memset(json, ' ');
 
     try std.testing.expectError(error.RunsJsonTooLarge, parseRunsPayload(std.testing.allocator, json));
+}
+
+test "nightly rejects oversized runs files before allocation" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var file = try tmp.dir.createFile(std.testing.io, "runs.json", .{});
+    try file.writePositionalAll(std.testing.io, "x", MAX_RUNS_JSON_BYTES);
+    file.close(std.testing.io);
+
+    try std.testing.expectError(
+        error.RunsJsonTooLarge,
+        readRunsJsonBytes(std.testing.io, tmp.dir, std.testing.failing_allocator, "runs.json"),
+    );
 }
 
 test "nightly rejects oversized scalar values during runs payload parsing" {
