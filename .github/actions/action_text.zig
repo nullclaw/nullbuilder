@@ -29,6 +29,11 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
+        if (text_safety.isUtf8AnsiStringControl(value, index)) {
+            index = text_safety.skipAnsiStringControl(value, index + 2);
+            continue;
+        }
+
         if (text_safety.isUtf8C1Control(value, index)) {
             if (written >= buffer.len) break;
             buffer[written] = ' ';
@@ -115,10 +120,10 @@ test "action text sanitizes diagnostic tokens without echoing controls" {
 
     var string_control_buffer: [64]u8 = undefined;
     const string_control = sanitizeDiagnosticToken(
-        "start\x1bPprivate-dcs\x1b\\mid\x1bXprivate-sos\x1b\\raw\x90private-raw\x9cend",
+        "start\x1bPprivate-dcs\x1b\\mid\x1bXprivate-sos\x1b\\raw\x90private-raw\x9cutf8\xc2\x90private-utf8\xc2\x9cend",
         &string_control_buffer,
     );
-    try std.testing.expectEqualStrings("startmidrawend", string_control);
+    try std.testing.expectEqualStrings("startmidrawutf8end", string_control);
     try std.testing.expect(std.mem.indexOf(u8, string_control, "private") == null);
 
     var csi_buffer: [32]u8 = undefined;
