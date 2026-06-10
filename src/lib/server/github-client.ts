@@ -581,7 +581,7 @@ function relationTokenListIncludes(value: string, relation: string): boolean {
   let start = 0;
 
   for (let index = 0; index <= value.length; index += 1) {
-    if (index === value.length || isWhitespace(value[index])) {
+    if (index === value.length || isLinkHeaderWhitespace(value[index])) {
       if (index > start && value.slice(start, index) === relation) {
         return true;
       }
@@ -634,14 +634,14 @@ function readQuotedRelationParameterValue(parameter: string, quoteStart: number)
 
 function skipWhitespace(value: string, start: number): number {
   let index = start;
-  while (index < value.length && isWhitespace(value[index])) {
+  while (index < value.length && isLinkHeaderWhitespace(value[index])) {
     index += 1;
   }
   return index;
 }
 
-function isWhitespace(value: string): boolean {
-  return value.trim() === '';
+function isLinkHeaderWhitespace(value: string): boolean {
+  return value === ' ' || value === '\t';
 }
 
 export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): string {
