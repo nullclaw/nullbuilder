@@ -30,3 +30,10 @@ test('format helpers keep null values explicit', () => {
   assert.equal(formatDashboardDate(null), 'n/a');
   assert.equal(formatDashboardDate('not-a-date'), 'n/a');
 });
+
+test('format helpers treat unsafe numbers as unknown display values', () => {
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
+    assert.equal(formatNullableNumber(value), 'unknown');
+    assert.equal(formatGrowth(value), 'unknown');
+  }
+});

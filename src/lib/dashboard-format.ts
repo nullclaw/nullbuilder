@@ -46,11 +46,15 @@ export function workflowRunClass(run: WorkflowRunLike): WorkflowRunClass {
 }
 
 export function formatNullableNumber(value: number | null): string {
-  return value === null ? 'unknown' : String(value);
+  return isDisplayCount(value) ? String(value) : 'unknown';
 }
 
 export function formatGrowth(value: number | null): string {
-  return value === null ? 'unknown' : `+${value}`;
+  return isDisplayCount(value) ? `+${value}` : 'unknown';
+}
+
+function isDisplayCount(value: number | null): value is number {
+  return value !== null && Number.isSafeInteger(value) && value >= 0;
 }
 
 function parseDashboardDate(value: string | null): Date | null {
