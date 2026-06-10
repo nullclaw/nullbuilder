@@ -94,6 +94,15 @@ test('publicErrorMessage keeps GitHub authorization details generic', () => {
     publicErrorMessage(new Error('Invalid GitHub API URL: https://evil.example.test/repos?token=secret')),
     'Invalid GitHub API URL.'
   );
+  assert.equal(publicErrorMessage(new Error('Invalid tag name.')), 'Invalid tag name.');
+  assert.equal(
+    publicErrorMessage(new Error('Pull request is not trusted: fork PRs are rejected by default.')),
+    'Pull request is not trusted: fork PRs are rejected by default.'
+  );
+  assert.equal(
+    publicErrorMessage(new Error('Invalid secret for NULLBUILDER_GITHUB_TOKEN: github-token-secret')),
+    'Request failed.'
+  );
 });
 
 test('getRepositorySummary treats malformed workflow runs payload as empty', async () => {

@@ -31,6 +31,21 @@ export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
 export const GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH = 32;
 
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie'] as const;
+const PUBLIC_ERROR_MESSAGE_PREFIXES = [
+  'Pull request is not trusted:',
+  'Build PR tag must start with ',
+  'Release tag must start with '
+] as const;
+const PUBLIC_ERROR_MESSAGES = new Set([
+  'Invalid branch commit SHA.',
+  'Invalid default branch.',
+  'Invalid pull request head SHA.',
+  'Invalid pull request number.',
+  'Invalid tag name.',
+  'Invalid target ref.',
+  'Invalid target SHA.',
+  'Tag name cannot be empty.'
+]);
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
 
@@ -488,18 +503,6 @@ export function publicErrorMessage(error: unknown): string {
     return `GitHub API error (${error.status}).`;
   }
 
-  if (error instanceof Error && error.message.startsWith('Pull request is not trusted:')) {
-    return error.message;
-  }
-
-  if (error instanceof Error && error.message.startsWith('Build PR tag')) {
-    return error.message;
-  }
-
-  if (error instanceof Error && error.message.startsWith('Release tag')) {
-    return error.message;
-  }
-
   if (error instanceof Error && error.message.startsWith('Invalid GitHub API path')) {
     return 'Invalid GitHub API path.';
   }
@@ -508,11 +511,17 @@ export function publicErrorMessage(error: unknown): string {
     return 'Invalid GitHub API URL.';
   }
 
-  if (error instanceof Error && error.message.startsWith('Invalid')) {
+  if (error instanceof Error && isPublicValidationMessage(error.message)) {
     return error.message;
   }
 
   return 'Request failed.';
+}
+
+function isPublicValidationMessage(message: string): boolean {
+  return (
+    PUBLIC_ERROR_MESSAGES.has(message) || PUBLIC_ERROR_MESSAGE_PREFIXES.some((prefix) => message.startsWith(prefix))
+  );
 }
 
 function cacheKey(config: NullbuilderConfig, url: string, accept: string): string {
