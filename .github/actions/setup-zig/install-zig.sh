@@ -124,7 +124,7 @@ PY
   extract_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/zig-extract.XXXXXX")"
   trap 'rm -rf "$archive_dir"; rm -rf "$extract_dir"' EXIT
 
-  curl -fsSL --retry 3 --retry-all-errors "$archive_url" -o "$archive_path"
+  curl -fsSL --retry 3 --retry-all-errors --proto '=https' --proto-redir '=https' "$archive_url" -o "$archive_path"
 
   "$python_bin" - "$archive_path" "$expected_sha" <<'PY'
 import hashlib

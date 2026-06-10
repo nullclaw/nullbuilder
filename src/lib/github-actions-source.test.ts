@@ -39,6 +39,15 @@ test('composite action Zig commands declare module dependencies explicitly', () 
   assert.deepEqual(duplicateDependencies, []);
 });
 
+test('setup-zig downloader keeps archive fetches on HTTPS', () => {
+  const source = readFileSync(join(actionsRoot, 'setup-zig', 'install-zig.sh'), 'utf8');
+  const curlLine = source.split('\n').find((line) => line.includes('curl ') && line.includes('"$archive_url"'));
+
+  assert.ok(curlLine, 'setup-zig installer should fetch the resolved archive URL with curl');
+  assert.match(curlLine, /--proto '=https'/);
+  assert.match(curlLine, /--proto-redir '=https'/);
+});
+
 function actionYamlFiles(directory: string): string[] {
   const files: string[] = [];
 
