@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const MAX_FORWARDED_ARG_COUNT = 128;
 const MAX_FORWARDED_ARG_BYTES = 4096;
 const MAX_FORWARDED_ARGS_TOTAL_BYTES = 128 * 1024;
+const MAX_SPAWN_BOUNDARY_BYTES = 4096;
 const BIDI_FORMAT_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 
@@ -21,7 +22,7 @@ export function resolveLauncherPaths(moduleUrl) {
 }
 
 export function buildChildArgs(paths, userArgs, bundledExists = existsSync(paths.bundledCli)) {
-  if (!isSafeForwardedArgs(userArgs)) {
+  if (!isSafeChildCliPath(paths.bundledCli) || !isSafeChildCliPath(paths.sourceCli) || !isSafeForwardedArgs(userArgs)) {
     return null;
   }
 
@@ -44,6 +45,11 @@ export function runLauncher({
 
   if (!childArgs) {
     stderr.write('Invalid command arguments.\n');
+    return 2;
+  }
+
+  if (!isSafeSpawnExecutable(execPath) || !isSafeSpawnBoundaryText(cwd)) {
+    stderr.write('Invalid launcher environment.\n');
     return 2;
   }
 
@@ -84,6 +90,26 @@ function isSafeForwardedArgs(args) {
   }
 
   return true;
+}
+
+function isSafeChildCliPath(value) {
+  return isSafeSpawnExecutable(value);
+}
+
+function isSafeSpawnExecutable(value) {
+  return isSafeSpawnBoundaryText(value) && !value.startsWith('-');
+}
+
+function isSafeSpawnBoundaryText(value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    return false;
+  }
+
+  if (Buffer.byteLength(value) > MAX_SPAWN_BOUNDARY_BYTES) {
+    return false;
+  }
+
+  return !CONTROL_CHARACTER_PATTERN.test(value) && !BIDI_FORMAT_CONTROL_PATTERN.test(value) && !hasLoneSurrogate(value);
 }
 
 function hasLoneSurrogate(value) {

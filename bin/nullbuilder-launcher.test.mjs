@@ -46,6 +46,42 @@ test('buildChildArgs rejects unsafe forwarded arguments before spawning', () => 
   assert.equal(buildChildArgs(paths, Array.from({ length: 129 }, (_, index) => `arg-${index}`), true), null);
 });
 
+test('buildChildArgs rejects unsafe cli paths before spawning', () => {
+  assert.equal(
+    buildChildArgs(
+      {
+        bundledCli: '--eval=process.exit(1)',
+        sourceCli: '/repo/src/cli/nullbuilder.ts'
+      },
+      ['repos'],
+      true
+    ),
+    null
+  );
+  assert.equal(
+    buildChildArgs(
+      {
+        bundledCli: '/repo/dist/cli/nullbuilder.js',
+        sourceCli: '/repo/src/cli/bad\npath.ts'
+      },
+      ['repos'],
+      false
+    ),
+    null
+  );
+  assert.equal(
+    buildChildArgs(
+      {
+        bundledCli: '/repo/dist/cli/nullbuilder.js',
+        sourceCli: '/repo/src/cli/nullbuilder.ts'
+      },
+      ['repos'],
+      true
+    )?.at(0),
+    '/repo/dist/cli/nullbuilder.js'
+  );
+});
+
 test('runLauncher returns child status and forwards current working directory', () => {
   const spawned = [];
   const status = runLauncher({
@@ -88,6 +124,33 @@ test('runLauncher rejects invalid argv without spawning', () => {
   assert.equal(status, 2);
   assert.equal(spawned, false);
   assert.equal(stderr.value, 'Invalid command arguments.\n');
+});
+
+test('runLauncher rejects unsafe launcher environment without spawning', () => {
+  for (const unsafeEnvironment of [
+    { execPath: '--eval=process.exit(1)', cwd: '/worktree' },
+    { execPath: '/usr/bin/node', cwd: '/worktree\u202e' },
+    { execPath: '/usr/bin/no\x00de', cwd: '/worktree' }
+  ]) {
+    const stderr = writableBuffer();
+    let spawned = false;
+    const status = runLauncher({
+      argv: ['node', 'bin/nullbuilder.js', 'repos'],
+      moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+      exists: () => true,
+      stderr,
+      spawn: () => {
+        spawned = true;
+        return { status: 0 };
+      },
+      ...unsafeEnvironment
+    });
+
+    assert.equal(status, 2);
+    assert.equal(spawned, false);
+    assert.equal(stderr.value, 'Invalid launcher environment.\n');
+    assert.doesNotMatch(stderr.value, /eval|worktree|\x00|\u202e/u);
+  }
 });
 
 test('runLauncher maps spawn errors to a generic failure exit', () => {
