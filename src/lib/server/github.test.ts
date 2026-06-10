@@ -215,6 +215,12 @@ test('discoverRepositories normalizes API repository slugs before adding them', 
           full_name: 'nullclaw/website',
           language: 'TypeScript',
           archived: false
+        },
+        {
+          name: 'nullspoof',
+          full_name: 'nullclaw/website',
+          language: 'TypeScript',
+          archived: false
         }
       ])
     );
@@ -297,6 +303,41 @@ test('discoverRepositories caps discovered repositories before dashboard fan-out
   assert.equal(repos.includes('nullclaw/nullbuilder'), true);
   assert.equal(repos.includes('nullclaw/nullrepo0998'), true);
   assert.equal(repos.includes('nullclaw/nullrepo0999'), false);
+});
+
+test('discoverRepositories stops paginated discovery once the repository cap is loaded', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://discover-page-cap.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+  const discovered = Array.from({ length: MAX_REPOSITORY_LIST_ENTRIES }, (_, index) => {
+    const name = `nullrepo${String(index).padStart(4, '0')}`;
+    return {
+      name,
+      full_name: `nullclaw/${name}`,
+      language: 'TypeScript',
+      archived: false
+    };
+  });
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify(discovered), {
+      headers: {
+        Link: '<https://discover-page-cap.example.test/users/nullclaw/repos?page=2>; rel="next"'
+      }
+    });
+  }) as typeof fetch;
+
+  const repos = await discoverRepositories(config);
+
+  assert.equal(repos.length, MAX_REPOSITORY_LIST_ENTRIES);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests, [
+    'https://discover-page-cap.example.test/users/nullclaw/repos?type=owner&sort=updated&per_page=100'
+  ]);
 });
 
 function jsonResponse(value: unknown, init: ResponseInit = {}): Response {

@@ -52,7 +52,8 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
       config,
       `/users/${config.owner}/repos?type=owner&sort=updated&per_page=100`,
       {},
-      20
+      20,
+      MAX_REPOSITORY_LIST_ENTRIES
     );
 
     for (const repo of repos) {
@@ -71,7 +72,7 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
         continue;
       }
 
-      const name = discoveredRepo.name.toLowerCase();
+      const name = repoName(slug);
       const isNullRepo = name.startsWith('null') || name === 'nllclw';
       const isZigRepo = discoveredRepo.language === 'Zig';
       if (!discoveredRepo.archived && (isNullRepo || isZigRepo)) {
@@ -121,6 +122,10 @@ function normalizeDiscoveredRepoSlug(fullName: string, defaultOwner: string): Re
 
 function repoKey(repo: RepoSlug): string {
   return repo.toLowerCase();
+}
+
+function repoName(repo: RepoSlug): string {
+  return repo.slice(repo.indexOf('/') + 1).toLowerCase();
 }
 
 export async function getRepositorySummary(config: NullbuilderConfig, repo: RepoSlug): Promise<RepositorySummary> {
