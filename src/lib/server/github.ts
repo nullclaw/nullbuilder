@@ -93,7 +93,7 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
           break;
         }
         configured.keys.add(key);
-        configured.values.push(slug);
+        configured.values[configured.values.length] = slug;
       }
     }
   } catch {
@@ -145,7 +145,7 @@ function repositorySlugCollection(repos: readonly RepoSlug[]): RepositorySlugCol
     const key = repoKey(repo);
     if (!collection.keys.has(key)) {
       collection.keys.add(key);
-      collection.values.push(repo);
+      collection.values[collection.values.length] = repo;
     }
   }
 
@@ -183,7 +183,7 @@ function sortRepositorySlugs(values: RepoSlug[]): void {
 function copyRepositorySlugs(repos: readonly RepoSlug[]): RepoSlug[] {
   const copy: RepoSlug[] = [];
   for (let index = 0; index < repos.length; index += 1) {
-    copy.push(repos[index]);
+    copy[index] = repos[index];
   }
   return copy;
 }

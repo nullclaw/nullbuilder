@@ -12,13 +12,44 @@ import {
 
 const originalFetch = globalThis.fetch;
 const originalArraySort = Array.prototype.sort;
+const originalArrayPush = Array.prototype.push;
 const originalMapForEach = Map.prototype.forEach;
 const SUMMARY_REPO = 'nullclaw/nullbuilder' as RepoSlug;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  restoreArrayPush();
   restoreCollectionTraversalMethods();
 });
+
+function restoreArrayPush(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
+  });
+}
+
+async function withGuardedArrayPush<T>(callback: () => Promise<T>): Promise<{ result: T; pushCalls: number }> {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: await callback(),
+      pushCalls
+    };
+  } finally {
+    restoreArrayPush();
+  }
+}
 
 function rejectCollectionTraversalMethods(): void {
   Array.prototype.sort = function arraySortShouldNotBeCalled(): never {
@@ -430,6 +461,42 @@ test('discoverRepositories avoids user-controlled configured repository iterator
   } finally {
     restoreCollectionTraversalMethods();
   }
+});
+
+test('discoverRepositories collects repository slugs without global array push hooks', async () => {
+  const baseConfig = readConfig({
+    NULLBUILDER_REPOS: 'NullBuilder nullclaw/nullbuilder',
+    NULLBUILDER_IGNORE_REPOS: 'ignored',
+    NULLBUILDER_GITHUB_API_URL: 'https://discover-push.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const config = {
+    ...baseConfig,
+    repos: ['nullclaw/NullBuilder', 'nullclaw/nullbuilder'] as RepoSlug[]
+  };
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          name: 'nullthing',
+          full_name: 'nullclaw/nullthing',
+          language: 'TypeScript',
+          archived: false
+        },
+        {
+          name: 'ignored',
+          full_name: 'nullclaw/ignored',
+          language: 'Zig',
+          archived: false
+        }
+      ])
+    )) as typeof fetch;
+
+  const { result, pushCalls } = await withGuardedArrayPush(() => discoverRepositories(config));
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(result, ['nullclaw/NullBuilder', 'nullclaw/nullthing']);
 });
 
 test('discoverRepositories caps discovered repositories before dashboard fan-out', async () => {
