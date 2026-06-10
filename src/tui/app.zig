@@ -3,6 +3,8 @@ const std = @import("std");
 const cli = @import("cli.zig");
 const dashboard = @import("dashboard.zig");
 
+const max_cli_path_bytes = 4096;
+
 pub fn run(
     gpa: std.mem.Allocator,
     arena: std.mem.Allocator,
@@ -15,6 +17,11 @@ pub fn run(
     if (isHelpCommand(args)) {
         try printHelp(out);
         return null;
+    }
+
+    if (!isSafeCliPath(cli_path)) {
+        try out.writeAll("invalid NULLBUILDER_NODE_CLI\n");
+        return 2;
     }
 
     if (args.len > 1 and isTagCommand(args[1])) {
@@ -30,6 +37,21 @@ fn isHelpCommand(args: []const []const u8) bool {
 
 fn isTagCommand(value: []const u8) bool {
     return std.mem.eql(u8, value, "build-pr") or std.mem.eql(u8, value, "release-tag");
+}
+
+fn isSafeCliPath(value: []const u8) bool {
+    if (value.len == 0 or value.len > max_cli_path_bytes) return false;
+    if (std.mem.startsWith(u8, value, "-")) return false;
+
+    for (value) |byte| {
+        if (isPathControlByte(byte)) return false;
+    }
+
+    return true;
+}
+
+fn isPathControlByte(byte: u8) bool {
+    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
 }
 
 fn printHelp(out: *std.Io.Writer) !void {
@@ -96,4 +118,20 @@ test "tag commands are detected explicitly" {
     try std.testing.expect(isTagCommand("build-pr"));
     try std.testing.expect(isTagCommand("release-tag"));
     try std.testing.expect(!isTagCommand("repos"));
+}
+
+test "node cli path rejects option injection and controls" {
+    const oversized = [_]u8{'a'} ** (max_cli_path_bytes + 1);
+
+    try std.testing.expect(isSafeCliPath("./bin/nullbuilder.js"));
+    try std.testing.expect(isSafeCliPath("/tmp/nullbuilder.js"));
+    try std.testing.expect(isSafeCliPath("scripts/nullbuilder.js"));
+
+    try std.testing.expect(!isSafeCliPath(""));
+    try std.testing.expect(!isSafeCliPath("-e"));
+    try std.testing.expect(!isSafeCliPath("--eval=process.exit(1)"));
+    try std.testing.expect(!isSafeCliPath("bad\npath"));
+    try std.testing.expect(!isSafeCliPath("bad\x00path"));
+    try std.testing.expect(!isSafeCliPath("bad\xc2\x85path"));
+    try std.testing.expect(!isSafeCliPath(oversized[0..]));
 }
