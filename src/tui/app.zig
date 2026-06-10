@@ -15,10 +15,14 @@ const max_app_arg_count = max_forwarded_arg_count + 1;
 const max_app_arg_bytes = max_forwarded_arg_bytes;
 const max_app_args_total_bytes = max_forwarded_args_total_bytes + max_cli_path_bytes;
 
-const Command = union(enum) {
+const CliCommand = union(enum) {
     dashboard,
-    help,
     tag: []const []const u8,
+};
+
+const Command = union(enum) {
+    help,
+    cli: CliCommand,
     invalid,
 };
 
@@ -36,7 +40,8 @@ pub fn run(
         return 2;
     }
 
-    switch (classifyCommand(args)) {
+    const command = classifyCommand(args);
+    switch (command) {
         .help => {
             try printHelp(out);
             return null;
@@ -45,30 +50,15 @@ pub fn run(
             try out.writeAll("invalid command\n");
             return 2;
         },
-        .dashboard => {
-            if (!isSafeCliPath(cli_path)) {
-                try out.writeAll("invalid NULLBUILDER_NODE_CLI\n");
-                return 2;
-            }
-
-            return renderDashboard(gpa, arena, io, out, cli_path, no_color);
-        },
-        .tag => |tag_args| {
-            if (!isSafeCliPath(cli_path)) {
-                try out.writeAll("invalid NULLBUILDER_NODE_CLI\n");
-                return 2;
-            }
-
-            return forwardTagCommand(gpa, io, out, cli_path, tag_args);
-        },
+        .cli => |cli_command| return runCliCommand(gpa, arena, io, out, cli_path, no_color, cli_command),
     }
 }
 
 fn classifyCommand(args: []const []const u8) Command {
-    if (args.len <= 1) return .dashboard;
+    if (args.len <= 1) return .{ .cli = .dashboard };
 
     if (isHelpArg(args[1])) return .help;
-    if (isTagCommand(args[1])) return .{ .tag = args[1..] };
+    if (isTagCommand(args[1])) return .{ .cli = .{ .tag = args[1..] } };
     return .invalid;
 }
 
@@ -122,6 +112,26 @@ fn printHelp(out: *std.Io.Writer) !void {
         \\                       Token used by the underlying nullbuilder CLI
         \\
     );
+}
+
+fn runCliCommand(
+    gpa: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    io: std.Io,
+    out: *std.Io.Writer,
+    cli_path: []const u8,
+    no_color: bool,
+    command: CliCommand,
+) !?u8 {
+    if (!isSafeCliPath(cli_path)) {
+        try out.writeAll("invalid NULLBUILDER_NODE_CLI\n");
+        return 2;
+    }
+
+    return switch (command) {
+        .dashboard => renderDashboard(gpa, arena, io, out, cli_path, no_color),
+        .tag => |tag_args| forwardTagCommand(gpa, io, out, cli_path, tag_args),
+    };
 }
 
 fn renderDashboard(
@@ -192,27 +202,41 @@ fn buildNodeCliArgv(
 }
 
 test "commands are classified without falling through to dashboard" {
-    try std.testing.expectEqual(Command.dashboard, classifyCommand(&.{}));
-    try std.testing.expectEqual(Command.dashboard, classifyCommand(&.{"nullbuilder-tui"}));
+    try expectDashboardCommand(classifyCommand(&.{}));
+    try expectDashboardCommand(classifyCommand(&.{"nullbuilder-tui"}));
     try std.testing.expectEqual(Command.help, classifyCommand(&.{ "nullbuilder-tui", "--help" }));
     try std.testing.expectEqual(Command.help, classifyCommand(&.{ "nullbuilder-tui", "help" }));
     try std.testing.expectEqual(Command.invalid, classifyCommand(&.{ "nullbuilder-tui", "repos" }));
     try std.testing.expectEqual(Command.invalid, classifyCommand(&.{ "nullbuilder-tui", "unknown" }));
 
     const build_pr_args = &.{ "nullbuilder-tui", "build-pr", "nullclaw/nullbuilder", "--pr", "7" };
-    switch (classifyCommand(build_pr_args)) {
-        .tag => |tag_args| {
-            try std.testing.expectEqualStrings("build-pr", tag_args[0]);
-            try std.testing.expectEqualStrings("nullclaw/nullbuilder", tag_args[1]);
+    const build_pr_tag_args = try expectTagCommand(classifyCommand(build_pr_args));
+    try std.testing.expectEqualStrings("build-pr", build_pr_tag_args[0]);
+    try std.testing.expectEqualStrings("nullclaw/nullbuilder", build_pr_tag_args[1]);
+
+    const release_tag_args = &.{ "nullbuilder-tui", "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3" };
+    const release_tag_command_args = try expectTagCommand(classifyCommand(release_tag_args));
+    try std.testing.expectEqualStrings("release-tag", release_tag_command_args[0]);
+}
+
+fn expectDashboardCommand(command: Command) !void {
+    switch (command) {
+        .cli => |cli_command| switch (cli_command) {
+            .dashboard => {},
+            else => return error.UnexpectedCommand,
         },
         else => return error.UnexpectedCommand,
     }
+}
 
-    const release_tag_args = &.{ "nullbuilder-tui", "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3" };
-    switch (classifyCommand(release_tag_args)) {
-        .tag => |tag_args| try std.testing.expectEqualStrings("release-tag", tag_args[0]),
-        else => return error.UnexpectedCommand,
-    }
+fn expectTagCommand(command: Command) ![]const []const u8 {
+    return switch (command) {
+        .cli => |cli_command| switch (cli_command) {
+            .tag => |tag_args| tag_args,
+            else => error.UnexpectedCommand,
+        },
+        else => error.UnexpectedCommand,
+    };
 }
 
 test "tag commands are detected explicitly" {
@@ -315,6 +339,24 @@ test "help command returns before validating node cli path" {
     try std.testing.expectEqual(@as(?u8, null), exit_code);
     try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "nullbuilder-tui") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "invalid NULLBUILDER_NODE_CLI") == null);
+}
+
+test "cli-backed commands validate node cli path before spawning" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const exit_code = try run(
+        std.testing.allocator,
+        std.testing.allocator,
+        undefined,
+        &out.writer,
+        "-e",
+        true,
+        &.{ "nullbuilder-tui", "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3" },
+    );
+
+    try std.testing.expectEqual(@as(?u8, 2), exit_code);
+    try std.testing.expectEqualStrings("invalid NULLBUILDER_NODE_CLI\n", out.writer.buffered());
 }
 
 test "run rejects unsafe top-level arguments before command handling" {
