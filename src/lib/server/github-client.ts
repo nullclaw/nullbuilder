@@ -421,6 +421,8 @@ function normalizeGitHubApiUrl(config: NullbuilderConfig, url: URL, errorMessage
 
   if (
     url.origin !== base.origin ||
+    url.username !== '' ||
+    url.password !== '' ||
     (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) ||
     hasUnsafeApiPathControl(`${url.pathname}${url.search}`)
   ) {

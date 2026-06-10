@@ -66,6 +66,8 @@ test('resolveGitHubApiUrl rejects cross-origin absolute next URLs', () => {
   );
 
   for (const url of [
+    'https://token@api.github.com/repos/nullclaw/nullbuilder',
+    'https://user:token@api.github.com/repos/nullclaw/nullbuilder',
     'https://api.github.com/repos/nullclaw/nullbuilder/%0asecret',
     'https://api.github.com/repos/nullclaw/nullbuilder/%C2%85secret'
   ]) {
