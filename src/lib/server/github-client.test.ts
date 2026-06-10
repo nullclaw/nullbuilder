@@ -366,6 +366,27 @@ test('githubRequest validates custom accept headers before fetching GitHub', asy
   assert.deepEqual(accepts, ['application/vnd.github.star+json']);
 });
 
+test('githubRequest forces manual redirects before fetching GitHub', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://redirect-policy.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const redirects: Array<RequestRedirect | undefined> = [];
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    redirects.push(init?.redirect);
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  await githubRequest(config, '/repos/nullclaw/nullbuilder');
+  await githubRequest(config, '/repos/nullclaw/nullbuilder', {
+    redirect: 'follow'
+  });
+
+  assert.deepEqual(redirects, ['manual', 'manual']);
+});
+
 test('githubRequest shares in-flight cacheable GET responses', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

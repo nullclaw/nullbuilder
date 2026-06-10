@@ -194,6 +194,7 @@ async function requestGitHubJson<T>(
     ...requestInit,
     method,
     headers,
+    redirect: 'manual',
     signal: requestInit.signal ?? AbortSignal.timeout(config.requestTimeoutMs)
   });
 
