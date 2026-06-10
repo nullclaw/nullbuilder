@@ -93,23 +93,7 @@ pub fn render(
     try printWorkItems(arena, out, dashboard, .issues, "open issues");
     try printWorkItems(arena, out, dashboard, .pull_requests, "open pull requests");
 
-    if (dashboard.errors.len > 0) {
-        try out.writeAll("\nLoad errors\n");
-        try out.writeAll("-----------\n");
-        var errors = dashboard_model.LoadErrorIterator.init(dashboard);
-        while (errors.next()) |load_error| {
-            const error_repo = try sanitizeTerminalText(arena, load_error.repo);
-            defer error_repo.deinit(arena);
-            const message = try sanitizeTerminalText(arena, load_error.message);
-            defer message.deinit(arena);
-
-            try out.print("  {s:<[2]} {s}\n", .{
-                terminal.clipUtf8(error_repo.value, repo_column_width),
-                terminal.clipUtf8(message.value, error_message_width),
-                repo_column_width,
-            });
-        }
-    }
+    try printLoadErrors(arena, out, dashboard);
 }
 
 fn printWorkItems(
@@ -143,6 +127,31 @@ fn printWorkItems(
     if (printed == 0) {
         try out.print("  no {s}\n", .{label});
     }
+}
+
+fn printLoadErrors(arena: std.mem.Allocator, out: *std.Io.Writer, dashboard: Dashboard) !void {
+    var errors = dashboard_model.LoadErrorIterator.init(dashboard);
+    const first_error = errors.next() orelse return;
+
+    try out.writeAll("\nLoad errors\n");
+    try out.writeAll("-----------\n");
+    try printLoadError(arena, out, first_error);
+    while (errors.next()) |load_error| {
+        try printLoadError(arena, out, load_error);
+    }
+}
+
+fn printLoadError(arena: std.mem.Allocator, out: *std.Io.Writer, load_error: dashboard_model.LoadError) !void {
+    const error_repo = try sanitizeTerminalText(arena, load_error.repo);
+    defer error_repo.deinit(arena);
+    const message = try sanitizeTerminalText(arena, load_error.message);
+    defer message.deinit(arena);
+
+    try out.print("  {s:<[2]} {s}\n", .{
+        terminal.clipUtf8(error_repo.value, repo_column_width),
+        terminal.clipUtf8(message.value, error_message_width),
+        repo_column_width,
+    });
 }
 
 fn printStatus(arena: std.mem.Allocator, out: *std.Io.Writer, no_color: bool, status: []const u8, width: usize) !void {
@@ -315,6 +324,7 @@ test "render does not echo terminal control characters from external text" {
     try std.testing.expect(std.mem.indexOf(u8, output, "rate limited now") == null);
     try expectContains(output, "unknown");
     try expectContains(output, "completed");
+    try std.testing.expect(std.mem.indexOf(u8, output, "Load errors") == null);
 }
 
 test "render rejects oversized dashboard json before parsing" {

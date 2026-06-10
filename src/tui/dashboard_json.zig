@@ -57,11 +57,17 @@ pub fn safeTextField(
     max_len: usize,
 ) []const u8 {
     const value = object.get(field_name) orelse return fallback;
-    return switch (value) {
-        .string => |string| if (string.len <= max_len and !text_safety.hasControl(string)) string else fallback,
-        .null => fallback,
-        else => fallback,
-    };
+    return safeTextValue(value, max_len) orelse fallback;
+}
+
+pub fn requiredSafeTextField(
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+) ?[]const u8 {
+    const value = object.get(field_name) orelse return null;
+    const string = safeTextValue(value, max_len) orelse return null;
+    return if (string.len > 0) string else null;
 }
 
 pub fn intField(object: JsonObject, field_name: []const u8) u64 {
@@ -80,6 +86,13 @@ pub fn boundedIntField(object: JsonObject, field_name: []const u8, max_value: u6
 
 pub fn safeIntegerField(object: JsonObject, field_name: []const u8) u64 {
     return boundedIntField(object, field_name, max_safe_json_integer);
+}
+
+fn safeTextValue(value: JsonValue, max_len: usize) ?[]const u8 {
+    return switch (value) {
+        .string => |string| if (string.len <= max_len and !text_safety.hasControl(string)) string else null,
+        else => null,
+    };
 }
 
 test "field helpers return typed values and fallbacks" {
@@ -150,6 +163,28 @@ test "safeTextField rejects oversized and control-bearing strings" {
     try std.testing.expectEqualStrings("fallback", safeTextField(object, "c1", "fallback", 64));
     try std.testing.expectEqualStrings("fallback", safeTextField(object, "empty", "fallback", 64));
     try std.testing.expectEqualStrings("fallback", safeTextField(object, "missing", "fallback", 64));
+}
+
+test "requiredSafeTextField rejects missing empty and unsafe strings" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": "repo-\u043f\u0440\u0438\u0432\u0435\u0442",
+        \\  "empty": "",
+        \\  "null": null,
+        \\  "oversized": "xxxxxxxxxx",
+        \\  "control": "repo\u001b[31m"
+        \\}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try std.testing.expectEqualStrings("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", requiredSafeTextField(object, "safe", 64).?);
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "safe", 4));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "empty", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "null", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "missing", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "oversized", 4));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "control", 64));
 }
 
 test "intField accepts only safe positive integers" {

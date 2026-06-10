@@ -181,21 +181,30 @@ fn workItemFromValue(value: JsonValue) ?WorkItem {
 fn workItemFromObject(work: JsonObject) ?WorkItem {
     const number = dashboard_json.boundedIntField(work, "number", max_work_item_number);
     if (number == 0) return null;
+    const repo = dashboard_json.requiredSafeTextField(work, "repo", max_repo_text_len) orelse return null;
+    const title = dashboard_json.requiredSafeTextField(work, "title", max_work_title_len) orelse return null;
 
     return .{
-        .repo = dashboard_json.safeTextField(work, "repo", "", max_repo_text_len),
+        .repo = repo,
         .number = number,
-        .title = dashboard_json.safeTextField(work, "title", "", max_work_title_len),
+        .title = title,
     };
 }
 
 fn loadErrorFromValue(value: JsonValue) ?LoadError {
     return switch (value) {
-        .object => |load_error| .{
-            .repo = dashboard_json.safeTextField(load_error, "repo", "", max_repo_text_len),
-            .message = dashboard_json.safeTextField(load_error, "error", "", max_error_message_len),
-        },
+        .object => |load_error| loadErrorFromObject(load_error),
         else => null,
+    };
+}
+
+fn loadErrorFromObject(load_error: JsonObject) ?LoadError {
+    const repo = dashboard_json.requiredSafeTextField(load_error, "repo", max_repo_text_len) orelse return null;
+    const message = dashboard_json.requiredSafeTextField(load_error, "error", max_error_message_len) orelse return null;
+
+    return .{
+        .repo = repo,
+        .message = message,
     };
 }
 
@@ -357,15 +366,10 @@ test "dashboard model rejects oversized external text fields" {
     try std.testing.expectEqualStrings("unknown", repo.slug);
 
     var issues = WorkItemIterator.init(dashboard, .issues);
-    const issue = issues.next().?;
-    try std.testing.expectEqualStrings("", issue.repo);
-    try std.testing.expectEqual(@as(u64, 7), issue.number);
-    try std.testing.expectEqualStrings("", issue.title);
+    try std.testing.expectEqual(null, issues.next());
 
     var errors = LoadErrorIterator.init(dashboard);
-    const load_error = errors.next().?;
-    try std.testing.expectEqualStrings("", load_error.repo);
-    try std.testing.expectEqualStrings("", load_error.message);
+    try std.testing.expectEqual(null, errors.next());
 }
 
 test "dashboard model rejects control-bearing external text fields" {
@@ -394,9 +398,7 @@ test "dashboard model rejects control-bearing external text fields" {
     try std.testing.expect(repo.has_failure);
 
     var issues = WorkItemIterator.init(dashboard, .issues);
-    const issue = issues.next().?;
-    try std.testing.expectEqualStrings("", issue.repo);
-    try std.testing.expectEqualStrings("", issue.title);
+    try std.testing.expectEqual(null, issues.next());
 
     var pulls = WorkItemIterator.init(dashboard, .pull_requests);
     const pull = pulls.next().?;
@@ -404,9 +406,7 @@ test "dashboard model rejects control-bearing external text fields" {
     try std.testing.expectEqualStrings("Ship release", pull.title);
 
     var errors = LoadErrorIterator.init(dashboard);
-    const load_error = errors.next().?;
-    try std.testing.expectEqualStrings("", load_error.repo);
-    try std.testing.expectEqualStrings("", load_error.message);
+    try std.testing.expectEqual(null, errors.next());
 }
 
 test "work item iterator skips invalid rows across repositories" {
@@ -418,6 +418,10 @@ test "work item iterator skips invalid rows across repositories" {
         \\      "invalid",
         \\      {"repo": "alpha", "number": 0, "title": "Zero"},
         \\      {"repo": "alpha", "title": "Missing number"},
+        \\      {"number": 6, "title": "Missing repo"},
+        \\      {"repo": "alpha", "number": 6},
+        \\      {"repo": "", "number": 6, "title": "Empty repo"},
+        \\      {"repo": "alpha", "number": 6, "title": ""},
         \\      {"repo": "alpha", "number": 1000000000, "title": "Huge number"},
         \\      {"repo": "alpha", "number": 7, "title": "Fix build"}
         \\    ]},
