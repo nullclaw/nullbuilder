@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import {
   findConfiguredRepoSlug,
   normalizeOwner,
@@ -9,6 +9,40 @@ import {
 } from './repositories';
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
+const originalArrayPush = Array.prototype.push;
+
+afterEach(() => {
+  restoreArrayPush();
+});
+
+function restoreArrayPush(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
+  });
+}
+
+function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      pushCalls
+    };
+  } finally {
+    restoreArrayPush();
+  }
+}
 
 test('normalizeOwner rejects invalid owners', () => {
   assert.equal(normalizeOwner('NullClaw'), 'NullClaw');
@@ -98,6 +132,15 @@ test('repository list helpers avoid runtime iterators', () => {
 
   assert.deepEqual(parsed, ['nullclaw/nullbuilder', 'nullclaw/nullhub']);
   assert.equal(configured, 'nullclaw/nullhub');
+});
+
+test('parseRepositoryList collects repositories without global array push hooks', () => {
+  const { result, pushCalls } = withGuardedArrayPush(() =>
+    parseRepositoryList('nullbuilder, nullhub nullbuilder NullClaw/NULLHUB', 'nullclaw')
+  );
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(result, ['nullclaw/nullbuilder', 'nullclaw/nullhub']);
 });
 
 test('findConfiguredRepoSlug normalizes candidates against configured repositories', () => {

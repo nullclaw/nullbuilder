@@ -187,7 +187,7 @@ function addRepositoryListEntry(entry: string, defaultOwner: string, seen: Set<s
     throw new Error('Too many repositories configured.');
   }
   seen.add(key);
-  repos.push(slug);
+  repos[repos.length] = slug;
 }
 
 function isRepositoryListSeparator(value: string): boolean {
