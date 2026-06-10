@@ -517,8 +517,35 @@ function readRelationParameterValue(parameter: string, valueStart: number): stri
     return parameter.slice(valueStart).trim();
   }
 
-  const quoteEnd = parameter.indexOf('"', valueStart + 1);
-  return quoteEnd === parameter.length - 1 ? parameter.slice(valueStart + 1, quoteEnd) : null;
+  return readQuotedRelationParameterValue(parameter, valueStart);
+}
+
+function readQuotedRelationParameterValue(parameter: string, quoteStart: number): string | null {
+  let value = '';
+  let escaped = false;
+
+  for (let index = quoteStart + 1; index < parameter.length; index += 1) {
+    const char = parameter[index];
+
+    if (escaped) {
+      value += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      return index === parameter.length - 1 ? value : null;
+    }
+
+    value += char;
+  }
+
+  return null;
 }
 
 function skipWhitespace(value: string, start: number): number {

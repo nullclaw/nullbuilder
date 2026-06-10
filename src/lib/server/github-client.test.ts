@@ -145,6 +145,38 @@ test('githubGetPages parses quoted pagination relation parameters', async () => 
   ]);
 });
 
+test('githubGetPages parses escaped quotes inside pagination relation parameters', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://escaped-link.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+
+    if (requests.length === 1) {
+      return new Response(JSON.stringify([{ id: 1 }]), {
+        headers: {
+          Link: '<https://escaped-link.example.test/repos?page=2>; rel="prev \\" next"'
+        }
+      });
+    }
+
+    return new Response(JSON.stringify([{ id: 2 }]));
+  }) as typeof fetch;
+
+  const pages = await githubGetPages<{ id: number }>(config, '/repos', {}, 5);
+
+  assert.deepEqual(pages, [{ id: 1 }, { id: 2 }]);
+  assert.deepEqual(requests, [
+    'https://escaped-link.example.test/repos',
+    'https://escaped-link.example.test/repos?page=2'
+  ]);
+});
+
 test('githubGetPages ignores relation parameters without next tokens', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
