@@ -14,6 +14,11 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
+        if (text_safety.isRawAnsiStringControl(byte)) {
+            index = text_safety.skipAnsiStringControl(value, index + 1);
+            continue;
+        }
+
         if (text_safety.isUtf8C1Control(value, index)) {
             if (written >= buffer.len) break;
             buffer[written] = ' ';
@@ -84,14 +89,8 @@ fn skipAnsiEscape(value: []const u8, start: usize) usize {
         return index;
     }
 
-    if (introducer == ']') {
-        index += 1;
-        while (index < value.len) {
-            if (value[index] == 0x07) return index + 1;
-            if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
-            index += 1;
-        }
-        return index;
+    if (text_safety.isAnsiStringControlIntroducer(introducer)) {
+        return text_safety.skipAnsiStringControl(value, index + 1);
     }
 
     return index + 1;
@@ -125,6 +124,14 @@ test "action text sanitizes diagnostic tokens without echoing controls" {
         "baddone",
         sanitizeDiagnosticToken("bad\x1b]0;title\x07done", &title_buffer),
     );
+
+    var string_control_buffer: [64]u8 = undefined;
+    const string_control = sanitizeDiagnosticToken(
+        "start\x1bPprivate-dcs\x1b\\mid\x1bXprivate-sos\x1b\\raw\x90private-raw\x9cend",
+        &string_control_buffer,
+    );
+    try std.testing.expectEqualStrings("startmidrawend", string_control);
+    try std.testing.expect(std.mem.indexOf(u8, string_control, "private") == null);
 
     var c1_buffer: [32]u8 = undefined;
     try std.testing.expectEqualStrings(

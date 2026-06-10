@@ -121,8 +121,8 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
         return null;
     }
 
-    if (isRawAnsiStringControl(byte)) {
-        index.* = skipAnsiStringControl(value, index.* + 1);
+    if (text_safety.isRawAnsiStringControl(byte)) {
+        index.* = text_safety.skipAnsiStringControl(value, index.* + 1);
         return null;
     }
 
@@ -171,30 +171,11 @@ fn skipAnsiEscape(value: []const u8, start: usize) usize {
         return index;
     }
 
-    if (introducer == ']') {
-        return skipAnsiStringControl(value, index + 1);
-    }
-
-    if (introducer == 'P' or introducer == 'X' or introducer == '^' or introducer == '_') {
-        return skipAnsiStringControl(value, index + 1);
+    if (text_safety.isAnsiStringControlIntroducer(introducer)) {
+        return text_safety.skipAnsiStringControl(value, index + 1);
     }
 
     return index + 1;
-}
-
-fn skipAnsiStringControl(value: []const u8, start: usize) usize {
-    var index = start;
-    while (index < value.len) {
-        if (value[index] == 0x07) return index + 1;
-        if (value[index] == 0x9c) return index + 1;
-        if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
-        index += 1;
-    }
-    return index;
-}
-
-fn isRawAnsiStringControl(byte: u8) bool {
-    return byte == 0x90 or byte == 0x98 or byte == 0x9d or byte == 0x9e or byte == 0x9f;
 }
 
 fn isUnsafeTerminalControlByte(byte: u8, options: SanitizeOptions) bool {

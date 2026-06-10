@@ -70,6 +70,25 @@ pub fn isInvalidUtf8SequenceStart(value: []const u8, index: usize) bool {
     return value[index] >= 0x80 and utf8SequenceLength(value, index) == 1;
 }
 
+pub fn isAnsiStringControlIntroducer(byte: u8) bool {
+    return byte == ']' or byte == 'P' or byte == 'X' or byte == '^' or byte == '_';
+}
+
+pub fn isRawAnsiStringControl(byte: u8) bool {
+    return byte == 0x90 or byte == 0x98 or byte == 0x9d or byte == 0x9e or byte == 0x9f;
+}
+
+pub fn skipAnsiStringControl(value: []const u8, start: usize) usize {
+    var index = start;
+    while (index < value.len) {
+        if (value[index] == 0x07) return index + 1;
+        if (value[index] == 0x9c) return index + 1;
+        if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
+        index += 1;
+    }
+    return index;
+}
+
 fn hasValidUtf8ScalarRange(sequence: []const u8) bool {
     return switch (sequence.len) {
         2 => true,
@@ -117,4 +136,25 @@ test "text safety counts only complete UTF-8 sequences" {
     try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xed\xa0\x80", 0));
     try std.testing.expectEqual(@as(usize, 1), utf8SequenceLength("\xf4\x90\x80\x80", 0));
     try std.testing.expect(isInvalidUtf8SequenceStart("\xc0\x85", 0));
+}
+
+test "text safety identifies ANSI string control boundaries" {
+    try std.testing.expect(isAnsiStringControlIntroducer(']'));
+    try std.testing.expect(isAnsiStringControlIntroducer('P'));
+    try std.testing.expect(isAnsiStringControlIntroducer('X'));
+    try std.testing.expect(isAnsiStringControlIntroducer('^'));
+    try std.testing.expect(isAnsiStringControlIntroducer('_'));
+    try std.testing.expect(!isAnsiStringControlIntroducer('['));
+
+    try std.testing.expect(isRawAnsiStringControl(0x90));
+    try std.testing.expect(isRawAnsiStringControl(0x98));
+    try std.testing.expect(isRawAnsiStringControl(0x9d));
+    try std.testing.expect(isRawAnsiStringControl(0x9e));
+    try std.testing.expect(isRawAnsiStringControl(0x9f));
+    try std.testing.expect(!isRawAnsiStringControl(0x85));
+
+    try std.testing.expectEqual(@as(usize, 4), skipAnsiStringControl("abc\x07tail", 0));
+    try std.testing.expectEqual(@as(usize, 4), skipAnsiStringControl("abc\x9ctail", 0));
+    try std.testing.expectEqual(@as(usize, 5), skipAnsiStringControl("abc\x1b\\tail", 0));
+    try std.testing.expectEqual(@as(usize, 3), skipAnsiStringControl("abc", 0));
 }
