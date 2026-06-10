@@ -15,6 +15,7 @@ import {
 } from './audit-rules';
 import { decodeGitHubContent, encodeGitHubPath } from './audit-workflows';
 import { mapWithConcurrency } from './concurrency';
+import { sanitizeGitBranchName } from './git-refs';
 import { discoverRepositories, GitHubApiError, githubGet, publicErrorMessage } from './github';
 import {
   githubActionsUrl,
@@ -57,10 +58,20 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
     const normalizedRepo = normalizeRepoSlug(repo, config.owner);
     const repository = await githubGet<GitHubRepositoryResponse>(config, `/repos/${normalizedRepo}`);
     const urlContext = githubRepositoryUrlContext(config.webBaseUrl, normalizedRepo, repository.html_url);
+    const defaultBranch = safeDefaultBranch(repository.default_branch);
+    const displayDefaultBranch = defaultBranch ?? 'unknown';
     const safeRepository = {
       ...repository,
+      default_branch: displayDefaultBranch,
       html_url: urlContext.repositoryUrl
     };
+    const branchProtectionProbe: Promise<Probe<GitHubBranchProtection>> =
+      defaultBranch === null
+        ? Promise.resolve({ status: 'error', error: 'Invalid default branch.' })
+        : probeGitHub<GitHubBranchProtection>(
+            config,
+            `/repos/${normalizedRepo}/branches/${encodeURIComponent(defaultBranch)}/protection`
+          );
     const workflowDirectory = await probeGitHub<GitHubContentItem[]>(
       config,
       `/repos/${normalizedRepo}/contents/.github/workflows`
@@ -75,10 +86,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
       githubCodeowners
     ] = await Promise.all([
       loadWorkflowFiles(config, normalizedRepo, workflowDirectory, urlContext),
-      probeGitHub<GitHubBranchProtection>(
-        config,
-        `/repos/${normalizedRepo}/branches/${encodeURIComponent(repository.default_branch)}/protection`
-      ),
+      branchProtectionProbe,
       probeGitHub<GitHubContentFile>(config, `/repos/${normalizedRepo}/contents/.github/dependabot.yml`),
       probeGitHub<GitHubContentFile>(config, `/repos/${normalizedRepo}/contents/SECURITY.md`),
       probeGitHub<GitHubContentFile>(config, `/repos/${normalizedRepo}/contents/.github/SECURITY.md`),
@@ -103,7 +111,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
     return {
       repo: normalizedRepo,
       url: urlContext.repositoryUrl,
-      defaultBranch: repository.default_branch,
+      defaultBranch: displayDefaultBranch,
       status: 'ok',
       score: scoreFindings(findings),
       checks,
@@ -122,6 +130,14 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
       findings: [],
       error: publicErrorMessage(error)
     };
+  }
+}
+
+function safeDefaultBranch(value: string): string | null {
+  try {
+    return sanitizeGitBranchName(value, 'default branch');
+  } catch {
+    return null;
   }
 }
 

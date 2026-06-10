@@ -88,12 +88,59 @@ jobs:
   assert.equal(report.findings.every((finding) => finding.url?.startsWith(repositoryUrl)), true);
 });
 
-function mockGitHub(handler: (path: string) => unknown): void {
+test('getAuditReport rejects unsafe default branch values before probing branch protection', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://api.example.test',
+    NULLBUILDER_GITHUB_WEB_URL: 'https://github.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests = mockGitHub((path) => {
+    if (path === '/repos/nullclaw/nullbuilder') {
+      return {
+        full_name: 'nullclaw/nullbuilder',
+        html_url: 'https://github.example.test/nullclaw/nullbuilder',
+        default_branch: 'main\ninjected',
+        private: false,
+        archived: false
+      };
+    }
+
+    if (path === '/repos/nullclaw/nullbuilder/contents/.github/workflows') {
+      return [];
+    }
+
+    if (
+      path === '/repos/nullclaw/nullbuilder/contents/.github/dependabot.yml' ||
+      path === '/repos/nullclaw/nullbuilder/contents/SECURITY.md' ||
+      path === '/repos/nullclaw/nullbuilder/contents/.github/SECURITY.md' ||
+      path === '/repos/nullclaw/nullbuilder/contents/CODEOWNERS' ||
+      path === '/repos/nullclaw/nullbuilder/contents/.github/CODEOWNERS'
+    ) {
+      return responseJson({ message: 'Not Found' }, 404);
+    }
+
+    throw new Error(`Unexpected GET ${path}`);
+  });
+
+  const report = await getAuditReport(config);
+
+  assert.equal(report.repositories[0].defaultBranch, 'unknown');
+  assert.equal(requests.some((path) => path.includes('/branches/')), false);
+  assert.equal(JSON.stringify(report).includes('injected'), false);
+});
+
+function mockGitHub(handler: (path: string) => unknown): string[] {
+  const requests: string[] = [];
+
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
+    requests.push(url.pathname);
     const response = handler(url.pathname);
     return response instanceof Response ? response : responseJson(response);
   }) as typeof fetch;
+
+  return requests;
 }
 
 function contentFile(content: string): unknown {

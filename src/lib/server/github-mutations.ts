@@ -1,6 +1,12 @@
 import { normalizeRepoSlug, type RepoSlug } from '../repositories';
 import { sanitizeText } from '../text-safety';
 import type { NullbuilderConfig } from './config';
+import {
+  assertFullGitSha,
+  isFullGitSha,
+  sanitizeGitBranchName,
+  sanitizeGitTargetRef
+} from './git-refs';
 import { GitHubApiError, githubRequest } from './github-client';
 import {
   githubActionsBranchQueryUrl,
@@ -68,11 +74,8 @@ type GitHubBranchResponse = {
   };
 };
 
-const FULL_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const MAX_PULL_TITLE_LENGTH = 1024;
 const MAX_HEAD_BRANCH_LENGTH = 255;
-const MAX_TARGET_REF_LENGTH = 255;
-const UNSAFE_TARGET_REF_PATTERN = /[\u0000-\u001f\u007f ~^:?*[\]\\]/;
 
 export async function buildPrTag(
   config: NullbuilderConfig,
@@ -98,9 +101,9 @@ export async function buildPrTag(
       useCache: false
     })
   ]);
-  const defaultBranch = sanitizeReleaseTargetRef(repository.default_branch, 'default branch');
+  const defaultBranch = sanitizeGitBranchName(repository.default_branch, 'default branch');
   assertTrustedPullRequest(repo, defaultBranch, pull, options);
-  const headSha = assertFullSha(pull.head.sha, 'pull request head SHA');
+  const headSha = assertFullGitSha(pull.head.sha, 'pull request head SHA');
   const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(prNumber, headSha));
   const urlContext = githubRepositoryUrlContext(config.webBaseUrl, repo);
   const tagUrl = githubReleaseTagUrl(urlContext, tagName);
@@ -148,11 +151,11 @@ export async function createReleaseTag(
   const repo = assertConfiguredRepository(config, normalizeRepoSlug(options.repo, config.owner));
   const tagName = sanitizeReleaseTagName(options.tagName);
   const requestedTargetRef = options.targetRef?.trim();
-  const targetRefOverride = requestedTargetRef ? sanitizeReleaseTargetRef(requestedTargetRef) : undefined;
+  const targetRefOverride = requestedTargetRef ? sanitizeGitTargetRef(requestedTargetRef) : undefined;
   const repository = await githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`, {
     useCache: false
   });
-  const targetRef = targetRefOverride ?? sanitizeReleaseTargetRef(repository.default_branch, 'default branch');
+  const targetRef = targetRefOverride ?? sanitizeGitBranchName(repository.default_branch, 'default branch');
   const targetSha = await resolveTargetSha(config, repo, targetRef);
   const urlContext = githubRepositoryUrlContext(config.webBaseUrl, repo);
   const tagUrl = githubReleaseTagUrl(urlContext, tagName);
@@ -225,55 +228,20 @@ function assertTrustedPullRequest(
 }
 
 async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targetRef: string): Promise<string> {
-  if (FULL_SHA_PATTERN.test(targetRef)) {
-    return assertFullSha(targetRef, 'target SHA');
+  if (isFullGitSha(targetRef)) {
+    return assertFullGitSha(targetRef, 'target SHA');
   }
 
+  const branchRef = sanitizeGitBranchName(targetRef, 'target ref');
   const branch = await githubRequest<GitHubBranchResponse>(
     config,
-    `/repos/${repo}/branches/${encodeURIComponent(targetRef)}`,
+    `/repos/${repo}/branches/${encodeURIComponent(branchRef)}`,
     {
       useCache: false
     }
   );
 
-  return assertFullSha(branch.commit.sha, 'branch commit SHA');
-}
-
-function sanitizeReleaseTargetRef(value: string, label = 'target ref'): string {
-  const targetRef = value.trim();
-
-  if (!isSafeReleaseTargetRef(targetRef)) {
-    throw new Error(`Invalid ${label}.`);
-  }
-
-  return targetRef;
-}
-
-function isSafeReleaseTargetRef(targetRef: string): boolean {
-  if (!targetRef || targetRef.length > MAX_TARGET_REF_LENGTH) {
-    return false;
-  }
-
-  if (FULL_SHA_PATTERN.test(targetRef)) {
-    return true;
-  }
-
-  if (
-    targetRef.startsWith('refs/') ||
-    targetRef.startsWith('/') ||
-    targetRef.endsWith('/') ||
-    targetRef.endsWith('.') ||
-    targetRef.endsWith('.lock') ||
-    targetRef.includes('//') ||
-    targetRef.includes('..') ||
-    targetRef.includes('@{') ||
-    UNSAFE_TARGET_REF_PATTERN.test(targetRef)
-  ) {
-    return false;
-  }
-
-  return targetRef.split('/').every((part) => part && !part.startsWith('.') && !part.endsWith('.lock'));
+  return assertFullGitSha(branch.commit.sha, 'branch commit SHA');
 }
 
 async function createOrMoveTagRef(
@@ -283,7 +251,7 @@ async function createOrMoveTagRef(
   sha: string,
   force: boolean
 ): Promise<{ created: boolean; forced: boolean }> {
-  const targetSha = assertFullSha(sha, 'tag target SHA');
+  const targetSha = assertFullGitSha(sha, 'tag target SHA');
 
   try {
     await githubRequest<unknown>(config, `/repos/${repo}/git/refs`, {
@@ -340,12 +308,4 @@ function sanitizeResultText(value: string, maxLength: number, fallback: string):
     fallback,
     trim: true
   });
-}
-
-function assertFullSha(value: string, label: string): string {
-  if (!FULL_SHA_PATTERN.test(value)) {
-    throw new Error(`Invalid ${label}.`);
-  }
-
-  return value;
 }
