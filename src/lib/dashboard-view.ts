@@ -1,4 +1,4 @@
-import { readSafeUrlText } from './url-safety';
+import { safeHttpUrlText } from './url-safety';
 
 export const DASHBOARD_SECTIONS = [
   { id: 'repos', label: 'Overview' },
@@ -11,7 +11,6 @@ export const DASHBOARD_SECTIONS = [
 
 const DEFAULT_DASHBOARD_OWNER = 'nullclaw';
 const MAX_DASHBOARD_HREF_LENGTH = 2048;
-const UNSAFE_DASHBOARD_HREF_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
 const SAFE_LOCAL_DASHBOARD_HREF_PATTERN = /^#[A-Za-z][A-Za-z0-9_-]*$/;
 const AUDIT_SECTION_HREF = '#audit';
 
@@ -158,27 +157,7 @@ function shortSha(value: string): string {
 }
 
 function safeDashboardExternalHref(value: unknown): string | null {
-  const safeValue = readSafeUrlText(value, { maxLength: MAX_DASHBOARD_HREF_LENGTH });
-  if (!safeValue || UNSAFE_DASHBOARD_HREF_CHARACTER_PATTERN.test(safeValue)) {
-    return null;
-  }
-
-  let url: URL;
-  try {
-    url = new URL(safeValue);
-  } catch {
-    return null;
-  }
-
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    return null;
-  }
-
-  if (url.username !== '' || url.password !== '') {
-    return null;
-  }
-
-  return safeValue;
+  return safeHttpUrlText(value, { maxLength: MAX_DASHBOARD_HREF_LENGTH });
 }
 
 function safeLocalDashboardHref(value: unknown): string | null {

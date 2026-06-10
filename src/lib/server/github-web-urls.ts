@@ -1,9 +1,8 @@
 import { DEFAULT_OWNER, normalizeOwner, type RepoSlug } from '../repositories';
-import { readSafeUrlText } from '../url-safety';
+import { safeHttpUrlText } from '../url-safety';
 import { encodeGitHubPathSegment } from './github-url-encoding';
 
 const DEFAULT_GITHUB_WEB_BASE_URL = 'https://github.com';
-const UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
 
 export const MAX_GITHUB_WEB_URL_LENGTH = 2048;
 
@@ -89,23 +88,13 @@ function safeGitHubRepositoryRootUrl(
 }
 
 function safeGitHubWebUrlText(value: unknown, allowedOrigin: string, allowedPathPrefix: string): string | null {
-  const safeValue = readSafeUrlText(value, { maxLength: MAX_GITHUB_WEB_URL_LENGTH });
-  if (!safeValue || UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN.test(safeValue)) {
-    return null;
-  }
+  const safeValue = safeHttpUrlText(value, { maxLength: MAX_GITHUB_WEB_URL_LENGTH });
+  if (!safeValue) return null;
 
   let url: URL;
   try {
     url = new URL(safeValue);
   } catch {
-    return null;
-  }
-
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    return null;
-  }
-
-  if (url.username !== '' || url.password !== '') {
     return null;
   }
 

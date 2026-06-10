@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { hasEncodedTextControlCharacter, readSafeUrlText } from './url-safety';
+import { hasEncodedTextControlCharacter, readSafeUrlText, safeHttpUrlText } from './url-safety';
 
 test('readSafeUrlText rejects raw and encoded text controls', () => {
   assert.equal(
@@ -28,4 +28,32 @@ test('hasEncodedTextControlCharacter identifies percent-encoded text controls on
   assert.equal(hasEncodedTextControlCharacter('/nullclaw/nullbuilder/actions%e2%80%8f'), true);
   assert.equal(hasEncodedTextControlCharacter('/nullclaw/nullbuilder/actions%e2%80%aa'), true);
   assert.equal(hasEncodedTextControlCharacter('/nullclaw/nullbuilder/actions%e2%81%a9'), true);
+});
+
+test('safeHttpUrlText accepts only credential-free HTTP URLs', () => {
+  assert.equal(
+    safeHttpUrlText('https://github.example.test/nullclaw/nullbuilder/actions?query=check%20suite', {
+      maxLength: 2048
+    }),
+    'https://github.example.test/nullclaw/nullbuilder/actions?query=check%20suite'
+  );
+  assert.equal(
+    safeHttpUrlText('http://localhost/nullclaw/nullbuilder', { maxLength: 2048 }),
+    'http://localhost/nullclaw/nullbuilder'
+  );
+
+  for (const value of [
+    '',
+    'javascript:alert(1)',
+    'mailto:security@example.test',
+    'https://user:pass@github.example.test/nullclaw/nullbuilder',
+    'https://github.example.test/nullclaw/nullbuilder bad',
+    'https://github.example.test/nullclaw/nullbuilder"bad',
+    'https://github.example.test/nullclaw/nullbuilder%0asecret',
+    'https://github.example.test/nullclaw/nullbuilder\u202esecret',
+    42,
+    null
+  ]) {
+    assert.equal(safeHttpUrlText(value, { maxLength: 2048 }), null);
+  }
 });
