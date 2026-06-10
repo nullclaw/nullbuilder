@@ -39,8 +39,8 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     repos: parseRepositoryList(env.NULLBUILDER_REPOS, owner),
     ignoredRepos: parseRepositoryList(env.NULLBUILDER_IGNORE_REPOS, owner, DEFAULT_IGNORED_REPOSITORIES),
     token: optionalTrimmed(env.NULLBUILDER_GITHUB_TOKEN),
-    apiBaseUrl: parseBaseUrl(env.NULLBUILDER_GITHUB_API_URL, DEFAULT_API_BASE_URL),
-    webBaseUrl: parseBaseUrl(env.NULLBUILDER_GITHUB_WEB_URL, DEFAULT_WEB_BASE_URL),
+    apiBaseUrl: parseBaseUrl(env.NULLBUILDER_GITHUB_API_URL, DEFAULT_API_BASE_URL, 'NULLBUILDER_GITHUB_API_URL'),
+    webBaseUrl: parseBaseUrl(env.NULLBUILDER_GITHUB_WEB_URL, DEFAULT_WEB_BASE_URL, 'NULLBUILDER_GITHUB_WEB_URL'),
     discoverRepos: parseBoolean(env.NULLBUILDER_DISCOVER_REPOS),
     cacheTtlMs: parseBoundedInteger(env.NULLBUILDER_CACHE_TTL_MS, DEFAULT_CACHE_TTL_MS, 0, MAX_CACHE_TTL_MS),
     concurrency: parseBoundedInteger(env.NULLBUILDER_CONCURRENCY, DEFAULT_CONCURRENCY, 1, MAX_CONCURRENCY),
@@ -69,16 +69,22 @@ function optionalTrimmed(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-function parseBaseUrl(value: string | undefined, fallback: string): string {
+function parseBaseUrl(value: string | undefined, fallback: string, name: string): string {
   const raw = value?.trim() || fallback;
-  const url = new URL(raw);
+  let url: URL;
+
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`Invalid URL for ${name}.`);
+  }
 
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new Error(`Invalid URL protocol for ${raw}.`);
+    throw new Error(`Invalid URL protocol for ${name}.`);
   }
 
   if (url.username || url.password) {
-    throw new Error(`Invalid URL credentials for ${raw}.`);
+    throw new Error(`Invalid URL credentials for ${name}.`);
   }
 
   url.hash = '';

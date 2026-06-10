@@ -51,7 +51,10 @@ test('readConfig rejects invalid configured owners and URLs', () => {
       readConfig({
         NULLBUILDER_GITHUB_API_URL: 'file:///tmp/api'
       }),
-    /Invalid URL/
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL protocol for NULLBUILDER_GITHUB_API_URL.' &&
+      !error.message.includes('/tmp/api')
   );
 
   assert.throws(
@@ -59,7 +62,10 @@ test('readConfig rejects invalid configured owners and URLs', () => {
       readConfig({
         NULLBUILDER_GITHUB_API_URL: 'https://token@api.github.com'
       }),
-    /Invalid URL credentials/
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL credentials for NULLBUILDER_GITHUB_API_URL.' &&
+      !error.message.includes('token')
   );
 
   assert.throws(
@@ -67,6 +73,21 @@ test('readConfig rejects invalid configured owners and URLs', () => {
       readConfig({
         NULLBUILDER_GITHUB_WEB_URL: 'https://user:pass@github.com'
       }),
-    /Invalid URL credentials/
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL credentials for NULLBUILDER_GITHUB_WEB_URL.' &&
+      !error.message.includes('user') &&
+      !error.message.includes('pass')
+  );
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_GITHUB_API_URL: 'https://secret@[::1'
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL for NULLBUILDER_GITHUB_API_URL.' &&
+      !error.message.includes('secret')
   );
 });
