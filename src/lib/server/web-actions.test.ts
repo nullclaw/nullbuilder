@@ -199,6 +199,48 @@ test('mutation form parsers avoid getAll allocations while validating form shape
   assert.throws(() => parseReleaseTagMutationForm(releaseFormData), /^Error: Duplicate form field\.$/);
 });
 
+test('web action form parsers scan entries once without keys or getAll', () => {
+  const buildFormData = formDataWithGuardedIterators();
+  buildFormData.set('repo', 'nullbuilder');
+  buildFormData.set('prNumber', '17');
+  buildFormData.set('tagName', 'build-pr-17');
+  buildFormData.set('confirm', 'on');
+
+  assert.deepEqual(parseBuildPrMutationForm(buildFormData), {
+    repo: 'nullbuilder',
+    prNumber: 17,
+    tagName: 'build-pr-17',
+    confirm: true,
+    force: false
+  });
+  assert.equal(buildFormData.entryReadCount(), 1);
+
+  const releaseFormData = formDataWithGuardedIterators();
+  releaseFormData.set('repo', 'nullbuilder');
+  releaseFormData.set('tagName', 'v1.2.3');
+  releaseFormData.set('targetRef', 'main');
+  releaseFormData.set('force', 'on');
+
+  assert.deepEqual(parseReleaseTagMutationForm(releaseFormData), {
+    repo: 'nullbuilder',
+    tagName: 'v1.2.3',
+    targetRef: 'main',
+    confirm: false,
+    force: true
+  });
+  assert.equal(releaseFormData.entryReadCount(), 1);
+
+  const loginFormData = formDataWithGuardedIterators();
+  loginFormData.set('webToken', 'web-secret');
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret'
+  });
+
+  assert.equal(runLoginWebAction(config, testLoginRateLimiter(), 'client', loginFormData).ok, true);
+  assert.equal(loginFormData.entryReadCount(), 1);
+});
+
 test('mutation form parsers reject oversized field counts without getAll allocations', () => {
   const formData = formDataWithoutGetAll();
   formData.set('csrfToken', 'token');
@@ -895,6 +937,23 @@ function formDataWithoutGetAll(): FormData {
   formData.getAll = () => {
     throw new Error('getAll should not be called.');
   };
+  return formData;
+}
+
+function formDataWithGuardedIterators(): FormData & { entryReadCount: () => number } {
+  const formData = formDataWithoutGetAll() as FormData & { entryReadCount: () => number };
+  let entryReads = 0;
+  const entries = formData.entries.bind(formData);
+
+  formData.entries = () => {
+    entryReads += 1;
+    return entries();
+  };
+  formData.keys = () => {
+    throw new Error('keys should not be called.');
+  };
+  formData.entryReadCount = () => entryReads;
+
   return formData;
 }
 

@@ -113,7 +113,7 @@ export function runLoginWebAction(
     return form;
   }
 
-  const token = formString(singleFormValue(formData, 'webToken'));
+  const token = formString(form.fields.get('webToken') ?? null);
   if (!isTokenMatch(token, config.webToken)) {
     rateLimiter.recordFailure(rateLimitKey);
     return authFailure(403, 'Invalid web token.');
@@ -214,7 +214,7 @@ export function runLogoutWebAction(config: NullbuilderConfig, cookies: Cookies, 
     return form;
   }
 
-  const csrfToken = singleFormValue(formData, 'csrfToken');
+  const csrfToken = form.fields.get('csrfToken') ?? null;
   const authContext = resolveAuthContext(cookies, config);
 
   if (config.webToken && authContext.authenticated && !isCsrfTokenValueMatch(csrfToken, authContext.csrfToken)) {
@@ -249,10 +249,13 @@ export function mutationAccessError(
   return null;
 }
 
-function parseAuthForm(formData: FormData, allowedFields: ReadonlySet<string>, message: string): WebAuthFailure | { ok: true } {
+function parseAuthForm(
+  formData: FormData,
+  allowedFields: ReadonlySet<string>,
+  message: string
+): WebAuthFailure | { ok: true; fields: ReadonlyMap<string, FormDataEntryValue> } {
   try {
-    assertFormShape(formData, allowedFields);
-    return { ok: true };
+    return { ok: true, fields: readFormFields(formData, allowedFields) };
   } catch (error) {
     if (isInvalidFormShapeError(error)) {
       return authFailure(403, message);
@@ -327,28 +330,28 @@ export async function runReleaseTagWebMutation<T>(
 }
 
 export function parseBuildPrMutationForm(formData: FormData): BuildPrMutationForm {
-  assertFormShape(formData, BUILD_PR_ALLOWED_FORM_FIELD_SET);
-  const tagName = trimmedFormString(singleFormValue(formData, 'tagName'));
+  const fields = readFormFields(formData, BUILD_PR_ALLOWED_FORM_FIELD_SET);
+  const tagName = trimmedFormString(fields.get('tagName') ?? null);
 
   return {
-    repo: trimmedFormString(singleFormValue(formData, 'repo')),
-    prNumber: parsePositiveFormInteger(singleFormValue(formData, 'prNumber')),
+    repo: trimmedFormString(fields.get('repo') ?? null),
+    prNumber: parsePositiveFormInteger(fields.get('prNumber') ?? null),
     tagName: tagName || undefined,
-    confirm: isChecked(singleFormValue(formData, 'confirm')),
-    force: isChecked(singleFormValue(formData, 'force'))
+    confirm: isChecked(fields.get('confirm') ?? null),
+    force: isChecked(fields.get('force') ?? null)
   };
 }
 
 export function parseReleaseTagMutationForm(formData: FormData): ReleaseTagMutationForm {
-  assertFormShape(formData, RELEASE_TAG_ALLOWED_FORM_FIELD_SET);
-  const targetRef = trimmedFormString(singleFormValue(formData, 'targetRef'));
+  const fields = readFormFields(formData, RELEASE_TAG_ALLOWED_FORM_FIELD_SET);
+  const targetRef = trimmedFormString(fields.get('targetRef') ?? null);
 
   return {
-    repo: trimmedFormString(singleFormValue(formData, 'repo')),
-    tagName: trimmedFormString(singleFormValue(formData, 'tagName')),
+    repo: trimmedFormString(fields.get('repo') ?? null),
+    tagName: trimmedFormString(fields.get('tagName') ?? null),
     targetRef: targetRef || undefined,
-    confirm: isChecked(singleFormValue(formData, 'confirm')),
-    force: isChecked(singleFormValue(formData, 'force'))
+    confirm: isChecked(fields.get('confirm') ?? null),
+    force: isChecked(fields.get('force') ?? null)
   };
 }
 
@@ -510,11 +513,11 @@ function optionalTargetRef(value: string | undefined): string | undefined | null
   }
 }
 
-function assertFormShape(formData: FormData, allowedFields: ReadonlySet<string>): void {
-  const seen = new Set<string>();
+function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>): Map<string, FormDataEntryValue> {
+  const fields = new Map<string, FormDataEntryValue>();
   let fieldCount = 0;
 
-  for (const field of formData.keys()) {
+  for (const [field, value] of formData.entries()) {
     fieldCount += 1;
     if (fieldCount > MAX_WEB_ACTION_FORM_FIELDS) {
       throw new Error(TOO_MANY_FORM_FIELDS_MESSAGE);
@@ -524,11 +527,13 @@ function assertFormShape(formData: FormData, allowedFields: ReadonlySet<string>)
       throw new Error(UNKNOWN_FORM_FIELD_MESSAGE);
     }
 
-    if (seen.has(field)) {
+    if (fields.has(field)) {
       throw new Error(DUPLICATE_FORM_FIELD_MESSAGE);
     }
-    seen.add(field);
+    fields.set(field, value);
   }
+
+  return fields;
 }
 
 function singleFormValue(formData: FormData, field: string): FormDataEntryValue | null {
