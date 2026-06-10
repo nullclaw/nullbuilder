@@ -19,8 +19,7 @@ const ParsedHttpUrl = struct {
 };
 
 pub fn isDecimalId(value: []const u8) bool {
-    if (value.len == 0 or value.len > max_decimal_id_digits) return false;
-    if (value.len > 1 and value[0] == '0') return false;
+    if (!isCanonicalDecimalText(value, max_decimal_id_digits)) return false;
 
     const id = std.fmt.parseUnsigned(u64, value, 10) catch return false;
     return id > 0;
@@ -162,8 +161,7 @@ fn isLoopbackIpv4(host: []const u8) bool {
 }
 
 fn isDecimalIpv4Octet(value: []const u8) bool {
-    if (value.len == 0 or value.len > 3) return false;
-    if (value.len > 1 and value[0] == '0') return false;
+    if (!isCanonicalDecimalText(value, 3)) return false;
 
     const octet = std.fmt.parseUnsigned(u8, value, 10) catch return false;
     return octet <= 255;
@@ -185,7 +183,7 @@ fn isSafeHostLabel(label: []const u8) bool {
 }
 
 fn isSafePort(port: []const u8) bool {
-    if (port.len == 0 or port.len > max_port_digits) return false;
+    if (!isCanonicalDecimalText(port, max_port_digits)) return false;
     const parsed = std.fmt.parseUnsigned(u16, port, 10) catch return false;
     return parsed > 0;
 }
@@ -285,6 +283,12 @@ fn isAsciiDigitSlice(value: []const u8) bool {
         if (!std.ascii.isDigit(byte)) return false;
     }
     return true;
+}
+
+fn isCanonicalDecimalText(value: []const u8, max_digits: usize) bool {
+    if (value.len == 0 or value.len > max_digits) return false;
+    if (value.len > 1 and value[0] == '0') return false;
+    return isAsciiDigitSlice(value);
 }
 
 fn twoDigitValue(value: []const u8, index: usize) ?u8 {
@@ -435,6 +439,7 @@ test "action values validate URL bases" {
     try std.testing.expect(!isHttpUrlBase("https://github.com@evil.example"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:abc"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:0"));
+    try std.testing.expect(!isHttpUrlBase("https://github.com:0443"));
     try std.testing.expect(isHttpUrlBase("https://github.com:65535"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:65536"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:123456"));
@@ -495,6 +500,8 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("http://127.0.0.01/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github..com/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com:bad/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com:0443/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("http://127.0.0.1:08080/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com\n/actions/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com@evil.example/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/path with spaces", 256));
