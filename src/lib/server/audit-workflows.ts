@@ -103,14 +103,35 @@ function normalizeMatchLimit(maxMatches: number): number {
 
 function boundedBase64Content(content: string, maxBytes: number): string {
   const maxEncodedChars = Math.ceil(maxBytes / 3) * 4;
-  let encoded = '';
 
-  for (let index = 0; index < content.length && encoded.length < maxEncodedChars; index += 1) {
+  if (content.length <= maxEncodedChars && !/[\r\n]/.test(content)) {
+    return content;
+  }
+
+  const chunks: string[] = [];
+  let encodedLength = 0;
+  let chunkStart = 0;
+
+  for (let index = 0; index < content.length && encodedLength < maxEncodedChars; index += 1) {
     const char = content[index];
-    if (char !== '\n' && char !== '\r') {
-      encoded += char;
+    if (char === '\n' || char === '\r') {
+      if (chunkStart < index) {
+        chunks.push(content.slice(chunkStart, index));
+      }
+      chunkStart = index + 1;
+      continue;
+    }
+
+    encodedLength += 1;
+    if (encodedLength === maxEncodedChars) {
+      chunks.push(content.slice(chunkStart, index + 1));
+      chunkStart = index + 1;
     }
   }
 
-  return encoded;
+  if (encodedLength < maxEncodedChars && chunkStart < content.length) {
+    chunks.push(content.slice(chunkStart));
+  }
+
+  return chunks.join('');
 }
