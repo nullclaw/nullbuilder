@@ -155,6 +155,51 @@ test('discoverRepositories normalizes API repository slugs before adding them', 
   assert.deepEqual(requests, ['https://discover.example.test/users/nullclaw/repos?type=owner&sort=updated&per_page=100']);
 });
 
+test('discoverRepositories skips malformed API repository entries', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://discover-malformed.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        null,
+        'not-a-repo',
+        {
+          full_name: 'nullclaw/missing-name',
+          language: 'Zig',
+          archived: false
+        },
+        {
+          name: 42,
+          full_name: 'nullclaw/bad-name',
+          language: 'Zig',
+          archived: false
+        },
+        {
+          name: 'nullthing',
+          full_name: 'nullclaw/nullthing',
+          language: 7,
+          archived: false
+        },
+        {
+          name: 'utility',
+          full_name: 'nullclaw/utility',
+          language: 'Zig',
+          archived: 'false'
+        }
+      ])
+    )) as typeof fetch;
+
+  assert.deepEqual(await discoverRepositories(config), [
+    'nullclaw/nullbuilder',
+    'nullclaw/nullthing',
+    'nullclaw/utility'
+  ]);
+});
+
 test('discoverRepositories caps discovered repositories before dashboard fan-out', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

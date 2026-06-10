@@ -56,7 +56,12 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
     );
 
     for (const repo of repos) {
-      const slug = normalizeDiscoveredRepoSlug(repo.full_name, config.owner);
+      const discoveredRepo = safeDiscoveredRepository(repo);
+      if (!discoveredRepo) {
+        continue;
+      }
+
+      const slug = normalizeDiscoveredRepoSlug(discoveredRepo.full_name, config.owner);
       if (!slug) {
         continue;
       }
@@ -66,9 +71,10 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
         continue;
       }
 
-      const isNullRepo = repo.name.toLowerCase().startsWith('null') || repo.name.toLowerCase() === 'nllclw';
-      const isZigRepo = repo.language === 'Zig';
-      if (!repo.archived && (isNullRepo || isZigRepo)) {
+      const name = discoveredRepo.name.toLowerCase();
+      const isNullRepo = name.startsWith('null') || name === 'nllclw';
+      const isZigRepo = discoveredRepo.language === 'Zig';
+      if (!discoveredRepo.archived && (isNullRepo || isZigRepo)) {
         if (!configured.has(key) && configured.size >= MAX_REPOSITORY_LIST_ENTRIES) {
           break;
         }
@@ -80,6 +86,29 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
   }
 
   return [...configured.values()].sort((left, right) => left.localeCompare(right));
+}
+
+function safeDiscoveredRepository(value: unknown): {
+  name: string;
+  full_name: string;
+  language: string | null;
+  archived: boolean;
+} | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const repo = value as Record<string, unknown>;
+  if (typeof repo.name !== 'string' || typeof repo.full_name !== 'string') {
+    return null;
+  }
+
+  return {
+    name: repo.name,
+    full_name: repo.full_name,
+    language: typeof repo.language === 'string' ? repo.language : null,
+    archived: repo.archived === true
+  };
 }
 
 function normalizeDiscoveredRepoSlug(fullName: string, defaultOwner: string): RepoSlug | null {
