@@ -56,6 +56,25 @@ test('evaluateAuditRule falls back to repository URLs for findings', () => {
   assert.equal(result.findings[0].url, 'https://github.example.test/nullclaw/nullbuilder');
 });
 
+test('evaluateAuditRule rejects unsafe repository fallback URLs', () => {
+  const rule: AuditRule = {
+    id: 'unsafe-repository-url',
+    title: 'Repository URL fallback is safe',
+    area: 'security',
+    evaluate: (_context, finding) => [
+      finding('warning', 'Unsafe fallback', 'Do not emit unsafe repository URLs.'),
+      finding('warning', 'Unsafe custom URL', 'Do not fall back to unsafe repository URLs.', 'javascript:alert(1)')
+    ]
+  };
+  const context = auditContext();
+  context.repository.html_url = 'javascript:alert(1)';
+
+  const result = evaluateAuditRule(rule, context);
+
+  assert.equal(result.findings[0].url, '');
+  assert.equal(result.findings[1].url, '');
+});
+
 test('evaluateAuditRule constrains custom finding URLs to the repository', () => {
   const rule: AuditRule = {
     id: 'workflow-url',

@@ -114,16 +114,17 @@ function buildFinding(
 }
 
 function findingUrl(context: AuditContext, url: string | undefined): string {
+  const repositoryUrl = safeGitHubWebUrl(context.repository.html_url, '');
   if (!url) {
-    return context.repository.html_url;
+    return repositoryUrl;
   }
 
-  const repositoryUrl = repositoryUrlParts(context.repository.html_url);
-  if (!repositoryUrl) {
-    return context.repository.html_url;
+  const repositoryUrlContext = repositoryUrlParts(repositoryUrl);
+  if (!repositoryUrlContext) {
+    return repositoryUrl;
   }
 
-  return safeGitHubWebUrl(url, context.repository.html_url, repositoryUrl.origin, repositoryUrl.pathPrefix);
+  return safeGitHubWebUrl(url, repositoryUrl, repositoryUrlContext.origin, repositoryUrlContext.pathPrefix);
 }
 
 function repositoryUrlParts(value: string): { origin: string; pathPrefix: string } | null {
