@@ -89,8 +89,10 @@ export function formatDashboard(command: Command, dashboard: DashboardData): str
 }
 
 export function formatAuditReport(report: AuditReport): string {
-  const table = formatTable(
-    report.repositories.map((repo) => {
+  const table = formatTableFromItems(
+    report.repositories,
+    ['repo', 'state', 'score', 'critical', 'warning', 'info', 'top'],
+    (repo) => {
       const counts = countAuditFindings(repo.findings);
       return {
         repo: repo.repo,
@@ -101,15 +103,15 @@ export function formatAuditReport(report: AuditReport): string {
         info: String(counts.info),
         top: repo.error ?? repo.findings[0]?.title ?? 'ok'
       };
-    }),
-    ['repo', 'state', 'score', 'critical', 'warning', 'info', 'top']
+    }
   );
+  const findings = formatAuditFindings(report.findings);
 
-  if (report.findings.length === 0) {
+  if (!findings) {
     return table;
   }
 
-  return `${table}\n\nFindings:\n${report.findings.map(formatAuditFinding).join('\n')}`;
+  return `${table}\n\nFindings:\n${findings}`;
 }
 
 export function formatRepositoryErrors(dashboard: DashboardData): string {
@@ -314,6 +316,22 @@ function formatAuditFinding(item: AuditFinding): string {
 
   if (item.url) {
     lines.push(terminalLine(`  ${item.url}`));
+  }
+
+  return lines.join('\n');
+}
+
+function formatAuditFindings(findings: readonly AuditFinding[]): string {
+  const findingLimit = Math.min(findings.length, MAX_TERMINAL_TABLE_ROWS);
+  const lines: string[] = [];
+
+  for (let index = 0; index < findingLimit; index += 1) {
+    lines.push(formatAuditFinding(findings[index]));
+  }
+
+  const omittedFindings = findings.length - findingLimit;
+  if (omittedFindings > 0) {
+    lines.push(terminalLine(`... ${omittedFindings} findings omitted; use --json for full output.`));
   }
 
   return lines.join('\n');

@@ -274,6 +274,57 @@ test('formatAuditReport includes per-repository counts and finding details', () 
   assert.match(output, /Pin reusable workflows to immutable SHAs\./);
 });
 
+test('formatAuditReport bounds repository table rows without materializing every repository', () => {
+  const base = auditReportFixture();
+  const repositories = Array.from({ length: 1001 }, (_, index) => ({
+    ...base.repositories[0],
+    repo: `nullclaw/repo-${index + 1}` as AuditReport['repositories'][number]['repo'],
+    findings: []
+  }));
+  Object.defineProperty(repositories, 1000, {
+    get() {
+      throw new Error('read past audit repository cap');
+    }
+  });
+
+  const output = formatAuditReport(
+    auditReportFixture({
+      repositories,
+      findings: [],
+      totals: {
+        ...base.totals,
+        repositories: 1001
+      }
+    })
+  );
+
+  assert.match(output, /\.\.\. 1 rows omitted; use --json for full output\./);
+  assert.equal(output.includes('nullclaw/repo-1000'), true);
+  assert.equal(output.includes('nullclaw/repo-1001'), false);
+});
+
+test('formatAuditReport bounds detailed finding output without materializing every finding', () => {
+  const baseFinding = auditReportFixture().findings[0];
+  const findings: AuditFinding[] = Array.from({ length: 1001 }, (_, index) => ({
+    ...baseFinding,
+    id: `finding-${index + 1}`,
+    title: `Finding ${index + 1}`
+  }));
+  Object.defineProperty(findings, 1000, {
+    get() {
+      throw new Error('read past audit finding cap');
+    }
+  });
+
+  const report = auditReportFixture({ findings: [] });
+  report.findings = findings;
+  const output = formatAuditReport(report);
+
+  assert.match(output, /\.\.\. 1 findings omitted; use --json for full output\./);
+  assert.equal(output.includes('Finding 1000'), true);
+  assert.equal(output.includes('Finding 1001'), false);
+});
+
 test('formatCliError redacts GitHub authorization details', () => {
   assert.equal(
     formatCliError(new GitHubApiError('GitHub 403 Forbidden: token leaked in upstream message', 403)),
