@@ -14,7 +14,7 @@ import {
   runLoginWebAction,
   runLogoutWebAction,
   runReleaseTagWebMutation,
-  webActionContentLengthFailure
+  readWebActionFormData
 } from '$lib/server/web-actions';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -51,15 +51,14 @@ export const actions: Actions = {
   login: async ({ request, cookies, getClientAddress }) => {
     const config = readConfig();
     const rateLimitKey = getClientAddress();
-    const bodyLimit = webActionContentLengthFailure(request.headers);
-    if (bodyLimit) {
-      return fail(bodyLimit.status, {
-        authError: bodyLimit.message
+    const form = await readWebActionFormData(request);
+    if (!form.ok) {
+      return fail(form.status, {
+        authError: form.message
       });
     }
 
-    const formData = await request.formData();
-    const login = runLoginWebAction(config, loginRateLimiter, rateLimitKey, formData);
+    const login = runLoginWebAction(config, loginRateLimiter, rateLimitKey, form.formData);
 
     if (!login.ok) {
       return fail(login.status, {
@@ -76,15 +75,14 @@ export const actions: Actions = {
 
   logout: async ({ request, cookies }) => {
     const config = readConfig();
-    const bodyLimit = webActionContentLengthFailure(request.headers);
-    if (bodyLimit) {
-      return fail(bodyLimit.status, {
-        authError: bodyLimit.message
+    const form = await readWebActionFormData(request);
+    if (!form.ok) {
+      return fail(form.status, {
+        authError: form.message
       });
     }
 
-    const formData = await request.formData();
-    const logout = runLogoutWebAction(config, cookies, formData);
+    const logout = runLogoutWebAction(config, cookies, form.formData);
 
     if (!logout.ok) {
       return fail(logout.status, {
@@ -101,18 +99,17 @@ export const actions: Actions = {
 
   buildPr: async ({ request, cookies }) => {
     const config = readConfig();
-    const bodyLimit = webActionContentLengthFailure(request.headers);
-    if (bodyLimit) {
-      return fail(bodyLimit.status, {
-        buildError: bodyLimit.message
+    const form = await readWebActionFormData(request);
+    if (!form.ok) {
+      return fail(form.status, {
+        buildError: form.message
       });
     }
 
-    const formData = await request.formData();
     const mutation = await runBuildPrWebMutation(
       config,
       cookies,
-      formData,
+      form.formData,
       (input) => buildPrTag(config, input),
       publicErrorMessage
     );
@@ -130,18 +127,17 @@ export const actions: Actions = {
 
   releaseTag: async ({ request, cookies }) => {
     const config = readConfig();
-    const bodyLimit = webActionContentLengthFailure(request.headers);
-    if (bodyLimit) {
-      return fail(bodyLimit.status, {
-        releaseError: bodyLimit.message
+    const form = await readWebActionFormData(request);
+    if (!form.ok) {
+      return fail(form.status, {
+        releaseError: form.message
       });
     }
 
-    const formData = await request.formData();
     const mutation = await runReleaseTagWebMutation(
       config,
       cookies,
-      formData,
+      form.formData,
       (input) => createReleaseTag(config, input),
       publicErrorMessage
     );

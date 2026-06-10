@@ -9,6 +9,7 @@ import {
   parseBuildPrMutationForm,
   parsePositiveFormInteger,
   parseReleaseTagMutationForm,
+  readWebActionFormData,
   runBuildPrWebMutation,
   runLoginWebAction,
   runLogoutWebAction,
@@ -245,6 +246,39 @@ test('web action content length guard rejects oversized and malformed bodies bef
       message: 'Request body is too large.'
     });
   }
+});
+
+test('readWebActionFormData parses bounded form bodies without content length', async () => {
+  const result = await readWebActionFormData(webFormRequest('webToken=web-secret'));
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.formData.get('webToken'), 'web-secret');
+  }
+});
+
+test('readWebActionFormData rejects oversized streamed bodies without content length', async () => {
+  const result = await readWebActionFormData(webFormRequest(`webToken=${'x'.repeat(MAX_WEB_ACTION_FORM_BYTES)}`));
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 413,
+    message: 'Request body is too large.'
+  });
+});
+
+test('readWebActionFormData rejects bodies larger than the declared content length', async () => {
+  const result = await readWebActionFormData(
+    webFormRequest(`webToken=${'x'.repeat(MAX_WEB_ACTION_FORM_BYTES)}`, {
+      'Content-Length': '1'
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 413,
+    message: 'Request body is too large.'
+  });
 });
 
 test('runLoginWebAction creates a session token and clears prior failures', () => {
@@ -735,6 +769,17 @@ function formDataWithoutGetAll(): FormData {
     throw new Error('getAll should not be called.');
   };
   return formData;
+}
+
+function webFormRequest(body: string, headers: HeadersInit = {}): Request {
+  return new Request('https://nullbuilder.example.test/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...headers
+    },
+    body
+  });
 }
 
 function mutationForm(

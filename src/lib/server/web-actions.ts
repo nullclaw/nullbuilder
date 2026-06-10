@@ -119,16 +119,49 @@ export type WebActionBodyLimitFailure = {
   message: string;
 };
 
+type WebActionFormDataSuccess = {
+  ok: true;
+  formData: FormData;
+};
+
+type WebActionRequestBodySuccess = {
+  ok: true;
+  bytes: Uint8Array;
+};
+
+export type WebActionFormDataResult = WebActionFormDataSuccess | WebActionBodyLimitFailure;
+
 export function webActionContentLengthFailure(headers: Headers): WebActionBodyLimitFailure | null {
   const contentLength = headers.get('content-length');
   if (!contentLength || !contentLengthExceedsWebActionLimit(contentLength)) {
     return null;
   }
 
+  return webActionBodyTooLargeFailure();
+}
+
+export async function readWebActionFormData(request: Request): Promise<WebActionFormDataResult> {
+  const contentLengthFailure = webActionContentLengthFailure(request.headers);
+  if (contentLengthFailure) {
+    return contentLengthFailure;
+  }
+
+  const body = await readBoundedWebActionBody(request);
+  if (!body.ok) {
+    return body;
+  }
+
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+  const boundedRequest = new Request(request.url, {
+    method: request.method,
+    headers,
+    body: new Blob([arrayBufferFromBytes(body.bytes)])
+  });
+
   return {
-    ok: false,
-    status: 413,
-    message: WEB_ACTION_FORM_TOO_LARGE_MESSAGE
+    ok: true,
+    formData: await boundedRequest.formData()
   };
 }
 
@@ -483,6 +516,72 @@ function contentLengthExceedsWebActionLimit(value: string): boolean {
 
   const parsed = Number(safeValue);
   return !Number.isSafeInteger(parsed) || parsed > MAX_WEB_ACTION_FORM_BYTES;
+}
+
+async function readBoundedWebActionBody(request: Request): Promise<WebActionRequestBodySuccess | WebActionBodyLimitFailure> {
+  if (!request.body) {
+    return {
+      ok: true,
+      bytes: new Uint8Array()
+    };
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      if (value.byteLength > MAX_WEB_ACTION_FORM_BYTES - totalBytes) {
+        await reader.cancel().catch(() => undefined);
+        return webActionBodyTooLargeFailure();
+      }
+
+      totalBytes += value.byteLength;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return {
+    ok: true,
+    bytes: joinBodyChunks(chunks, totalBytes)
+  };
+}
+
+function joinBodyChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
+  if (chunks.length === 1 && chunks[0].byteLength === totalBytes) {
+    return chunks[0];
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return bytes;
+}
+
+function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
+function webActionBodyTooLargeFailure(): WebActionBodyLimitFailure {
+  return {
+    ok: false,
+    status: 413,
+    message: WEB_ACTION_FORM_TOO_LARGE_MESSAGE
+  };
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {
