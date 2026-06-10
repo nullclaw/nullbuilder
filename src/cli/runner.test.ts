@@ -6,6 +6,8 @@ import type { BuildPrResult, DashboardData } from '../lib/server/github';
 import { HELP } from './options';
 import { runCli, type CliDependencies } from './runner';
 
+const originalArrayPush = Array.prototype.push;
+
 test('runCli returns help without reading config', async () => {
   const result = await runCli(
     ['--help'],
@@ -14,6 +16,24 @@ test('runCli returns help without reading config', async () => {
     })
   );
 
+  assert.deepEqual(result, {
+    stdout: [HELP],
+    stderr: [],
+    exitCode: null
+  });
+});
+
+test('runCli collects help output without global array push hooks', async () => {
+  const { result, pushCalls } = await withGuardedArrayPush(() =>
+    runCli(
+      ['--help'],
+      testDependencies({
+        readConfig: () => unexpectedCall('readConfig')
+      })
+    )
+  );
+
+  assert.equal(pushCalls, 0);
   assert.deepEqual(result, {
     stdout: [HELP],
     stderr: [],
@@ -108,6 +128,33 @@ function testDependencies(overrides: Partial<CliDependencies> = {}): CliDependen
 
 function unexpectedCall(name: string): never {
   throw new Error(`Unexpected ${name} call.`);
+}
+
+async function withGuardedArrayPush<T>(
+  callback: () => Promise<T>
+): Promise<{ result: T; pushCalls: number }> {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: await callback(),
+      pushCalls
+    };
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalArrayPush
+    });
+  }
 }
 
 function dashboardFixture(overrides: Partial<DashboardData> = {}): DashboardData {

@@ -48,7 +48,7 @@ export async function runCli(
   };
 
   if (commandLine.kind === 'help') {
-    result.stdout.push(HELP);
+    appendStdout(result, HELP);
     return result;
   }
 
@@ -71,7 +71,7 @@ export async function runCli(
       allowNonDefaultBase: options.allowNonDefaultBase
     });
 
-    result.stdout.push(options.json ? formatJson(tag) : formatBuildPrResult(tag));
+    appendStdout(result, options.json ? formatJson(tag) : formatBuildPrResult(tag));
     return result;
   }
 
@@ -88,7 +88,7 @@ export async function runCli(
       force: options.force
     });
 
-    result.stdout.push(options.json ? formatJson(tag) : formatReleaseTagResult(tag));
+    appendStdout(result, options.json ? formatJson(tag) : formatReleaseTagResult(tag));
     return result;
   }
 
@@ -105,7 +105,7 @@ export async function runCli(
   if (command === 'audit') {
     const report = await dependencies.getAuditReport(config);
     result.exitCode = auditExitCode(report);
-    result.stdout.push(options.json ? formatJson(report) : formatAuditReport(report));
+    appendStdout(result, options.json ? formatJson(report) : formatAuditReport(report));
     return result;
   }
 
@@ -113,17 +113,25 @@ export async function runCli(
   result.exitCode = readErrorExitCode(dashboard);
 
   if (options.json) {
-    result.stdout.push(formatJson(selectDashboardJson(command, dashboard)));
+    appendStdout(result, formatJson(selectDashboardJson(command, dashboard)));
     return result;
   }
 
-  result.stdout.push(formatDashboard(command, dashboard));
+  appendStdout(result, formatDashboard(command, dashboard));
   const repositoryErrors = formatRepositoryErrors(dashboard);
   if (repositoryErrors) {
-    result.stderr.push(repositoryErrors);
+    appendStderr(result, repositoryErrors);
   }
 
   return result;
+}
+
+function appendStdout(result: CliRunResult, line: string): void {
+  result.stdout[result.stdout.length] = line;
+}
+
+function appendStderr(result: CliRunResult, line: string): void {
+  result.stderr[result.stderr.length] = line;
 }
 
 function formatJson(value: unknown): string {
