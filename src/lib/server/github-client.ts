@@ -694,11 +694,11 @@ function appendPageValues<T>(values: T[], page: unknown, maxItems: number): void
     throw new Error('GitHub paginated response must be an array.');
   }
 
-  for (const value of page) {
+  for (let index = 0; index < page.length; index += 1) {
     if (values.length >= maxItems) {
       return;
     }
-    values.push(value);
+    values.push(page[index]);
   }
 }
 

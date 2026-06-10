@@ -23,10 +23,12 @@ import {
 
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
+const originalJsonParse = JSON.parse;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
+  JSON.parse = originalJsonParse;
 });
 
 test('githubGetPages follows same-origin pagination links', async () => {
@@ -238,6 +240,29 @@ test('githubGetPages caps large pages without spreading array arguments', async 
   assert.equal(values.length, GITHUB_PAGINATED_ITEMS_MAX);
   assert.equal(values[0], 0);
   assert.equal(values.at(-1), GITHUB_PAGINATED_ITEMS_MAX - 1);
+});
+
+test('githubGetPages avoids user-controlled page iterators', async () => {
+  class UnsafeIteratorArray<T> extends Array<T> {
+    override [Symbol.iterator](): ArrayIterator<T> {
+      throw new Error('iterator should not be called');
+    }
+  }
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://page-iterator.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () => new Response('[{"id":1},{"id":2}]')) as typeof fetch;
+  JSON.parse = ((body: string) => {
+    assert.equal(body, '[{"id":1},{"id":2}]');
+    return new UnsafeIteratorArray({ id: 1 }, { id: 2 });
+  }) as typeof JSON.parse;
+
+  const values = await githubGetPages<{ id: number }>(config, '/repos', {}, 1);
+
+  assert.deepEqual(values, [{ id: 1 }, { id: 2 }]);
 });
 
 test('githubGetPages stops once the total item cap is reached', async () => {
