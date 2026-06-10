@@ -55,6 +55,14 @@ export async function readBoundedByteStream(
         break;
       }
 
+      if (!(value instanceof Uint8Array)) {
+        cancelReader(reader);
+        return {
+          ok: false,
+          reason: 'too-large'
+        };
+      }
+
       if (value.byteLength === 0) {
         continue;
       }
@@ -68,7 +76,7 @@ export async function readBoundedByteStream(
       }
 
       totalBytes += value.byteLength;
-      chunks.push(value);
+      chunks[chunks.length] = value;
     }
   } finally {
     reader.releaseLock();

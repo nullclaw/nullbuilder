@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { arrayBufferFromBytes, contentLengthExceedsByteLimit, readBoundedByteStream } from './byte-stream';
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
+const originalArrayPush = Array.prototype.push;
 
 test('contentLengthExceedsByteLimit accepts only bounded decimal byte counts', () => {
   assert.equal(contentLengthExceedsByteLimit('0', 4, 8), false);
@@ -79,6 +80,45 @@ test('readBoundedByteStream joins chunks without array iterators', async () => {
   if (result.ok) {
     assert.equal(new TextDecoder().decode(result.bytes), 'webToken');
   }
+});
+
+test('readBoundedByteStream collects chunks without array push hooks', async () => {
+  const stream = byteStream([new TextEncoder().encode('web'), new TextEncoder().encode('Token')]);
+
+  Array.prototype.push = function arrayPushShouldNotBeCalled(..._items: unknown[]): number {
+    throw new Error('Array.prototype push should not be called.');
+  };
+
+  let result: Awaited<ReturnType<typeof readBoundedByteStream>>;
+  try {
+    result = await readBoundedByteStream(stream, 16);
+  } finally {
+    Array.prototype.push = originalArrayPush;
+  }
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(new TextDecoder().decode(result.bytes), 'webToken');
+  }
+});
+
+test('readBoundedByteStream rejects malformed runtime stream chunks without throwing parser details', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue('not-bytes' as unknown as Uint8Array);
+    },
+    cancel() {
+      throw new Error('private malformed chunk cancel detail');
+    }
+  });
+
+  const result = await readBoundedByteStream(stream, 16);
+
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'too-large'
+  });
+  assert.equal(stream.locked, false);
 });
 
 test('readBoundedByteStream cancels over-limit streams without exposing cancel errors', async () => {
