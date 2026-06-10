@@ -1,9 +1,9 @@
 import { DEFAULT_OWNER, normalizeOwner, type RepoSlug } from '../repositories';
+import { readSafeUrlText } from '../url-safety';
 import { encodeGitHubPathSegment } from './github-url-encoding';
 
 const DEFAULT_GITHUB_WEB_BASE_URL = 'https://github.com';
 const UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
-const ENCODED_CONTROL_CHARACTER_PATTERN = /%(?:0[0-9a-f]|1[0-9a-f]|7f)|%c2%(?:8[0-9a-f]|9[0-9a-f])/i;
 
 export const MAX_GITHUB_WEB_URL_LENGTH = 2048;
 
@@ -65,7 +65,7 @@ export function githubActionsBranchQueryUrl(context: GitHubWebUrlContext, branch
 }
 
 export function safeGitHubWebUrl(value: unknown, fallback: string, allowedOrigin = '', allowedPathPrefix = ''): string {
-  return isSafeGitHubWebUrl(value, allowedOrigin, allowedPathPrefix) ? value : fallback;
+  return safeGitHubWebUrlText(value, allowedOrigin, allowedPathPrefix) ?? fallback;
 }
 
 function safeGitHubRepositoryRootUrl(
@@ -74,11 +74,12 @@ function safeGitHubRepositoryRootUrl(
   allowedOrigin: string,
   allowedPathPrefix: string
 ): string {
-  if (!isSafeGitHubWebUrl(value, allowedOrigin, allowedPathPrefix)) {
+  const safeValue = safeGitHubWebUrlText(value, allowedOrigin, allowedPathPrefix);
+  if (!safeValue) {
     return fallback;
   }
 
-  const url = new URL(value);
+  const url = new URL(safeValue);
   const pathMatchesRepositoryRoot = url.pathname === allowedPathPrefix || url.pathname === `${allowedPathPrefix}/`;
   if (!pathMatchesRepositoryRoot || url.search !== '' || url.hash !== '') {
     return fallback;
@@ -87,40 +88,32 @@ function safeGitHubRepositoryRootUrl(
   return url.toString().replace(/\/$/, '');
 }
 
-function isSafeGitHubWebUrl(value: unknown, allowedOrigin: string, allowedPathPrefix: string): value is string {
-  if (typeof value !== 'string') {
-    return false;
-  }
-
-  if (
-    value.length === 0 ||
-    value.length > MAX_GITHUB_WEB_URL_LENGTH ||
-    UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN.test(value) ||
-    ENCODED_CONTROL_CHARACTER_PATTERN.test(value)
-  ) {
-    return false;
+function safeGitHubWebUrlText(value: unknown, allowedOrigin: string, allowedPathPrefix: string): string | null {
+  const safeValue = readSafeUrlText(value, { maxLength: MAX_GITHUB_WEB_URL_LENGTH });
+  if (!safeValue || UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN.test(safeValue)) {
+    return null;
   }
 
   let url: URL;
   try {
-    url = new URL(value);
+    url = new URL(safeValue);
   } catch {
-    return false;
+    return null;
   }
 
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    return false;
+    return null;
   }
 
   if (url.username !== '' || url.password !== '') {
-    return false;
+    return null;
   }
 
   if (allowedOrigin !== '' && url.origin !== allowedOrigin) {
-    return false;
+    return null;
   }
 
-  return allowedPathPrefix === '' || isPathWithinPrefix(url.pathname, allowedPathPrefix);
+  return allowedPathPrefix === '' || isPathWithinPrefix(url.pathname, allowedPathPrefix) ? safeValue : null;
 }
 
 function safeOwner(owner: string): string {

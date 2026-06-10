@@ -51,6 +51,9 @@ test('safeGitHubWebUrl rejects unsafe URLs before they become hrefs', () => {
     'https://github.example.test/nullclaw/nullbuilder/actions%0a',
     'https://github.example.test/nullclaw/nullbuilder/actions%1b',
     'https://github.example.test/nullclaw/nullbuilder/actions%c2%85',
+    'https://github.example.test/nullclaw/nullbuilder/actions%e2%80%ae',
+    'https://github.example.test/nullclaw/nullbuilder/actions\u202esecret',
+    'https://github.example.test/nullclaw/nullbuilder/actions\ud800',
     `https://github.example.test/${'x'.repeat(MAX_GITHUB_WEB_URL_LENGTH)}`
   ]) {
     assert.equal(safeGitHubWebUrl(value, fallback, allowedOrigin), fallback);

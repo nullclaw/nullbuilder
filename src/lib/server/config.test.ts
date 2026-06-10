@@ -228,4 +228,27 @@ test('readConfig rejects invalid configured owners and URLs', () => {
         !error.message.includes('secret')
     );
   }
+
+  for (const [name, env] of [
+    [
+      'NULLBUILDER_GITHUB_API_URL',
+      {
+        NULLBUILDER_GITHUB_API_URL: 'https://api.github.com/%e2%80%aesecret'
+      }
+    ],
+    [
+      'NULLBUILDER_GITHUB_WEB_URL',
+      {
+        NULLBUILDER_GITHUB_WEB_URL: 'https://github.com/\u202esecret'
+      }
+    ]
+  ] as const) {
+    assert.throws(
+      () => readConfig(env),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === `Invalid URL for ${name}.` &&
+        !error.message.includes('secret')
+    );
+  }
 });
