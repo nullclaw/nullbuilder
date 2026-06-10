@@ -278,8 +278,9 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
     var head_sha: ?[]const u8 = null;
     var workflow_name: ?[]const u8 = null;
     var force = false;
+    var option_count: usize = 0;
 
-    while (iterator.next()) |arg| {
+    while (try action_args.nextOption(iterator, &option_count)) |arg| {
         if (std.mem.eql(u8, arg, "--runs-json")) {
             try action_args.takeValueOnce(iterator, allocator, &runs_json_path, arg);
         } else if (std.mem.eql(u8, arg, "--current-run-id")) {

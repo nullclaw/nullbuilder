@@ -2,8 +2,30 @@ const std = @import("std");
 const action_text = @import("action_text");
 
 const MAX_DIAGNOSTIC_TOKEN_BYTES = 512;
+pub const MAX_OPTION_TOKEN_BYTES = 128;
+pub const MAX_OPTION_COUNT = 64;
 const MAX_VALUE_TOKEN_BYTES = 4096;
 pub const invalid_arguments_exit_code: u8 = 2;
+
+pub fn nextOption(
+    iterator: *std.process.Args.Iterator,
+    option_count: *usize,
+) error{InvalidArguments}!?[]const u8 {
+    const arg = iterator.next() orelse return null;
+
+    if (option_count.* >= MAX_OPTION_COUNT) {
+        printDiagnostic("too many options near: {s}\n", arg);
+        return error.InvalidArguments;
+    }
+    option_count.* += 1;
+
+    if (isOversizedOptionToken(arg) or hasUnsafeOptionControl(arg)) {
+        printDiagnostic("invalid option: {s}\n", arg);
+        return error.InvalidArguments;
+    }
+
+    return arg;
+}
 
 pub fn takeValue(
     iterator: *std.process.Args.Iterator,
@@ -91,6 +113,14 @@ fn isOptionLikeValue(value: []const u8) bool {
     return std.mem.startsWith(u8, value, "-");
 }
 
+fn isOversizedOptionToken(value: []const u8) bool {
+    return value.len == 0 or value.len > MAX_OPTION_TOKEN_BYTES;
+}
+
+fn hasUnsafeOptionControl(value: []const u8) bool {
+    return action_text.hasControl(value);
+}
+
 fn isOversizedValueToken(value: []const u8) bool {
     return value.len > MAX_VALUE_TOKEN_BYTES;
 }
@@ -112,6 +142,33 @@ test "value tokens reject option-looking arguments" {
     try std.testing.expect(!isOptionLikeValue("value"));
     try std.testing.expect(isOptionLikeValue("--other"));
     try std.testing.expect(isOptionLikeValue("-x"));
+}
+
+test "option tokens are bounded before dispatch" {
+    const max_option = [_:0]u8{'a'} ** MAX_OPTION_TOKEN_BYTES;
+    const oversized_option = [_:0]u8{'a'} ** (MAX_OPTION_TOKEN_BYTES + 1);
+    const argv = [_][*:0]const u8{ "action", "--flag", &max_option, &oversized_option, "bad\nflag" };
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+    var option_count: usize = 0;
+
+    try std.testing.expectEqualStrings("action", iterator.next().?);
+    try std.testing.expectEqualStrings("--flag", (try nextOption(&iterator, &option_count)).?);
+    try std.testing.expectEqualStrings(max_option[0..MAX_OPTION_TOKEN_BYTES], (try nextOption(&iterator, &option_count)).?);
+    try std.testing.expectError(error.InvalidArguments, nextOption(&iterator, &option_count));
+    try std.testing.expectError(error.InvalidArguments, nextOption(&iterator, &option_count));
+}
+
+test "option scanner rejects too many options" {
+    var argv = [_][*:0]const u8{"--flag"} ** (MAX_OPTION_COUNT + 2);
+    argv[0] = "action";
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+    var option_count: usize = 0;
+
+    try std.testing.expectEqualStrings("action", iterator.next().?);
+    while (option_count < MAX_OPTION_COUNT) {
+        try std.testing.expectEqualStrings("--flag", (try nextOption(&iterator, &option_count)).?);
+    }
+    try std.testing.expectError(error.InvalidArguments, nextOption(&iterator, &option_count));
 }
 
 test "value tokens are bounded before duplication" {

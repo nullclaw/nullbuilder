@@ -210,8 +210,9 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
     var run_id: ?[]const u8 = null;
     var server_url: ?[]const u8 = null;
     var built_at: ?[]const u8 = null;
+    var option_count: usize = 0;
 
-    while (iterator.next()) |arg| {
+    while (try action_args.nextOption(iterator, &option_count)) |arg| {
         if (std.mem.eql(u8, arg, "--binary")) {
             try action_args.takeValueOnce(iterator, allocator, &binary_path, arg);
         } else if (std.mem.eql(u8, arg, "--target")) {
