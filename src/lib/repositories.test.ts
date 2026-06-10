@@ -15,9 +15,22 @@ test('normalizeOwner rejects invalid owners', () => {
   );
 });
 
+test('normalizeOwner rejects malformed runtime values without throwing type errors', () => {
+  for (const value of [null, undefined, 17, true, { owner: 'nullclaw' }]) {
+    assert.throws(
+      () => normalizeOwner(value),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid repository owner.'
+    );
+  }
+});
+
 test('normalizeRepoSlug validates default owner for unqualified repositories', () => {
   assert.equal(normalizeRepoSlug('nullbuilder', 'nullclaw'), 'nullclaw/nullbuilder');
   assert.throws(() => normalizeRepoSlug('nullbuilder', 'bad_owner!'), /^Error: Invalid repository owner\.$/);
+  assert.throws(
+    () => normalizeRepoSlug('nullbuilder', 17),
+    (error: unknown) => error instanceof Error && error.message === 'Invalid repository owner.'
+  );
 });
 
 test('normalizeRepoSlug rejects unsafe repository name edges', () => {
@@ -26,6 +39,15 @@ test('normalizeRepoSlug rejects unsafe repository name edges', () => {
   assert.throws(() => normalizeRepoSlug('-leading-dash', 'nullclaw'), /^Error: Invalid repository name\.$/);
   assert.throws(() => normalizeRepoSlug('double..dot', 'nullclaw'), /^Error: Invalid repository name\.$/);
   assert.throws(() => normalizeRepoSlug('nullbuilder.git', 'nullclaw'), /^Error: Invalid repository name\.$/);
+});
+
+test('normalizeRepoSlug rejects malformed runtime values without throwing type errors', () => {
+  for (const value of [null, undefined, 17, true, { repo: 'nullbuilder' }]) {
+    assert.throws(
+      () => normalizeRepoSlug(value, 'nullclaw'),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid repository slug.'
+    );
+  }
 });
 
 test('parseRepositoryList deduplicates case-insensitively', () => {
@@ -68,6 +90,15 @@ test('parseRepositoryList bounds configured repository input', () => {
       error.message === 'Repository slug is too large.' &&
       !error.message.includes(oversizedSlug.slice(0, 32))
   );
+});
+
+test('parseRepositoryList rejects malformed runtime values without throwing type errors', () => {
+  for (const value of [null, 17, true, { repositories: 'nullbuilder' }]) {
+    assert.throws(
+      () => parseRepositoryList(value, 'nullclaw'),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid repository list.'
+    );
+  }
 });
 
 test('repository validators do not echo unsafe input in errors', () => {
