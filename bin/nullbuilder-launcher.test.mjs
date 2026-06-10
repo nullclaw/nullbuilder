@@ -94,11 +94,12 @@ test('runLauncher maps spawn errors to a generic failure exit', () => {
     moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
     exists: () => true,
     stderr,
-    spawn: () => ({ error: new Error('spawn failed') })
+    spawn: () => ({ error: new Error('spawn failed /private/path/token\x1b[31m') })
   });
 
   assert.equal(status, 1);
-  assert.equal(stderr.value, 'spawn failed\n');
+  assert.equal(stderr.value, 'Failed to launch nullbuilder CLI.\n');
+  assert.doesNotMatch(stderr.value, /private|token|\x1b/);
 });
 
 function writableBuffer() {

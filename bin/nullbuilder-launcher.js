@@ -52,7 +52,7 @@ export function runLauncher({
   });
 
   if (result.error) {
-    stderr.write(`${result.error.message}\n`);
+    stderr.write('Failed to launch nullbuilder CLI.\n');
     return 1;
   }
 
