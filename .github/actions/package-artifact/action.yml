@@ -51,7 +51,6 @@ runs:
           --dep action_paths \
           --dep action_values \
           -Mroot="$GITHUB_ACTION_PATH/package_artifact.zig" \
-          --dep action_text \
           -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
           -Maction_paths="$GITHUB_ACTION_PATH/../action_paths.zig" \
           --dep action_text \
