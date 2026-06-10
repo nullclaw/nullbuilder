@@ -78,6 +78,8 @@ const TOO_MANY_FORM_FIELDS_MESSAGE = 'Too many form fields.';
 const MAX_WEB_ACTION_CONTENT_LENGTH_HEADER = 32;
 const MAX_WEB_ACTION_CONTENT_TYPE_HEADER = 128;
 const MAX_WEB_ACTION_FIELD_NAME_LENGTH = 64;
+const WEB_ACTION_FORM_URLENCODED_MEDIA_TYPE = 'application/x-www-form-urlencoded';
+const WEB_ACTION_MULTIPART_MEDIA_TYPE = 'multipart/form-data';
 export const MAX_WEB_ACTION_FORM_BYTES = 16 * 1024;
 const LOGIN_FORM_FIELDS = ['webToken'] as const;
 const LOGOUT_FORM_FIELDS = ['csrfToken'] as const;
@@ -617,8 +619,7 @@ function webActionFormContentType(headers: Headers): string | null {
   }
 
   const safeValue = readSafeTextInput(value, {
-    maxLength: MAX_WEB_ACTION_CONTENT_TYPE_HEADER,
-    trim: true
+    maxLength: MAX_WEB_ACTION_CONTENT_TYPE_HEADER
   });
   if (!safeValue) {
     return null;
@@ -627,16 +628,64 @@ function webActionFormContentType(headers: Headers): string | null {
     return null;
   }
 
-  const separatorIndex = safeValue.indexOf(';');
-  const mediaType = (separatorIndex === -1 ? safeValue : safeValue.slice(0, separatorIndex)).trim().toLowerCase();
-
-  return mediaType === 'application/x-www-form-urlencoded' || mediaType === 'multipart/form-data' ? safeValue : null;
+  const mediaType = webActionContentMediaTypeRange(safeValue);
+  return mediaType && isSupportedWebActionMediaType(safeValue, mediaType.start, mediaType.end) ? safeValue : null;
 }
 
 function webActionFormDataHeaders(contentType: string): Headers {
   const headers = new Headers();
   headers.set('content-type', contentType);
   return headers;
+}
+
+function webActionContentMediaTypeRange(value: string): { start: number; end: number } | null {
+  const separatorIndex = value.indexOf(';');
+  const rawEnd = separatorIndex === -1 ? value.length : separatorIndex;
+  const start = skipHttpHeaderSpaces(value, 0);
+  const end = trimHttpHeaderSpacesEnd(value, start, rawEnd);
+
+  return end > start ? { start, end } : null;
+}
+
+function skipHttpHeaderSpaces(value: string, start: number): number {
+  let index = start;
+  while (value[index] === ' ') {
+    index += 1;
+  }
+  return index;
+}
+
+function trimHttpHeaderSpacesEnd(value: string, start: number, end: number): number {
+  let index = end;
+  while (index > start && value[index - 1] === ' ') {
+    index -= 1;
+  }
+  return index;
+}
+
+function isSupportedWebActionMediaType(value: string, start: number, end: number): boolean {
+  return (
+    asciiRangeEqualsIgnoreCase(value, start, end, WEB_ACTION_FORM_URLENCODED_MEDIA_TYPE) ||
+    asciiRangeEqualsIgnoreCase(value, start, end, WEB_ACTION_MULTIPART_MEDIA_TYPE)
+  );
+}
+
+function asciiRangeEqualsIgnoreCase(value: string, start: number, end: number, expected: string): boolean {
+  if (end - start !== expected.length) {
+    return false;
+  }
+
+  for (let index = 0; index < expected.length; index += 1) {
+    if (asciiLowerCodeUnit(value.charCodeAt(start + index)) !== expected.charCodeAt(index)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function asciiLowerCodeUnit(value: number): number {
+  return value >= 65 && value <= 90 ? value + 32 : value;
 }
 
 async function readBoundedWebActionBody(request: Request): Promise<WebActionRequestBodySuccess | WebActionBodyLimitFailure> {

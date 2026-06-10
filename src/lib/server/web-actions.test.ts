@@ -485,6 +485,33 @@ test('readWebActionFormData rejects unsupported content types before streamed bo
   assert.equal(result.message.includes('private'), false);
 });
 
+test('readWebActionFormData rejects non-HTTP content type whitespace before body access', async () => {
+  let bodyAccessed = false;
+  const result = await readWebActionFormData(
+    {
+      method: 'POST',
+      headers: {
+        get(name: string) {
+          return name.toLowerCase() === 'content-type' ? '\u00a0application/x-www-form-urlencoded' : null;
+        }
+      },
+      url: 'https://nullbuilder.example.test/',
+      get body() {
+        bodyAccessed = true;
+        throw new Error('private body access detail');
+      }
+    } as unknown as Request
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    message: 'Invalid form body.'
+  });
+  assert.equal(bodyAccessed, false);
+  assert.equal(result.message.includes('private body access detail'), false);
+});
+
 test('readWebActionFormData rejects ambiguous combined content type headers', async () => {
   let bodyAccessed = false;
   const result = await readWebActionFormData(
