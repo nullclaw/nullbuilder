@@ -626,6 +626,10 @@ async function readBoundedWebActionBody(request: Request): Promise<WebActionRequ
         break;
       }
 
+      if (value.byteLength === 0) {
+        continue;
+      }
+
       if (value.byteLength > MAX_WEB_ACTION_FORM_BYTES - totalBytes) {
         await reader.cancel().catch(() => undefined);
         return webActionBodyTooLargeFailure();

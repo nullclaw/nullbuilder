@@ -338,6 +338,21 @@ test('readWebActionFormData parses bounded form bodies without content length', 
   }
 });
 
+test('readWebActionFormData ignores empty streamed chunks while enforcing body limits', async () => {
+  const result = await readWebActionFormData(
+    webFormStreamRequest([
+      new Uint8Array(),
+      new TextEncoder().encode('webToken=web-secret'),
+      new Uint8Array()
+    ])
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.formData.get('webToken'), 'web-secret');
+  }
+});
+
 test('readWebActionFormData rejects oversized streamed bodies without content length', async () => {
   const result = await readWebActionFormData(webFormRequest(`webToken=${'x'.repeat(MAX_WEB_ACTION_FORM_BYTES)}`));
 
@@ -966,6 +981,24 @@ function webFormRequest(body: string, headers: HeadersInit = {}): Request {
     },
     body
   });
+}
+
+function webFormStreamRequest(chunks: Uint8Array[]): Request {
+  return new Request('https://nullbuilder.example.test/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(chunk);
+        }
+        controller.close();
+      }
+    }),
+    duplex: 'half'
+  } as RequestInit);
 }
 
 function mutationForm(
