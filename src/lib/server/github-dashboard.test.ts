@@ -6,6 +6,7 @@ import {
   buildDashboard,
   makeErrorRepository,
   mapRepositorySummary,
+  MAX_DASHBOARD_WORK_LIST_ITEMS,
   type GitHubIssueResponse,
   type GitHubPullResponse,
   type GitHubRepositoryResponse,
@@ -200,6 +201,33 @@ test('buildDashboard sorts invalid updated timestamps after valid rows', () => {
   ]);
 
   assert.deepEqual(dashboard.issues.map((item) => item.number), [2, 1, 3]);
+});
+
+test('buildDashboard caps aggregated work lists without changing totals', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+  const issues = Array.from({ length: MAX_DASHBOARD_WORK_LIST_ITEMS + 2 }, (_, index) =>
+    workItem(index + 1, '2026-06-09T00:00:00Z')
+  );
+  const pullRequests = Array.from({ length: MAX_DASHBOARD_WORK_LIST_ITEMS + 2 }, (_, index) =>
+    pullRequestSummary(index + 1, '2026-06-09T00:00:00Z')
+  );
+  const dashboard = buildDashboard(config, config.repos, [
+    repositorySummary({
+      issues,
+      pullRequests
+    })
+  ]);
+
+  assert.equal(dashboard.issues.length, MAX_DASHBOARD_WORK_LIST_ITEMS);
+  assert.equal(dashboard.pullRequests.length, MAX_DASHBOARD_WORK_LIST_ITEMS);
+  assert.equal(dashboard.totals.issues, MAX_DASHBOARD_WORK_LIST_ITEMS + 2);
+  assert.equal(dashboard.totals.pullRequests, MAX_DASHBOARD_WORK_LIST_ITEMS + 2);
+  assert.deepEqual(
+    dashboard.issues.map((item) => item.number),
+    Array.from({ length: MAX_DASHBOARD_WORK_LIST_ITEMS }, (_, index) => index + 1)
+  );
 });
 
 test('buildDashboard saturates unsafe star totals', () => {

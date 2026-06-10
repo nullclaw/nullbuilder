@@ -1,7 +1,9 @@
 import type { RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { publicErrorMessage } from './github-client';
-import type { DashboardData, RepositorySummary } from './github-dashboard-types';
+import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary } from './github-dashboard-types';
+
+export const MAX_DASHBOARD_WORK_LIST_ITEMS = 500;
 
 export { mapLatestRuns, mapRepositorySummary } from './github-dashboard-mappers';
 export type {
@@ -25,10 +27,12 @@ export function buildDashboard(
   generatedAt = new Date().toISOString()
 ): DashboardData {
   const loadedRepositories = repositories.filter((repo) => repo.status === 'ok');
-  const issues = loadedRepositories.flatMap((repo) => repo.issues).sort(sortByUpdatedAt);
-  const pullRequests = loadedRepositories.flatMap((repo) => repo.pullRequests).sort(sortByUpdatedAt);
+  const issues = collectRecentWorkItems(loadedRepositories, (repo) => repo.issues);
+  const pullRequests = collectRecentWorkItems(loadedRepositories, (repo) => repo.pullRequests);
   const failingRuns = loadedRepositories.filter(repositoryHasFailingRun).length;
   const erroredRepositories = repositories.length - loadedRepositories.length;
+  const issueCount = countWorkItems(loadedRepositories, (repo) => repo.issues.length);
+  const pullRequestCount = countWorkItems(loadedRepositories, (repo) => repo.pullRequests.length);
 
   return {
     generatedAt,
@@ -43,12 +47,90 @@ export function buildDashboard(
       repositories: repositories.length,
       loadedRepositories: loadedRepositories.length,
       erroredRepositories,
-      issues: issues.length,
-      pullRequests: pullRequests.length,
+      issues: issueCount,
+      pullRequests: pullRequestCount,
       stars: loadedRepositories.reduce((total, repo) => saturatingSafeIntegerAdd(total, repo.stars ?? 0), 0),
       failingRuns
     }
   };
+}
+
+function collectRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
+  repositories: RepositorySummary[],
+  itemsForRepository: (repo: RepositorySummary) => T[],
+  maxItems = MAX_DASHBOARD_WORK_LIST_ITEMS
+): T[] {
+  if (!Number.isSafeInteger(maxItems) || maxItems <= 0) {
+    return [];
+  }
+
+  const rankedItems: RankedWorkItem<T>[] = [];
+  let ordinal = 0;
+
+  for (const repo of repositories) {
+    for (const item of itemsForRepository(repo)) {
+      insertRecentWorkItem(
+        rankedItems,
+        {
+          item,
+          timestamp: updatedAtTimestamp(item.updatedAt),
+          ordinal
+        },
+        maxItems
+      );
+      ordinal += 1;
+    }
+  }
+
+  return rankedItems.map(({ item }) => item);
+}
+
+type RankedWorkItem<T extends IssueSummary | PullRequestSummary> = {
+  item: T;
+  timestamp: number;
+  ordinal: number;
+};
+
+function insertRecentWorkItem<T extends IssueSummary | PullRequestSummary>(
+  items: RankedWorkItem<T>[],
+  item: RankedWorkItem<T>,
+  maxItems: number
+): void {
+  if (items.length >= maxItems && compareRecentWorkItems(item, items[items.length - 1]) >= 0) {
+    return;
+  }
+
+  let lower = 0;
+  let upper = items.length;
+
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    if (compareRecentWorkItems(item, items[middle]) < 0) {
+      upper = middle;
+    } else {
+      lower = middle + 1;
+    }
+  }
+
+  items.splice(lower, 0, item);
+  if (items.length > maxItems) {
+    items.length = maxItems;
+  }
+}
+
+function compareRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
+  left: RankedWorkItem<T>,
+  right: RankedWorkItem<T>
+): number {
+  const timestampOrder = right.timestamp - left.timestamp;
+  return timestampOrder === 0 ? left.ordinal - right.ordinal : timestampOrder;
+}
+
+function countWorkItems(
+  repositories: RepositorySummary[],
+  countForRepository: (repo: RepositorySummary) => number
+): number {
+  return repositories.reduce((total, repo) => saturatingSafeIntegerAdd(total, countForRepository(repo)), 0);
 }
 
 export function makeErrorRepository(
