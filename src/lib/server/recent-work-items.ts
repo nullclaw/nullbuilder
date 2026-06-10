@@ -1,8 +1,11 @@
+import { readSafeTextInput } from '../text-safety';
 import { isSafePositiveInteger } from './number-safety';
 
 export type WorkItemWithUpdatedAt = {
   updatedAt: string;
 };
+
+const MAX_UPDATED_AT_LENGTH = 64;
 
 type RankedRecentWorkItem<T extends WorkItemWithUpdatedAt> = {
   item: T;
@@ -117,7 +120,12 @@ function compareRecentWorkItems<T extends WorkItemWithUpdatedAt>(
 }
 
 function updatedAtTimestamp(value: string): number {
-  const timestamp = Date.parse(value);
+  const safeValue = readSafeTextInput(value, { maxLength: MAX_UPDATED_AT_LENGTH, trim: true });
+  if (!safeValue) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const timestamp = Date.parse(safeValue);
   return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
 }
 

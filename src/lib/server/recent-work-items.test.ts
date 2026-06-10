@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import {
   collectRecentWorkItems,
   compareByUpdatedAtDesc,
@@ -11,6 +11,12 @@ import {
 type TestWorkItem = WorkItemWithUpdatedAt & {
   id: number;
 };
+
+const originalDateParse = Date.parse;
+
+afterEach(() => {
+  Date.parse = originalDateParse;
+});
 
 test('RecentWorkItemCollector keeps the newest bounded rows with stable timestamp ties', () => {
   const collector = new RecentWorkItemCollector<TestWorkItem>(3);
@@ -51,6 +57,24 @@ test('compareByUpdatedAtDesc orders invalid timestamps after any valid timestamp
     compareByUpdatedAtDesc(workItem(1, '2026-06-09T00:00:00Z'), workItem(2, '2026-06-09T00:00:00Z')),
     0
   );
+});
+
+test('recent work item helpers reject unsafe timestamps before date parsing', () => {
+  const parsedDates: string[] = [];
+  Date.parse = ((value: string) => {
+    parsedDates.push(value);
+    return originalDateParse(value);
+  }) as typeof Date.parse;
+
+  const items = [
+    workItem(1, '2026-06-09T00:00:00Z'),
+    workItem(2, '2026-06-10T00:00:00Z\nhidden'),
+    workItem(3, '2026-06-11T00:00:00Z'.padEnd(128, 'x')),
+    workItem(4, '2026-06-08T00:00:00Z')
+  ];
+
+  assert.deepEqual(collectRecentWorkItems(items, 4).map(({ id }) => id), [1, 4, 2, 3]);
+  assert.deepEqual(parsedDates, ['2026-06-09T00:00:00Z', '2026-06-08T00:00:00Z']);
 });
 
 function workItem(id: number, updatedAt: string): TestWorkItem {
