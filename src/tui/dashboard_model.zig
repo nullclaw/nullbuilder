@@ -6,7 +6,6 @@ const dashboard_runs = @import("dashboard_runs.zig");
 const JsonValue = dashboard_json.JsonValue;
 const JsonObject = dashboard_json.JsonObject;
 
-const empty_values = [_]JsonValue{};
 const max_dashboard_repositories = 1000;
 const max_load_errors = 200;
 const max_repo_text_len = 256;
@@ -21,7 +20,7 @@ pub const Dashboard = struct {
 
     pub fn init(root: JsonObject) !Dashboard {
         const items = dashboard_json.boundedArrayField(root, "items", max_dashboard_repositories) orelse return error.InvalidDashboardJson;
-        const errors = dashboard_json.boundedArrayField(root, "errors", max_load_errors) orelse emptyJsonValues();
+        const errors = dashboard_json.boundedArrayField(root, "errors", max_load_errors) orelse dashboard_json.emptyValues();
 
         return .{
             .items = items,
@@ -148,10 +147,8 @@ pub const LoadErrorIterator = struct {
 };
 
 pub fn repositoryFromValue(value: JsonValue) ?Repository {
-    return switch (value) {
-        .object => |repo| repositoryFromObject(repo),
-        else => null,
-    };
+    const repo = dashboard_json.objectValue(value) orelse return null;
+    return repositoryFromObject(repo);
 }
 
 fn repositoryFromObject(repo: JsonObject) Repository {
@@ -167,8 +164,8 @@ fn repositoryFromObject(repo: JsonObject) Repository {
         .stars = dashboard_json.safeIntegerField(repo, "stars"),
         .runs = dashboard_runs.repositoryRunStatuses(status, latest),
         .has_failure = dashboard_runs.repositoryHasFailure(latest),
-        .issues = dashboard_json.boundedArrayField(repo, "issues", max_work_items_per_repository) orelse emptyJsonValues(),
-        .pull_requests = dashboard_json.boundedArrayField(repo, "pullRequests", max_work_items_per_repository) orelse emptyJsonValues(),
+        .issues = dashboard_json.boundedArrayField(repo, "issues", max_work_items_per_repository) orelse dashboard_json.emptyValues(),
+        .pull_requests = dashboard_json.boundedArrayField(repo, "pullRequests", max_work_items_per_repository) orelse dashboard_json.emptyValues(),
     };
 }
 
@@ -180,10 +177,8 @@ fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
 }
 
 fn workItemFromValue(value: JsonValue, repo_slug: []const u8) ?WorkItem {
-    return switch (value) {
-        .object => |work| workItemFromObject(work, repo_slug),
-        else => null,
-    };
+    const work = dashboard_json.objectValue(value) orelse return null;
+    return workItemFromObject(work, repo_slug);
 }
 
 fn workItemFromObject(work: JsonObject, repo_slug: []const u8) ?WorkItem {
@@ -199,10 +194,8 @@ fn workItemFromObject(work: JsonObject, repo_slug: []const u8) ?WorkItem {
 }
 
 fn loadErrorFromValue(value: JsonValue) ?LoadError {
-    return switch (value) {
-        .object => |load_error| loadErrorFromObject(load_error),
-        else => null,
-    };
+    const load_error = dashboard_json.objectValue(value) orelse return null;
+    return loadErrorFromObject(load_error);
 }
 
 fn loadErrorFromObject(load_error: JsonObject) ?LoadError {
@@ -213,10 +206,6 @@ fn loadErrorFromObject(load_error: JsonObject) ?LoadError {
         .repo = repo,
         .message = message,
     };
-}
-
-fn emptyJsonValues() []const JsonValue {
-    return empty_values[0..];
 }
 
 fn saturatingAdd(a: u64, b: u64) u64 {

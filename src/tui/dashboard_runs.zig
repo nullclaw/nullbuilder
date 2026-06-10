@@ -115,6 +115,23 @@ test "repositoryRunStatuses rejects control-bearing run labels" {
     try std.testing.expect(repositoryHasFailure(parsed.value.object));
 }
 
+test "repositoryRunStatuses falls back for empty run labels" {
+    var parsed = try std.json.parseFromSlice(dashboard_json.JsonValue, std.testing.allocator,
+        \\{
+        \\  "ci": {"status": ""},
+        \\  "nightly": {"status": "completed", "conclusion": ""},
+        \\  "release": {"status": "completed", "conclusion": "success"}
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const statuses = repositoryRunStatuses("", parsed.value.object);
+    try std.testing.expectEqualStrings(missing_status, statuses.ci);
+    try std.testing.expectEqualStrings(completed_status, statuses.nightly);
+    try std.testing.expectEqualStrings(success_conclusion, statuses.release);
+    try std.testing.expect(repositoryHasFailure(parsed.value.object));
+}
+
 test "repositoryHasFailure counts only completed non-success runs" {
     var parsed = try std.json.parseFromSlice(dashboard_json.JsonValue, std.testing.allocator,
         \\{

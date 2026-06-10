@@ -35,10 +35,7 @@ pub fn render(
     var parsed = try std.json.parseFromSlice(JsonValue, arena, json, .{});
     defer parsed.deinit();
 
-    const root = switch (parsed.value) {
-        .object => |object| object,
-        else => return error.InvalidDashboardJson,
-    };
+    const root = dashboard_json.objectValue(parsed.value) orelse return error.InvalidDashboardJson;
     const dashboard = try Dashboard.init(root);
     const totals = dashboard.totals();
 
@@ -290,6 +287,34 @@ test "render caps numeric columns from external dashboard json" {
 
     try expectContains(output, "99999+ 99999+");
     try expectContains(output, "#9999+");
+}
+
+test "render falls back for empty external status labels" {
+    const json =
+        \\{
+        \\  "items": [
+        \\    {
+        \\      "slug": "alpha",
+        \\      "status": "",
+        \\      "latestRuns": {
+        \\        "ci": {"status": ""},
+        \\        "nightly": {"status": "completed", "conclusion": ""},
+        \\        "release": {"status": "completed", "conclusion": "success"}
+        \\      }
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try render(std.testing.allocator, &out.writer, json, true);
+    const output = out.writer.buffered();
+
+    try expectContains(output, "n/a");
+    try expectContains(output, "completed");
+    try expectContains(output, "success");
+    try expectContains(output, "1 failing");
 }
 
 test "render does not echo terminal control characters from external text" {

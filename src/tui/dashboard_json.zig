@@ -6,6 +6,19 @@ pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
 pub const max_safe_json_integer: u64 = 9_007_199_254_740_991;
 
+const empty_json_values = [_]JsonValue{};
+
+pub fn emptyValues() []const JsonValue {
+    return empty_json_values[0..];
+}
+
+pub fn objectValue(value: JsonValue) ?JsonObject {
+    return switch (value) {
+        .object => |object| object,
+        else => null,
+    };
+}
+
 fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue {
     const value = object.get(field_name) orelse return null;
     return switch (value) {
@@ -43,8 +56,7 @@ pub fn requiredSafeTextField(
     max_len: usize,
 ) ?[]const u8 {
     const value = object.get(field_name) orelse return null;
-    const string = safeTextValue(value, max_len) orelse return null;
-    return if (string.len > 0) string else null;
+    return safeTextValue(value, max_len);
 }
 
 fn intField(object: JsonObject, field_name: []const u8) u64 {
@@ -67,7 +79,7 @@ pub fn safeIntegerField(object: JsonObject, field_name: []const u8) u64 {
 
 fn safeTextValue(value: JsonValue, max_len: usize) ?[]const u8 {
     return switch (value) {
-        .string => |string| if (string.len <= max_len and !text_safety.hasControl(string)) string else null,
+        .string => |string| if (string.len > 0 and string.len <= max_len and !text_safety.hasControl(string)) string else null,
         else => null,
     };
 }
@@ -83,6 +95,9 @@ test "field helpers return typed values and fallbacks" {
     defer parsed.deinit();
     const object = parsed.value.object;
 
+    try std.testing.expect(objectValue(parsed.value) != null);
+    try std.testing.expectEqual(null, objectValue(parsed.value.object.get("items").?));
+    try std.testing.expectEqual(@as(usize, 0), emptyValues().len);
     try std.testing.expectEqual(@as(usize, 2), arrayField(object, "items").?.len);
     try std.testing.expect(objectField(object, "owner") != null);
     try std.testing.expectEqualStrings("nullbuilder", safeTextField(object, "name", "fallback", 64));
@@ -108,6 +123,7 @@ test "safeTextField rejects oversized and control-bearing strings" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
         \\  "safe": "repo-\u043f\u0440\u0438\u0432\u0435\u0442",
+        \\  "blank": "",
         \\  "newline": "repo\nname",
         \\  "escape": "repo\u001b[31m",
         \\  "c1": "repo\u0085name",
@@ -119,6 +135,7 @@ test "safeTextField rejects oversized and control-bearing strings" {
 
     try std.testing.expectEqualStrings("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", safeTextField(object, "safe", "fallback", 64));
     try std.testing.expectEqualStrings("fallback", safeTextField(object, "safe", "fallback", 4));
+    try std.testing.expectEqualStrings("fallback", safeTextField(object, "blank", "fallback", 64));
     try std.testing.expectEqualStrings("fallback", safeTextField(object, "newline", "fallback", 64));
     try std.testing.expectEqualStrings("fallback", safeTextField(object, "escape", "fallback", 64));
     try std.testing.expectEqualStrings("fallback", safeTextField(object, "c1", "fallback", 64));
