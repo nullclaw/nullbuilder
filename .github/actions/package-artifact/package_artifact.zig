@@ -204,9 +204,9 @@ fn validateGeneratedPath(path: []const u8) error{InvalidGeneratedPath}!void {
 fn validateGeneratedOutputPaths(binary_path: []const u8, sha_path: []const u8, manifest_path: []const u8) error{InvalidGeneratedPath}!void {
     try validateGeneratedPath(sha_path);
     try validateGeneratedPath(manifest_path);
-    if (std.mem.eql(u8, binary_path, sha_path)) return error.InvalidGeneratedPath;
-    if (std.mem.eql(u8, binary_path, manifest_path)) return error.InvalidGeneratedPath;
-    if (std.mem.eql(u8, sha_path, manifest_path)) return error.InvalidGeneratedPath;
+    if (action_paths.eqlSafeRelativePath(binary_path, sha_path)) return error.InvalidGeneratedPath;
+    if (action_paths.eqlSafeRelativePath(binary_path, manifest_path)) return error.InvalidGeneratedPath;
+    if (action_paths.eqlSafeRelativePath(sha_path, manifest_path)) return error.InvalidGeneratedPath;
 }
 
 fn preparePackageOutputPlan(allocator: std.mem.Allocator, options: PackageOptions) !PackageOutputPlan {
@@ -548,6 +548,14 @@ test "package artifact formats safe generated paths" {
         error.InvalidGeneratedPath,
         validateGeneratedOutputPaths("manifest-linux-x86_64.json", "manifest-linux-x86_64.json.sha256", "manifest-linux-x86_64.json"),
     );
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        validateGeneratedOutputPaths("NIGHTLY-ARTIFACTS/MANIFEST-linux-x86_64.json", "nightly-artifacts/manifest-linux-x86_64.json.sha256", "nightly-artifacts/manifest-linux-x86_64.json"),
+    );
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        validateGeneratedOutputPaths("artifact.bin", "nightly-artifacts/MANIFEST-linux-x86_64.JSON", "nightly-artifacts/manifest-linux-x86_64.json"),
+    );
 
     const long_safe_binary =
         ("a" ** 128) ++ "/" ++
@@ -604,6 +612,13 @@ test "package artifact prepares output metadata before reading binary bytes" {
     try std.testing.expectError(
         error.InvalidGeneratedPath,
         preparePackageOutputPlan(std.testing.allocator, self_overwriting_manifest_options),
+    );
+
+    var case_insensitive_self_overwriting_options = valid_options;
+    case_insensitive_self_overwriting_options.binary_path = "nightly-artifacts/MANIFEST-linux-x86_64.JSON";
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        preparePackageOutputPlan(std.testing.allocator, case_insensitive_self_overwriting_options),
     );
 }
 

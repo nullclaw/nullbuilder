@@ -66,6 +66,10 @@ pub fn isSafeRelativePath(path: []const u8) bool {
     return true;
 }
 
+pub fn eqlSafeRelativePath(left: []const u8, right: []const u8) bool {
+    return isSafeRelativePath(left) and isSafeRelativePath(right) and text_safety.eqlAsciiIgnoreCase(left, right);
+}
+
 test "action paths accepts safe labels" {
     try std.testing.expect(isSafeLabel("linux-x86_64"));
     try std.testing.expect(isSafeLabel("nullclaw-linux-x86_64.exe"));
@@ -106,4 +110,16 @@ test "action paths accepts only safe relative paths" {
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/nullclaw."));
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/CON"));
     try std.testing.expect(!isSafeRelativePath(oversized_path[0..]));
+}
+
+test "action paths compare safe relative paths for case-insensitive filesystems" {
+    try std.testing.expect(eqlSafeRelativePath(
+        "nightly-artifacts/manifest-linux-x86_64.json",
+        "Nightly-Artifacts/MANIFEST-linux-X86_64.JSON",
+    ));
+    try std.testing.expect(!eqlSafeRelativePath(
+        "nightly-artifacts/manifest-linux-x86_64.json",
+        "nightly-artifacts/manifest-linux-arm64.json",
+    ));
+    try std.testing.expect(!eqlSafeRelativePath("../manifest-linux-x86_64.json", "manifest-linux-x86_64.json"));
 }
