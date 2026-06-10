@@ -30,6 +30,7 @@ export const MAX_WORK_ITEM_TITLE_LENGTH = 512;
 export const MAX_TIMESTAMP_TEXT_LENGTH = 64;
 export const MAX_DASHBOARD_URL_LENGTH = MAX_GITHUB_WEB_URL_LENGTH;
 export const MAX_LABELS_PER_WORK_ITEM = 20;
+export const MAX_LABELS_TO_SCAN = MAX_LABELS_PER_WORK_ITEM * 4;
 export const MAX_LABEL_NAME_LENGTH = 64;
 export const MAX_REPOSITORY_WORK_ITEMS = 100;
 export const MAX_WORKFLOW_RUNS_PER_REPOSITORY = 100;
@@ -212,10 +213,10 @@ function mapLabels(labels: unknown): GitHubLabel[] {
 
   const mapped: GitHubLabel[] = [];
 
-  for (const label of labels) {
-    if (mapped.length >= MAX_LABELS_PER_WORK_ITEM) {
-      break;
-    }
+  const scanCount = Math.min(labels.length, MAX_LABELS_TO_SCAN);
+
+  for (let index = 0; index < scanCount && mapped.length < MAX_LABELS_PER_WORK_ITEM; index += 1) {
+    const label = labels[index];
 
     if (typeof label === 'string') {
       mapped.push({

@@ -10,6 +10,7 @@ import {
   MAX_DASHBOARD_URL_LENGTH,
   MAX_DASHBOARD_WORK_LIST_ITEMS,
   MAX_LABELS_PER_WORK_ITEM,
+  MAX_LABELS_TO_SCAN,
   MAX_LABEL_NAME_LENGTH,
   MAX_REPOSITORY_WORK_ITEMS,
   MAX_TIMESTAMP_TEXT_LENGTH,
@@ -218,6 +219,25 @@ test('mapRepositorySummary bounds and sanitizes labels from GitHub payloads', ()
     { name: 'x'.repeat(MAX_LABEL_NAME_LENGTH), color: 'd0d7de' }
   ]);
   assert.equal(summary.issues[0].labels.at(-1)?.name, `label-${MAX_LABELS_PER_WORK_ITEM - 5}`);
+});
+
+test('mapRepositorySummary caps label scanning before reading oversized payloads', () => {
+  const labels = Array.from({ length: MAX_LABELS_TO_SCAN + 1 }, () => null);
+  Object.defineProperty(labels, MAX_LABELS_TO_SCAN, {
+    get() {
+      throw new Error('label scan exceeded limit');
+    }
+  });
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [issue({ labels: labels as unknown as GitHubIssueResponse['labels'] })],
+    [],
+    [],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.issues[0].labels.length, 0);
 });
 
 test('mapRepositorySummary bounds and sanitizes display strings from GitHub payloads', () => {
