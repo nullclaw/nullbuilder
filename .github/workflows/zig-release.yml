@@ -437,6 +437,10 @@ jobs:
             fi
 
             target="${artifact_dir#${artifact_prefix}-}"
+            if [[ ! "${target}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ "${target}" == *..* ]]; then
+              echo "invalid downloaded artifact target" >&2
+              exit 1
+            fi
             if [[ "${target}" == windows-* ]]; then
               cp "${artifact_dir}/${BINARY_NAME}.exe" "release-output/${artifact_prefix}-${target}.exe"
             else

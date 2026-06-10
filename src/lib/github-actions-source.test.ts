@@ -100,6 +100,15 @@ test('nightly decide validates temp root before creating decision output files',
   assert.ok(!source.includes('mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nightly-decision.XXXXXX"'));
 });
 
+test('release workflow validates downloaded artifact targets before staging assets', () => {
+  const source = readFileSync(join(workflowsRoot, 'zig-release.yml'), 'utf8');
+
+  assert.ok(source.includes('target="${artifact_dir#${artifact_prefix}-}"'));
+  assert.ok(source.includes('[[ ! "${target}" =~ ^[A-Za-z0-9._-]+$ ]]'));
+  assert.ok(source.includes('[[ "${target}" == *..* ]]'));
+  assert.ok(source.includes('invalid downloaded artifact target'));
+});
+
 test('workflow runner jobs bound execution time', () => {
   const missingTimeouts: string[] = [];
 
