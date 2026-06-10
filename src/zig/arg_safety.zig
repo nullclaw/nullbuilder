@@ -4,7 +4,8 @@ pub const ArgVectorPolicy = struct {
     max_count: usize,
     max_arg_bytes: usize,
     max_total_bytes: usize,
-    allow_empty: bool = true,
+    allow_empty_vector: bool = true,
+    allow_empty_args: bool = false,
 };
 
 pub fn isSafeArgVector(
@@ -12,11 +13,12 @@ pub fn isSafeArgVector(
     policy: ArgVectorPolicy,
     has_unsafe_text: *const fn ([]const u8) bool,
 ) bool {
-    if (!policy.allow_empty and args.len == 0) return false;
+    if (!policy.allow_empty_vector and args.len == 0) return false;
     if (args.len > policy.max_count) return false;
 
     var total_bytes: usize = 0;
     for (args) |arg| {
+        if (!policy.allow_empty_args and arg.len == 0) return false;
         if (arg.len > policy.max_arg_bytes) return false;
         if (!fitsTotalByteBudget(total_bytes, arg.len, policy.max_total_bytes)) return false;
         if (has_unsafe_text(arg)) return false;
@@ -60,6 +62,7 @@ test "arg safety accounts total bytes without underflow" {
         .max_count = 3,
         .max_arg_bytes = 4,
         .max_total_bytes = 0,
+        .allow_empty_args = true,
     };
 
     try std.testing.expect(isSafeArgVector(&.{}, policy, testHasNoUnsafeText));
@@ -70,16 +73,27 @@ test "arg safety accounts total bytes without underflow" {
     try std.testing.expect(!fitsTotalByteBudget(2, 0, 1));
 }
 
-test "arg safety rejects empty vectors when required" {
+test "arg safety rejects empty vectors and empty arguments when required" {
     const policy = ArgVectorPolicy{
         .max_count = 3,
         .max_arg_bytes = 4,
         .max_total_bytes = 8,
-        .allow_empty = false,
+        .allow_empty_vector = false,
     };
 
     try std.testing.expect(!isSafeArgVector(&.{}, policy, testHasUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{""}, policy, testHasUnsafeText));
     try std.testing.expect(isSafeArgVector(&.{"run"}, policy, testHasUnsafeText));
+
+    const permissive_arg_policy = ArgVectorPolicy{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+        .allow_empty_vector = false,
+        .allow_empty_args = true,
+    };
+
+    try std.testing.expect(isSafeArgVector(&.{""}, permissive_arg_policy, testHasUnsafeText));
 }
 
 test "arg safety delegates unsafe text detection" {

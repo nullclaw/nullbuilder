@@ -152,6 +152,7 @@ test "tui run args are bounded before build runner forwarding" {
     try std.testing.expect(isSafeTuiRunArgs(&.{ "release-tag", max_arg[0..] }));
     try std.testing.expect(isSafeTuiRunArgs(&.{ "release-tag", "nullclaw/nullbuilder", "--ref", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c" }));
 
+    try std.testing.expect(!isSafeTuiRunArgs(&.{ "build-pr", "" }));
     try std.testing.expect(!isSafeTuiRunArgs(too_many_args[0..]));
     try std.testing.expect(!isSafeTuiRunArgs(&.{ "build-pr", oversized_arg[0..] }));
     try std.testing.expect(!isSafeTuiRunArgs(&.{ "build-pr", max_arg[0..], total_excess[0..] }));

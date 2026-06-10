@@ -89,7 +89,7 @@ fn isSafeForwardedArgs(args: []const []const u8) bool {
         .max_count = max_forwarded_arg_count,
         .max_arg_bytes = max_forwarded_arg_bytes,
         .max_total_bytes = max_forwarded_args_total_bytes,
-        .allow_empty = false,
+        .allow_empty_vector = false,
     }, hasArgumentControl);
 }
 
@@ -229,6 +229,7 @@ test "forwarded tag arguments are bounded before spawning node" {
     try std.testing.expect(isSafeForwardedArgs(&.{ "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3", "--ref", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c" }));
 
     try std.testing.expect(!isSafeForwardedArgs(&.{}));
+    try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "" }));
     try std.testing.expect(!isSafeForwardedArgs(too_many_args[0..]));
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", oversized_arg[0..] }));
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "a", total_excess[0..] }));
@@ -249,6 +250,7 @@ test "top-level app arguments are bounded before command classification" {
     try std.testing.expect(isSafeAppArgs(&.{ "nullbuilder-tui", "release-tag", "nullclaw/nullbuilder", "--ref", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c" }));
 
     try std.testing.expect(!isSafeAppArgs(too_many_args[0..]));
+    try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "" }));
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", oversized_arg[0..] }));
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", max_arg[0..], total_excess[0..] }));
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\ncommand" }));
