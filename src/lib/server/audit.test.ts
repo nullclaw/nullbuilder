@@ -165,6 +165,11 @@ test('getAuditReport caps workflow file fetches before loading file content', as
     type: 'file',
     html_url: `https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/workflow-${index}.yml`
   }));
+  Object.defineProperty(workflowItems, Symbol.iterator, {
+    value() {
+      throw new Error('workflow directory iterator should not be called');
+    }
+  });
   const requests = mockGitHub((path) => {
     if (path === '/repos/nullclaw/nullbuilder') {
       return {

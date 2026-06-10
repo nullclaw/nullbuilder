@@ -188,7 +188,8 @@ async function loadWorkflowFiles(
   );
 
   const workflowFiles: WorkflowFile[] = [];
-  for (const file of loadedWorkflowFiles) {
+  for (let index = 0; index < loadedWorkflowFiles.length; index += 1) {
+    const file = loadedWorkflowFiles[index];
     if (file !== null) {
       workflowFiles.push(file);
     }
@@ -202,7 +203,8 @@ type SafeWorkflowDirectoryItem = Pick<GitHubContentItem, 'name' | 'path' | 'html
 function collectWorkflowDirectoryItems(items: unknown[]): SafeWorkflowDirectoryItem[] {
   const workflowItems: SafeWorkflowDirectoryItem[] = [];
 
-  for (const item of items) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
     const safeItem = safeWorkflowDirectoryItem(item);
     if (!safeItem) {
       continue;
