@@ -6,6 +6,7 @@ import {
   GITHUB_DEFAULT_MAX_PAGES,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
   GITHUB_LINK_HEADER_MAX_LENGTH,
+  GITHUB_PAGINATED_ITEMS_MAX,
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
   GitHubApiError,
   githubGetPages,
@@ -127,7 +128,7 @@ test('githubGetPages ignores oversized pagination link headers', async () => {
   assert.deepEqual(requests, ['https://oversized-link.example.test/repos']);
 });
 
-test('githubGetPages appends large pages without spreading array arguments', async () => {
+test('githubGetPages caps large pages without spreading array arguments', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
     NULLBUILDER_GITHUB_API_URL: 'https://large-page.example.test',
@@ -139,9 +140,33 @@ test('githubGetPages appends large pages without spreading array arguments', asy
 
   const values = await githubGetPages<number>(config, '/repos', {}, 1);
 
-  assert.equal(values.length, page.length);
+  assert.equal(values.length, GITHUB_PAGINATED_ITEMS_MAX);
   assert.equal(values[0], 0);
-  assert.equal(values.at(-1), page.length - 1);
+  assert.equal(values.at(-1), GITHUB_PAGINATED_ITEMS_MAX - 1);
+});
+
+test('githubGetPages stops once the total item cap is reached', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://capped-items.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+    return new Response(JSON.stringify([{ id: requests.length * 2 - 1 }, { id: requests.length * 2 }]), {
+      headers: {
+        Link: `<https://capped-items.example.test/repos?page=${requests.length + 1}>; rel="next"`
+      }
+    });
+  }) as typeof fetch;
+
+  const values = await githubGetPages<{ id: number }>(config, '/repos', {}, 5, 3);
+
+  assert.deepEqual(values, [{ id: 1 }, { id: 2 }, { id: 3 }]);
+  assert.deepEqual(requests, ['https://capped-items.example.test/repos', 'https://capped-items.example.test/repos?page=2']);
 });
 
 test('githubGetPages normalizes unsafe page limits', async () => {

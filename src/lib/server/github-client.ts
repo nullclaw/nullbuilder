@@ -22,6 +22,7 @@ export const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 256;
 export const GITHUB_JSON_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 export const GITHUB_DEFAULT_MAX_PAGES = 20;
 export const GITHUB_ABSOLUTE_MAX_PAGES = 100;
+export const GITHUB_PAGINATED_ITEMS_MAX = GITHUB_ABSOLUTE_MAX_PAGES * 100;
 export const GITHUB_LINK_HEADER_MAX_LENGTH = 16 * 1024;
 
 const cache = new Map<string, CacheEntry<unknown>>();
@@ -31,16 +32,18 @@ export async function githubGetPages<T>(
   config: NullbuilderConfig,
   path: string,
   init: GitHubRequestOptions = {},
-  maxPages = GITHUB_DEFAULT_MAX_PAGES
+  maxPages = GITHUB_DEFAULT_MAX_PAGES,
+  maxItems = GITHUB_PAGINATED_ITEMS_MAX
 ): Promise<T[]> {
   const values: T[] = [];
   let next: string | null = path;
   const pageLimit = normalizeMaxPages(maxPages);
+  const itemLimit = normalizeMaxItems(maxItems);
 
-  for (let page = 0; next && page < pageLimit; page += 1) {
+  for (let page = 0; next && page < pageLimit && values.length < itemLimit; page += 1) {
     const result: GitHubFetchResult<T[]> = await githubFetchJson<T[]>(config, next, init);
-    appendPageValues(values, result.data);
-    next = result.next;
+    appendPageValues(values, result.data, itemLimit);
+    next = values.length >= itemLimit ? null : result.next;
   }
 
   return values;
@@ -499,8 +502,11 @@ function resultFromCacheEntry<T>(entry: CacheEntry<T>): GitHubFetchResult<T> {
   };
 }
 
-function appendPageValues<T>(values: T[], page: readonly T[]): void {
+function appendPageValues<T>(values: T[], page: readonly T[], maxItems: number): void {
   for (const value of page) {
+    if (values.length >= maxItems) {
+      return;
+    }
     values.push(value);
   }
 }
@@ -515,6 +521,18 @@ function normalizeMaxPages(value: number): number {
   }
 
   return Math.min(GITHUB_ABSOLUTE_MAX_PAGES, Math.floor(value));
+}
+
+function normalizeMaxItems(value: number): number {
+  if (!Number.isFinite(value)) {
+    return GITHUB_PAGINATED_ITEMS_MAX;
+  }
+
+  if (value <= 0) {
+    return 0;
+  }
+
+  return Math.min(GITHUB_PAGINATED_ITEMS_MAX, Math.floor(value));
 }
 
 function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | undefined {
