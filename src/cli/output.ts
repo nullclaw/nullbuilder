@@ -7,13 +7,11 @@ import {
   type ReleaseTagResult
 } from '../lib/server/github';
 import { formatGrowth, formatNullableNumber, workflowRunLabel } from '../lib/dashboard-format';
+import { sanitizeTerminalCell, sanitizeTerminalLine } from '../lib/text-safety';
 import type { Command } from './options';
 
-const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\|$)|[@-Z\\-_])/g;
-const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
 const MAX_TERMINAL_CELL_LENGTH = 240;
 const MAX_TERMINAL_LINE_LENGTH = 2048;
-const TRUNCATION_SUFFIX = '...';
 
 export function selectDashboardJson(command: Command, dashboard: DashboardData) {
   const errors = dashboard.repositories
@@ -287,32 +285,9 @@ function sanitizeRows(rows: Array<Record<string, string>>, columns: string[]): A
 }
 
 function terminalLine(value: string): string {
-  return truncateTerminalText(
-    value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' '),
-    MAX_TERMINAL_LINE_LENGTH
-  );
+  return sanitizeTerminalLine(value, MAX_TERMINAL_LINE_LENGTH);
 }
 
 function terminalCell(value: string): string {
-  return truncateTerminalText(terminalLine(value), MAX_TERMINAL_CELL_LENGTH);
-}
-
-function truncateTerminalText(value: string, maxLength: number): string {
-  const suffixLength = maxLength > TRUNCATION_SUFFIX.length ? TRUNCATION_SUFFIX.length : 0;
-  const prefixLimit = maxLength - suffixLength;
-  let prefix = '';
-  let length = 0;
-
-  for (const character of value) {
-    if (length >= maxLength) {
-      return suffixLength > 0 ? `${prefix}${TRUNCATION_SUFFIX}` : prefix;
-    }
-
-    if (length < prefixLimit) {
-      prefix += character;
-    }
-    length += 1;
-  }
-
-  return value;
+  return sanitizeTerminalCell(value, MAX_TERMINAL_LINE_LENGTH, MAX_TERMINAL_CELL_LENGTH);
 }
