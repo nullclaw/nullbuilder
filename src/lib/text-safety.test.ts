@@ -22,6 +22,12 @@ test('readSafeTextInput rejects oversized and control-bearing input', () => {
   assert.equal(readSafeTextInput('build-pr\x1b[31m\nsecret', { trim: true }), null);
 });
 
+test('readSafeTextInput rejects malformed runtime values without throwing type errors', () => {
+  for (const value of [null, undefined, 17, true, { text: 'nullbuilder' }]) {
+    assert.equal(readSafeTextInput(value), null);
+  }
+});
+
 test('parsePositiveIntegerText accepts only safe positive base-10 integers', () => {
   assert.equal(parsePositiveIntegerText('1'), 1);
   assert.equal(parsePositiveIntegerText('42'), 42);
@@ -31,6 +37,12 @@ test('parsePositiveIntegerText accepts only safe positive base-10 integers', () 
   assert.equal(parsePositiveIntegerText('1.5'), null);
   assert.equal(parsePositiveIntegerText('9007199254740992'), null);
   assert.equal(parsePositiveIntegerText('1'.repeat(100_000)), null);
+});
+
+test('parsePositiveIntegerText rejects malformed runtime values without throwing type errors', () => {
+  for (const value of [null, undefined, 17, true, { value: '42' }]) {
+    assert.equal(parsePositiveIntegerText(value), null);
+  }
 });
 
 test('sanitizeText strips terminal controls and applies bounded fallback text', () => {

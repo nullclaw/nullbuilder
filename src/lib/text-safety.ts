@@ -23,7 +23,11 @@ export type SafeTextInputOptions = {
   trim?: boolean;
 };
 
-export function readSafeTextInput(value: string, options: SafeTextInputOptions = {}): string | null {
+export function readSafeTextInput(value: unknown, options: SafeTextInputOptions = {}): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
   const maxLength = options.maxLength ?? MAX_TEXT_INPUT_LENGTH;
   if (!Number.isSafeInteger(maxLength) || maxLength < 0 || value.length > maxLength) {
     return null;
@@ -36,7 +40,11 @@ export function readSafeTextInput(value: string, options: SafeTextInputOptions =
   return options.trim ? value.trim() : value;
 }
 
-export function parsePositiveIntegerText(value: string): number | null {
+export function parsePositiveIntegerText(value: unknown): number | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
   if (value.length > MAX_SAFE_INTEGER_DIGITS || !POSITIVE_INTEGER_TEXT_PATTERN.test(value)) {
     return null;
   }
