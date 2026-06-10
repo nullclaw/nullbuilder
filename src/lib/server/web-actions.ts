@@ -95,6 +95,7 @@ const LOGIN_FORM_FIELD_SET = new Set<string>(LOGIN_FORM_FIELDS);
 const LOGOUT_FORM_FIELD_SET = new Set<string>(LOGOUT_FORM_FIELDS);
 const BUILD_PR_ALLOWED_FORM_FIELD_SET = new Set<string>(BUILD_PR_ALLOWED_FORM_FIELDS);
 const RELEASE_TAG_ALLOWED_FORM_FIELD_SET = new Set<string>(RELEASE_TAG_ALLOWED_FORM_FIELDS);
+const FORM_DATA_ENTRIES = FormData.prototype.entries;
 
 export function runLoginWebAction(
   config: NullbuilderConfig,
@@ -512,7 +513,7 @@ function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>):
   const fields = new Map<string, FormDataEntryValue>();
   let fieldCount = 0;
 
-  for (const [field, value] of formData.entries()) {
+  for (const [field, value] of formDataEntries(formData)) {
     fieldCount += 1;
     if (fieldCount > MAX_WEB_ACTION_FORM_FIELDS) {
       throw new Error(TOO_MANY_FORM_FIELDS_MESSAGE);
@@ -539,7 +540,7 @@ function singleFormValue(formData: FormData, field: string): FormDataEntryValue 
   let value: FormDataEntryValue | null = null;
   let fieldCount = 0;
 
-  for (const [entryField, entryValue] of formData.entries()) {
+  for (const [entryField, entryValue] of formDataEntries(formData)) {
     fieldCount += 1;
     if (fieldCount > MAX_WEB_ACTION_FORM_FIELDS) {
       return value;
@@ -557,6 +558,10 @@ function singleFormValue(formData: FormData, field: string): FormDataEntryValue 
   }
 
   return value;
+}
+
+function formDataEntries(formData: FormData): ReturnType<FormData['entries']> {
+  return FORM_DATA_ENTRIES.call(formData);
 }
 
 function isInvalidFormShapeError(error: unknown): boolean {

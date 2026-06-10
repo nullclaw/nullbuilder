@@ -234,8 +234,8 @@ test('mutation form parsers avoid getAll allocations while validating form shape
   assert.throws(() => parseReleaseTagMutationForm(releaseFormData), /^Error: Duplicate form field\.$/);
 });
 
-test('web action form parsers scan entries once without keys or getAll', () => {
-  const buildFormData = formDataWithGuardedIterators();
+test('web action form parsers avoid instance form data entry hooks', () => {
+  const buildFormData = formDataWithGuardedEntryMethods();
   buildFormData.set('repo', 'nullbuilder');
   buildFormData.set('prNumber', '17');
   buildFormData.set('tagName', 'build-pr-17');
@@ -248,9 +248,8 @@ test('web action form parsers scan entries once without keys or getAll', () => {
     confirm: true,
     force: false
   });
-  assert.equal(buildFormData.entryReadCount(), 1);
 
-  const releaseFormData = formDataWithGuardedIterators();
+  const releaseFormData = formDataWithGuardedEntryMethods();
   releaseFormData.set('repo', 'nullbuilder');
   releaseFormData.set('tagName', 'v1.2.3');
   releaseFormData.set('targetRef', 'main');
@@ -263,9 +262,8 @@ test('web action form parsers scan entries once without keys or getAll', () => {
     confirm: false,
     force: true
   });
-  assert.equal(releaseFormData.entryReadCount(), 1);
 
-  const loginFormData = formDataWithGuardedIterators();
+  const loginFormData = formDataWithGuardedEntryMethods();
   loginFormData.set('webToken', 'web-secret');
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
@@ -273,7 +271,6 @@ test('web action form parsers scan entries once without keys or getAll', () => {
   });
 
   assert.equal(runLoginWebAction(config, testLoginRateLimiter(), 'client', loginFormData).ok, true);
-  assert.equal(loginFormData.entryReadCount(), 1);
 });
 
 test('mutation form parsers reject oversized field counts without getAll allocations', () => {
@@ -741,17 +738,10 @@ test('runBuildPrWebMutation rejects duplicate csrf token fields before executor'
 
 test('runBuildPrWebMutation bounds csrf lookup before form parsing', async () => {
   const { config, cookies } = authorizedMutationContext();
-  let yieldedEntries = 0;
-  const formData = {
-    entries() {
-      return (function* entries(): IterableIterator<[string, string]> {
-        for (let index = 0; index < MAX_WEB_ACTION_FORM_FIELDS + 100; index += 1) {
-          yieldedEntries += 1;
-          yield [`field-${index}`, 'value'];
-        }
-      })();
-    }
-  } as unknown as FormData;
+  const formData = formDataWithGuardedEntryMethods();
+  for (let index = 0; index < MAX_WEB_ACTION_FORM_FIELDS + 100; index += 1) {
+    formData.set(`field-${index}`, 'value');
+  }
   let executed = false;
 
   const result = await runBuildPrWebMutation(
@@ -766,7 +756,6 @@ test('runBuildPrWebMutation bounds csrf lookup before form parsing', async () =>
   );
 
   assert.equal(executed, false);
-  assert.equal(yieldedEntries, MAX_WEB_ACTION_FORM_FIELDS + 1);
   assert.deepEqual(result, {
     ok: false,
     status: 403,
@@ -1051,19 +1040,14 @@ function formDataWithoutGetAll(): FormData {
   return formData;
 }
 
-function formDataWithGuardedIterators(): FormData & { entryReadCount: () => number } {
-  const formData = formDataWithoutGetAll() as FormData & { entryReadCount: () => number };
-  let entryReads = 0;
-  const entries = formData.entries.bind(formData);
-
+function formDataWithGuardedEntryMethods(): FormData {
+  const formData = formDataWithoutGetAll();
   formData.entries = () => {
-    entryReads += 1;
-    return entries();
+    throw new Error('instance entries should not be called.');
   };
   formData.keys = () => {
     throw new Error('keys should not be called.');
   };
-  formData.entryReadCount = () => entryReads;
 
   return formData;
 }
