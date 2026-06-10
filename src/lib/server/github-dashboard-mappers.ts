@@ -1,4 +1,5 @@
 import type { RepoSlug } from '../repositories';
+import { sanitizeText } from '../text-safety';
 import type {
   GitHubIssueResponse,
   GitHubLabel,
@@ -15,6 +16,8 @@ import type {
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';
 const LABEL_COLOR_PATTERN = /^[0-9a-f]{6}$/i;
+export const MAX_LABELS_PER_WORK_ITEM = 20;
+export const MAX_LABEL_NAME_LENGTH = 64;
 export const MAX_REPOSITORY_WORK_ITEMS = 100;
 
 export function mapRepositorySummary(
@@ -200,18 +203,35 @@ function mapPullRequest(repo: RepoSlug, pull: GitHubPullResponse): PullRequestSu
 }
 
 function mapLabels(labels: Array<string | { name?: string; color?: string }>): GitHubLabel[] {
-  return labels.map((label) => {
-    if (typeof label === 'string') {
-      return {
-        name: label,
-        color: DEFAULT_LABEL_COLOR
-      };
+  const mapped: GitHubLabel[] = [];
+
+  for (const label of labels) {
+    if (mapped.length >= MAX_LABELS_PER_WORK_ITEM) {
+      break;
     }
 
-    return {
-      name: label.name ?? 'label',
+    if (typeof label === 'string') {
+      mapped.push({
+        name: safeLabelName(label),
+        color: DEFAULT_LABEL_COLOR
+      });
+      continue;
+    }
+
+    mapped.push({
+      name: safeLabelName(label.name),
       color: normalizeLabelColor(label.color)
-    };
+    });
+  }
+
+  return mapped;
+}
+
+function safeLabelName(value: string | undefined): string {
+  return sanitizeText(value ?? '', {
+    maxLength: MAX_LABEL_NAME_LENGTH,
+    fallback: 'label',
+    trim: true
   });
 }
 

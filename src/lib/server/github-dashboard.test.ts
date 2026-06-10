@@ -7,6 +7,8 @@ import {
   makeErrorRepository,
   mapRepositorySummary,
   MAX_DASHBOARD_WORK_LIST_ITEMS,
+  MAX_LABELS_PER_WORK_ITEM,
+  MAX_LABEL_NAME_LENGTH,
   MAX_REPOSITORY_WORK_ITEMS,
   type GitHubIssueResponse,
   type GitHubPullResponse,
@@ -103,6 +105,34 @@ test('mapRepositorySummary normalizes unsafe GitHub counters', () => {
   assert.equal(summary.forks, null);
   assert.equal(summary.issues[0].comments, 0);
   assert.equal(summary.pullRequests[0].comments, 0);
+});
+
+test('mapRepositorySummary bounds and sanitizes labels from GitHub payloads', () => {
+  const longLabel = 'x'.repeat(MAX_LABEL_NAME_LENGTH + 10);
+  const labels = [
+    ' bug ',
+    { name: 'unsafe\x1b[31m\nlabel', color: 'ABCDEF' },
+    { name: '', color: 'not-a-color' },
+    longLabel,
+    ...Array.from({ length: MAX_LABELS_PER_WORK_ITEM + 5 }, (_, index) => `label-${index}`)
+  ];
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [issue({ labels })],
+    [],
+    [],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.issues[0].labels.length, MAX_LABELS_PER_WORK_ITEM);
+  assert.deepEqual(summary.issues[0].labels.slice(0, 4), [
+    { name: 'bug', color: 'd0d7de' },
+    { name: 'unsafe label', color: 'abcdef' },
+    { name: 'label', color: 'd0d7de' },
+    { name: 'x'.repeat(MAX_LABEL_NAME_LENGTH), color: 'd0d7de' }
+  ]);
+  assert.equal(summary.issues[0].labels.at(-1)?.name, `label-${MAX_LABELS_PER_WORK_ITEM - 5}`);
 });
 
 test('mapRepositorySummary skips invalid issue and pull request numbers', () => {

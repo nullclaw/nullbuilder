@@ -5,7 +5,13 @@ import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary
 
 export const MAX_DASHBOARD_WORK_LIST_ITEMS = 500;
 
-export { mapLatestRuns, mapRepositorySummary, MAX_REPOSITORY_WORK_ITEMS } from './github-dashboard-mappers';
+export {
+  mapLatestRuns,
+  mapRepositorySummary,
+  MAX_LABELS_PER_WORK_ITEM,
+  MAX_LABEL_NAME_LENGTH,
+  MAX_REPOSITORY_WORK_ITEMS
+} from './github-dashboard-mappers';
 export type {
   DashboardData,
   GitHubIssueResponse,
