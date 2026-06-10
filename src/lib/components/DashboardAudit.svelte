@@ -1,13 +1,18 @@
 <script lang="ts">
   import { AlertTriangle, ArrowRight, ShieldCheck } from '@lucide/svelte';
-  import { visibleAuditFindings } from '$lib/dashboard-view';
+  import {
+    auditFindingHref,
+    auditRepositoryHref,
+    buildAuditRepositoryUrls,
+    visibleAuditFindings
+  } from '$lib/dashboard-view';
   import type { AuditReport } from '$lib/server/audit-types';
 
   let { audit }: { audit: AuditReport | null | undefined } = $props();
 
   const repositories = $derived(audit?.repositories ?? []);
   const findings = $derived(visibleAuditFindings(audit?.findings ?? []));
-  const repositoryUrls = $derived(new Map(repositories.map((repo) => [repo.repo, repo.url])));
+  const repositoryUrls = $derived(buildAuditRepositoryUrls(repositories));
 </script>
 
 <section id="audit" class="audit-panel">
@@ -29,7 +34,7 @@
         <a
           class:error={repo.status === 'error'}
           class="audit-row"
-          href={repo.url}
+          href={auditRepositoryHref(repo.url)}
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -47,7 +52,7 @@
       {#each findings as finding}
         <a
           class="audit-finding {finding.severity}"
-          href={finding.url ?? repositoryUrls.get(finding.repo) ?? '#audit'}
+          href={auditFindingHref(finding, repositoryUrls)}
           target="_blank"
           rel="noopener noreferrer"
         >

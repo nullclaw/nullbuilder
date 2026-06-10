@@ -2,8 +2,11 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   DASHBOARD_SECTIONS,
+  auditFindingHref,
+  auditRepositoryHref,
   authGateCopy,
   authStateLabel,
+  buildAuditRepositoryUrls,
   buildPrResultMessage,
   dashboardOwner,
   hasDashboardReadErrors,
@@ -43,6 +46,51 @@ test('visibleAuditFindings bounds and validates the display limit', () => {
   assert.deepEqual(visibleAuditFindings([1, 2, 3], 2), [1, 2]);
   assert.deepEqual(visibleAuditFindings([1, 2, 3], 0), []);
   assert.deepEqual(visibleAuditFindings([1, 2, 3], Number.NaN), []);
+});
+
+test('audit href helpers prefer safe finding URLs before repository fallbacks', () => {
+  const repositoryUrls = buildAuditRepositoryUrls([
+    { repo: 'nullclaw/nullbuilder', url: 'https://github.example.test/nullclaw/nullbuilder' },
+    { repo: 'nullclaw/unsafe', url: 'javascript:alert(1)' }
+  ]);
+
+  assert.equal(
+    auditFindingHref(
+      {
+        repo: 'nullclaw/nullbuilder',
+        url: 'https://github.example.test/nullclaw/nullbuilder/actions'
+      },
+      repositoryUrls
+    ),
+    'https://github.example.test/nullclaw/nullbuilder/actions'
+  );
+  assert.equal(
+    auditFindingHref({ repo: 'nullclaw/nullbuilder', url: '' }, repositoryUrls),
+    'https://github.example.test/nullclaw/nullbuilder'
+  );
+  assert.equal(auditFindingHref({ repo: 'nullclaw/unsafe' }, repositoryUrls), '#audit');
+  assert.equal(auditRepositoryHref('javascript:alert(1)'), '#audit');
+});
+
+test('audit href helpers reject control-bearing and credentialed URLs', () => {
+  const repositoryUrls = buildAuditRepositoryUrls([
+    { repo: 'nullclaw/control', url: 'https://github.example.test/nullclaw/control%0aoutput=true' },
+    { repo: 'nullclaw/creds', url: 'https://user:pass@github.example.test/nullclaw/creds' },
+    { repo: 'nullclaw/runtime', url: 42 },
+    { repo: 'nullclaw/safe', url: 'http://localhost/nullclaw/safe' }
+  ]);
+
+  assert.equal(repositoryUrls.has('nullclaw/control'), false);
+  assert.equal(repositoryUrls.has('nullclaw/creds'), false);
+  assert.equal(repositoryUrls.has('nullclaw/runtime'), false);
+  assert.equal(repositoryUrls.get('nullclaw/safe'), 'http://localhost/nullclaw/safe');
+  assert.equal(
+    auditFindingHref(
+      { repo: 'nullclaw/safe', url: 'https://github.example.test/nullclaw/safe\nbad' },
+      repositoryUrls
+    ),
+    'http://localhost/nullclaw/safe'
+  );
 });
 
 test('mutation result messages share dry-run move and create wording', () => {
