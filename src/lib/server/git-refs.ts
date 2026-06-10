@@ -74,5 +74,26 @@ function isSafeGitBranchName(branchName: string): boolean {
     return false;
   }
 
-  return branchName.split('/').every((part) => part && !part.startsWith('.') && !part.endsWith('.lock'));
+  return hasSafeGitBranchSegments(branchName);
+}
+
+function hasSafeGitBranchSegments(branchName: string): boolean {
+  let segmentStart = 0;
+
+  for (let index = 0; index <= branchName.length; index += 1) {
+    if (index !== branchName.length && branchName[index] !== '/') {
+      continue;
+    }
+
+    if (!isSafeGitBranchSegment(branchName, segmentStart, index)) {
+      return false;
+    }
+    segmentStart = index + 1;
+  }
+
+  return true;
+}
+
+function isSafeGitBranchSegment(branchName: string, start: number, end: number): boolean {
+  return end > start && branchName[start] !== '.' && !branchName.endsWith('.lock', end);
 }
