@@ -300,7 +300,15 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
     offset += chunk.byteLength;
   }
 
-  return new TextDecoder().decode(bytes);
+  return decodeUtf8Response(bytes);
+}
+
+function decodeUtf8Response(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error('GitHub response body is not valid UTF-8.');
+  }
 }
 
 function contentLengthExceedsLimit(value: string, maxBytes: number): boolean {
