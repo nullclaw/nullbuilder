@@ -539,8 +539,14 @@ function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>):
 
 function singleFormValue(formData: FormData, field: string): FormDataEntryValue | null {
   let value: FormDataEntryValue | null = null;
+  let fieldCount = 0;
 
   for (const [entryField, entryValue] of formData.entries()) {
+    fieldCount += 1;
+    if (fieldCount > MAX_WEB_ACTION_FORM_FIELDS) {
+      return value;
+    }
+
     if (entryField !== field) {
       continue;
     }

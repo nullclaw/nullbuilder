@@ -679,6 +679,42 @@ test('runBuildPrWebMutation rejects duplicate csrf token fields before executor'
   });
 });
 
+test('runBuildPrWebMutation bounds csrf lookup before form parsing', async () => {
+  const { config, cookies } = authorizedMutationContext();
+  let yieldedEntries = 0;
+  const formData = {
+    entries() {
+      return (function* entries(): IterableIterator<[string, string]> {
+        for (let index = 0; index < MAX_WEB_ACTION_FORM_FIELDS + 100; index += 1) {
+          yieldedEntries += 1;
+          yield [`field-${index}`, 'value'];
+        }
+      })();
+    }
+  } as unknown as FormData;
+  let executed = false;
+
+  const result = await runBuildPrWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.equal(yieldedEntries, MAX_WEB_ACTION_FORM_FIELDS + 1);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 403,
+    field: 'buildError',
+    message: 'Invalid request token.'
+  });
+});
+
 test('runBuildPrWebMutation rejects unknown form fields before executor', async () => {
   const { config, cookies, csrfToken } = authorizedMutationContext();
   const formData = new FormData();
