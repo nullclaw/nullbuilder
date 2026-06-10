@@ -3,6 +3,7 @@ const std = @import("std");
 const max_decimal_id_digits = "18446744073709551615".len;
 const max_host_bytes = 253;
 const max_host_label_bytes = 63;
+const max_port_digits = "65535".len;
 const max_repo_segment_bytes = 100;
 
 pub fn isDecimalId(value: []const u8) bool {
@@ -99,7 +100,7 @@ fn isSafeHostLabel(label: []const u8) bool {
 }
 
 fn isSafePort(port: []const u8) bool {
-    if (port.len == 0) return false;
+    if (port.len == 0 or port.len > max_port_digits) return false;
     const parsed = std.fmt.parseUnsigned(u16, port, 10) catch return false;
     return parsed > 0;
 }
@@ -241,7 +242,10 @@ test "action values validate URL bases and metadata" {
     try std.testing.expect(!isHttpUrlBase("https://github.com@evil.example"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:abc"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:0"));
+    try std.testing.expect(isHttpUrlBase("https://github.com:65535"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:65536"));
+    try std.testing.expect(!isHttpUrlBase("https://github.com:123456"));
+    try std.testing.expect(!isHttpUrlBase("https://github.com:" ++ ("1" ** 100)));
 
     try std.testing.expect(isSafeMetadataValue("nightly-20260609-abcdef0", 64));
     try std.testing.expect(!isSafeMetadataValue("", 64));
