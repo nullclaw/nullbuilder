@@ -29,6 +29,7 @@ export const GITHUB_ERROR_MESSAGE_MAX_LENGTH = 512;
 export const GITHUB_STATUS_TEXT_MAX_LENGTH = 128;
 export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
 
+const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie'] as const;
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
 
@@ -120,6 +121,7 @@ async function requestGitHubJson<T>(
   cached: CacheEntry<T> | undefined
 ): Promise<GitHubFetchResult<T>> {
   const headers = new Headers(requestInit.headers);
+  stripCallerCredentialHeaders(headers);
   headers.set('Accept', accept);
   headers.set('X-GitHub-Api-Version', '2022-11-28');
 
@@ -168,6 +170,12 @@ async function requestGitHubJson<T>(
     data,
     next
   };
+}
+
+function stripCallerCredentialHeaders(headers: Headers): void {
+  for (const header of CALLER_SUPPLIED_CREDENTIAL_HEADERS) {
+    headers.delete(header);
+  }
 }
 
 async function toGitHubApiError(response: Response): Promise<GitHubApiError> {

@@ -279,6 +279,57 @@ test('githubRequest keeps cached responses isolated by GitHub token', async () =
   ]);
 });
 
+test('githubRequest strips caller-supplied credential headers before fetching GitHub', async () => {
+  const anonymousConfig = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://credentials.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const tokenConfig = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://credentials.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0',
+    NULLBUILDER_GITHUB_TOKEN: 'configured-token'
+  });
+  const requests: Array<{
+    authorization: string | null;
+    cookie: string | null;
+  }> = [];
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    requests.push({
+      authorization: headers.get('Authorization'),
+      cookie: headers.get('Cookie')
+    });
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  await githubRequest(anonymousConfig, '/repos/nullclaw/nullbuilder', {
+    headers: {
+      Authorization: 'Bearer caller-token',
+      Cookie: 'session=caller-cookie'
+    }
+  });
+  await githubRequest(tokenConfig, '/repos/nullclaw/nullbuilder', {
+    headers: {
+      Authorization: 'Bearer caller-token',
+      Cookie: 'session=caller-cookie'
+    }
+  });
+
+  assert.deepEqual(requests, [
+    {
+      authorization: null,
+      cookie: null
+    },
+    {
+      authorization: 'Bearer configured-token',
+      cookie: null
+    }
+  ]);
+});
+
 test('githubRequest shares in-flight cacheable GET responses', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
