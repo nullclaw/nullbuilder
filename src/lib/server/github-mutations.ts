@@ -20,7 +20,7 @@ import {
   sanitizeBuildPrTagName,
   sanitizeReleaseTagName
 } from './tags';
-import { isSafePositiveInteger } from './number-safety';
+import { isSafePositiveInteger } from '../number-safety';
 
 export type BuildPrResult = {
   repo: RepoSlug;

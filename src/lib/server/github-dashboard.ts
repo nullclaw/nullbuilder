@@ -5,7 +5,7 @@ import { publicErrorMessage } from './github-client';
 import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary } from './github-dashboard-types';
 import { githubRepositoryWebUrl } from './github-web-urls';
 import { MAX_TIMESTAMP_TEXT_LENGTH } from './github-dashboard-mappers';
-import { saturatingSafeIntegerAdd } from './number-safety';
+import { saturatingSafeIntegerAdd } from '../number-safety';
 import {
   compareByUpdatedAtDesc,
   hasValidRecentWorkItemLimit,

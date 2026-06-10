@@ -3,7 +3,7 @@ import { parseUtcTimestampMillis } from '../date-safety';
 import type { NullbuilderConfig } from './config';
 import { githubRequest } from './github-client';
 import type { StarGrowthSummary } from './github-dashboard-types';
-import { safeNonNegativeInteger } from './number-safety';
+import { safeNonNegativeInteger } from '../number-safety';
 
 export const STAR_PAGE_SIZE = 100;
 const MAX_STAR_PAGES_TO_SCAN = 10;

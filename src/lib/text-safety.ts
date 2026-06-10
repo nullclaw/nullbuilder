@@ -12,14 +12,14 @@ export const MAX_TEXT_SAFETY_LENGTH = 8192;
 export const MAX_TEXT_INPUT_LENGTH = 512;
 
 export type SafeTextOptions = {
-  maxLength: number;
+  maxLength: unknown;
   fallback?: string;
   suffix?: string;
   trim?: boolean;
 };
 
 export type SafeTextInputOptions = {
-  maxLength?: number;
+  maxLength?: unknown;
   trim?: boolean;
 };
 
@@ -28,8 +28,8 @@ export function readSafeTextInput(value: unknown, options: SafeTextInputOptions 
     return null;
   }
 
-  const maxLength = options.maxLength ?? MAX_TEXT_INPUT_LENGTH;
-  if (!Number.isSafeInteger(maxLength) || maxLength < 0 || value.length > maxLength) {
+  const maxLength = normalizeInputLength(options.maxLength);
+  if (maxLength === null || value.length > maxLength) {
     return null;
   }
 
@@ -70,18 +70,18 @@ export function sanitizeText(value: string, options: SafeTextOptions): string {
   return normalized || options.fallback || normalized;
 }
 
-export function sanitizeTerminalLine(value: string, maxLength: number): string {
+export function sanitizeTerminalLine(value: string, maxLength: unknown): string {
   return sanitizeText(value, {
     maxLength,
     suffix: TERMINAL_TRUNCATION_SUFFIX
   });
 }
 
-export function sanitizeTerminalCell(value: string, lineMaxLength: number, cellMaxLength: number): string {
+export function sanitizeTerminalCell(value: string, lineMaxLength: unknown, cellMaxLength: unknown): string {
   return truncateText(sanitizeTerminalLine(value, lineMaxLength), cellMaxLength, TERMINAL_TRUNCATION_SUFFIX);
 }
 
-function truncateText(value: string, maxLength: number, suffix: string): string {
+function truncateText(value: string, maxLength: unknown, suffix: string): string {
   const normalizedMaxLength = normalizeTextLength(maxLength);
 
   if (normalizedMaxLength === 0) {
@@ -107,8 +107,16 @@ function truncateText(value: string, maxLength: number, suffix: string): string 
   return value;
 }
 
-function normalizeTextLength(value: number): number {
-  if (Number.isNaN(value) || value <= 0) {
+function normalizeInputLength(value: unknown): number | null {
+  if (value === undefined) {
+    return MAX_TEXT_INPUT_LENGTH;
+  }
+
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function normalizeTextLength(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value) || value <= 0) {
     return 0;
   }
 

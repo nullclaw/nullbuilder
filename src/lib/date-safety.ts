@@ -1,3 +1,4 @@
+import { normalizeBoundedPositiveInteger } from './number-safety';
 import { readSafeTextInput } from './text-safety';
 
 const DEFAULT_MAX_UTC_TIMESTAMP_LENGTH = 64;
@@ -5,7 +6,7 @@ const UTC_TIMESTAMP_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 
 export type UtcTimestampParseOptions = {
-  maxLength?: number;
+  maxLength?: unknown;
 };
 
 export function safeUtcTimestampText(value: unknown, options: UtcTimestampParseOptions = {}): string {
@@ -13,7 +14,7 @@ export function safeUtcTimestampText(value: unknown, options: UtcTimestampParseO
 }
 
 export function parseUtcTimestampMillis(
-  value: string | null | undefined,
+  value: unknown,
   options: UtcTimestampParseOptions = {}
 ): number | null {
   if (!value) {
@@ -61,8 +62,10 @@ export function parseUtcTimestampMillis(
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function normalizeMaxTimestampLength(value: number | undefined): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
-    ? value
-    : DEFAULT_MAX_UTC_TIMESTAMP_LENGTH;
+function normalizeMaxTimestampLength(value: unknown): number {
+  return normalizeBoundedPositiveInteger(
+    value,
+    DEFAULT_MAX_UTC_TIMESTAMP_LENGTH,
+    DEFAULT_MAX_UTC_TIMESTAMP_LENGTH
+  );
 }

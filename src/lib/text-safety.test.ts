@@ -26,6 +26,8 @@ test('readSafeTextInput rejects malformed runtime values without throwing type e
   for (const value of [null, undefined, 17, true, { text: 'nullbuilder' }]) {
     assert.equal(readSafeTextInput(value), null);
   }
+  assert.equal(readSafeTextInput('nullbuilder', { maxLength: '128' }), null);
+  assert.equal(readSafeTextInput('nullbuilder', { maxLength: null }), null);
 });
 
 test('parsePositiveIntegerText accepts only safe positive base-10 integers', () => {
@@ -78,6 +80,7 @@ test('sanitizeTerminalLine truncates by code point without splitting surrogate p
 
 test('sanitizeText normalizes unsafe max length values', () => {
   assert.equal(sanitizeText('secret', { maxLength: Number.NaN, fallback: 'fallback', trim: true }), 'fallback');
+  assert.equal(sanitizeText('secret', { maxLength: '6', fallback: 'fallback', trim: true }), 'fallback');
 
   const output = sanitizeTerminalLine('x'.repeat(MAX_TEXT_SAFETY_LENGTH + 10), Number.POSITIVE_INFINITY);
 
@@ -89,4 +92,5 @@ test('sanitizeTerminalCell reuses line sanitization before cell truncation', () 
   assert.equal(sanitizeTerminalCell('bad\x1b[31m\nvalue', 2048, 12), 'bad value');
   assert.equal(sanitizeTerminalCell('x'.repeat(20), 2048, 8), 'xxxxx...');
   assert.equal(sanitizeTerminalCell('unsafe', 2048, -1), '');
+  assert.equal(sanitizeTerminalCell('unsafe', 2048, '8'), '');
 });

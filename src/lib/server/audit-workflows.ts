@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { sanitizeText } from '../text-safety';
-import { isSafePositiveInteger } from './number-safety';
+import { isSafePositiveInteger } from '../number-safety';
 
 const DEFAULT_MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
 export const MAX_WORKFLOW_REFERENCE_MATCHES = 200;

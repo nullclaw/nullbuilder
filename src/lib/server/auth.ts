@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Cookies } from '@sveltejs/kit';
 import type { NullbuilderConfig } from './config';
 import { readSafeTextInput } from '../text-safety';
-import { isSafeNonNegativeInteger, normalizeBoundedPositiveInteger } from './number-safety';
+import { isSafeNonNegativeInteger, normalizeBoundedPositiveInteger } from '../number-safety';
 
 export const AUTH_COOKIE = 'nullbuilder_auth';
 export const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;

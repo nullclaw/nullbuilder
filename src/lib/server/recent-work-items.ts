@@ -1,5 +1,5 @@
 import { parseUtcTimestampMillis } from '../date-safety';
-import { isSafePositiveInteger } from './number-safety';
+import { isSafePositiveInteger } from '../number-safety';
 
 export type WorkItemWithUpdatedAt = {
   updatedAt: string;

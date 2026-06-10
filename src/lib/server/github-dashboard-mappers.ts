@@ -19,7 +19,7 @@ import {
   safeGitHubWebUrl,
   type GitHubWebUrlContext
 } from './github-web-urls';
-import { isSafePositiveInteger, safeNonNegativeInteger, saturatingSafeIntegerAdd } from './number-safety';
+import { isSafePositiveInteger, safeNonNegativeInteger, saturatingSafeIntegerAdd } from '../number-safety';
 import { hasValidRecentWorkItemLimit, RecentWorkItemCollector } from './recent-work-items';
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';

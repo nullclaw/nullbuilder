@@ -1,5 +1,5 @@
 import type { AuditFinding, AuditReport, AuditRepositoryResult, AuditSeverity, AuditStatus } from './audit-types';
-import { isSafePositiveInteger, saturatingSafeIntegerAdd } from './number-safety';
+import { isSafePositiveInteger, saturatingSafeIntegerAdd } from '../number-safety';
 
 const SEVERITY_ORDER: Record<AuditSeverity, number> = {
   critical: 0,
