@@ -47,6 +47,7 @@ pub const Dashboard = struct {
 
 pub const Repository = struct {
     slug: []const u8,
+    valid_slug: bool,
     open_issues: u64,
     open_pulls: u64,
     stars: u64,
@@ -97,12 +98,17 @@ pub const WorkItemIterator = struct {
                 self.item_index = 0;
                 continue;
             };
+            if (!repo.valid_slug) {
+                self.repo_index += 1;
+                self.item_index = 0;
+                continue;
+            }
             const list = workItems(repo, self.kind);
 
             while (self.item_index < list.len) {
                 const index = self.item_index;
                 self.item_index += 1;
-                if (workItemFromValue(list[index])) |item| {
+                if (workItemFromValue(list[index], repo.slug)) |item| {
                     return item;
                 }
             }
@@ -151,9 +157,11 @@ pub fn repositoryFromValue(value: JsonValue) ?Repository {
 fn repositoryFromObject(repo: JsonObject) Repository {
     const status = dashboard_json.safeTextField(repo, "status", "ok", max_repo_text_len);
     const latest = dashboard_json.objectField(repo, "latestRuns");
+    const slug = dashboard_json.requiredSafeTextField(repo, "slug", max_repo_text_len);
 
     return .{
-        .slug = dashboard_json.safeTextField(repo, "slug", "unknown", max_repo_text_len),
+        .slug = slug orelse "unknown",
+        .valid_slug = slug != null,
         .open_issues = dashboard_json.safeIntegerField(repo, "openIssues"),
         .open_pulls = dashboard_json.safeIntegerField(repo, "openPulls"),
         .stars = dashboard_json.safeIntegerField(repo, "stars"),
@@ -171,21 +179,20 @@ fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
     };
 }
 
-fn workItemFromValue(value: JsonValue) ?WorkItem {
+fn workItemFromValue(value: JsonValue, repo_slug: []const u8) ?WorkItem {
     return switch (value) {
-        .object => |work| workItemFromObject(work),
+        .object => |work| workItemFromObject(work, repo_slug),
         else => null,
     };
 }
 
-fn workItemFromObject(work: JsonObject) ?WorkItem {
+fn workItemFromObject(work: JsonObject, repo_slug: []const u8) ?WorkItem {
     const number = dashboard_json.boundedIntField(work, "number", max_work_item_number);
     if (number == 0) return null;
-    const repo = dashboard_json.requiredSafeTextField(work, "repo", max_repo_text_len) orelse return null;
     const title = dashboard_json.requiredSafeTextField(work, "title", max_work_title_len) orelse return null;
 
     return .{
-        .repo = repo,
+        .repo = repo_slug,
         .number = number,
         .title = title,
     };
@@ -401,9 +408,7 @@ test "dashboard model rejects control-bearing external text fields" {
     try std.testing.expectEqual(null, issues.next());
 
     var pulls = WorkItemIterator.init(dashboard, .pull_requests);
-    const pull = pulls.next().?;
-    try std.testing.expectEqualStrings("alpha", pull.repo);
-    try std.testing.expectEqualStrings("Ship release", pull.title);
+    try std.testing.expectEqual(null, pulls.next());
 
     var errors = LoadErrorIterator.init(dashboard);
     try std.testing.expectEqual(null, errors.next());
@@ -418,9 +423,9 @@ test "work item iterator skips invalid rows across repositories" {
         \\      "invalid",
         \\      {"repo": "alpha", "number": 0, "title": "Zero"},
         \\      {"repo": "alpha", "title": "Missing number"},
-        \\      {"number": 6, "title": "Missing repo"},
+        \\      {"number": 6},
         \\      {"repo": "alpha", "number": 6},
-        \\      {"repo": "", "number": 6, "title": "Empty repo"},
+        \\      {"repo": "", "number": 6, "title": "Bad\nTitle"},
         \\      {"repo": "alpha", "number": 6, "title": ""},
         \\      {"repo": "alpha", "number": 1000000000, "title": "Huge number"},
         \\      {"repo": "alpha", "number": 7, "title": "Fix build"}
@@ -446,5 +451,37 @@ test "work item iterator skips invalid rows across repositories" {
     try std.testing.expectEqualStrings("beta", second.repo);
     try std.testing.expectEqual(@as(u64, 8), second.number);
     try std.testing.expectEqualStrings("Ship tag", second.title);
+    try std.testing.expectEqual(null, issues.next());
+}
+
+test "work item iterator binds item repos to the parent repository slug" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    {"slug": "alpha", "issues": [
+        \\      {"repo": "evil/repo", "number": 7, "title": "Spoofed repo"},
+        \\      {"number": 8, "title": "Missing nested repo"}
+        \\    ]},
+        \\    {"slug": "bad\u001b[31mrepo", "issues": [
+        \\      {"repo": "safe", "number": 9, "title": "Unsafe parent"}
+        \\    ]}
+        \\  ]
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const dashboard = try Dashboard.init(parsed.value.object);
+    var issues = WorkItemIterator.init(dashboard, .issues);
+
+    const first = issues.next().?;
+    try std.testing.expectEqualStrings("alpha", first.repo);
+    try std.testing.expectEqual(@as(u64, 7), first.number);
+    try std.testing.expectEqualStrings("Spoofed repo", first.title);
+
+    const second = issues.next().?;
+    try std.testing.expectEqualStrings("alpha", second.repo);
+    try std.testing.expectEqual(@as(u64, 8), second.number);
+    try std.testing.expectEqualStrings("Missing nested repo", second.title);
+
     try std.testing.expectEqual(null, issues.next());
 }
