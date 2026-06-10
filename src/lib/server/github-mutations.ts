@@ -8,6 +8,7 @@ import {
   sanitizeGitTargetRef
 } from './git-refs';
 import { GitHubApiError, githubRequest } from './github-client';
+import { encodeGitHubPathSegment } from './github-url-encoding';
 import {
   githubActionsBranchQueryUrl,
   githubReleaseTagUrl,
@@ -235,7 +236,7 @@ async function resolveTargetSha(config: NullbuilderConfig, repo: RepoSlug, targe
   const branchRef = sanitizeGitBranchName(targetRef, 'target ref');
   const branch = await githubRequest<GitHubBranchResponse>(
     config,
-    `/repos/${repo}/branches/${encodeURIComponent(branchRef)}`,
+    `/repos/${repo}/branches/${encodeGitHubPathSegment(branchRef)}`,
     {
       useCache: false
     }

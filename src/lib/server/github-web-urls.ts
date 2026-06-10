@@ -1,4 +1,5 @@
 import { DEFAULT_OWNER, normalizeOwner, type RepoSlug } from '../repositories';
+import { encodeGitHubPathSegment } from './github-url-encoding';
 
 const DEFAULT_GITHUB_WEB_BASE_URL = 'https://github.com';
 const UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
@@ -44,7 +45,7 @@ export function githubActionsUrl(context: GitHubWebUrlContext): string {
 }
 
 export function githubReleaseTagUrl(context: GitHubWebUrlContext, tagName: string): string {
-  return context.repositoryUrl ? `${context.repositoryUrl}/releases/tag/${tagName}` : '';
+  return context.repositoryUrl ? `${context.repositoryUrl}/releases/tag/${encodeGitHubPathSegment(tagName)}` : '';
 }
 
 export function githubActionsBranchQueryUrl(context: GitHubWebUrlContext, branch: string): string {

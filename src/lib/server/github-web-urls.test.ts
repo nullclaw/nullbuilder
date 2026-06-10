@@ -28,6 +28,10 @@ test('github web URL helpers build repository owner and mutation URLs', () => {
     'https://github.example.test/nullclaw/nullbuilder/releases/tag/v1.2.3'
   );
   assert.equal(
+    githubReleaseTagUrl(context, 'release/v1?draft#notes'),
+    'https://github.example.test/nullclaw/nullbuilder/releases/tag/release%2Fv1%3Fdraft%23notes'
+  );
+  assert.equal(
     githubActionsBranchQueryUrl(context, 'release/v1.2.3'),
     'https://github.example.test/nullclaw/nullbuilder/actions?query=branch%3Arelease%2Fv1.2.3'
   );

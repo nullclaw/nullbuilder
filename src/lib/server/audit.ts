@@ -13,7 +13,7 @@ import {
   type Probe,
   type WorkflowFile
 } from './audit-rules';
-import { decodeGitHubContent, encodeGitHubPath } from './audit-workflows';
+import { decodeGitHubContent } from './audit-workflows';
 import { mapWithConcurrency } from './concurrency';
 import { sanitizeGitBranchName } from './git-refs';
 import { discoverRepositories, GitHubApiError, githubGet, publicErrorMessage } from './github';
@@ -24,6 +24,7 @@ import {
   safeGitHubWebUrl,
   type GitHubWebUrlContext
 } from './github-web-urls';
+import { encodeGitHubPath } from './github-url-encoding';
 
 export type {
   AuditArea,

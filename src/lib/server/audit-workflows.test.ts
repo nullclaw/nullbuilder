@@ -2,7 +2,6 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   decodeGitHubContent,
-  encodeGitHubPath,
   findActionUses,
   findNullbuilderWorkflowRefs,
   isMutableRef,
@@ -98,8 +97,4 @@ test('decodeGitHubContent strips wrapped base64 while applying the byte limit ea
   const wrapped = encoded.match(/.{1,2}/g)?.join('\r\n') ?? encoded;
 
   assert.equal(decodeGitHubContent({ encoding: 'base64', content: wrapped }, 9), content.slice(0, 9));
-});
-
-test('encodeGitHubPath encodes path segments without flattening slashes', () => {
-  assert.equal(encodeGitHubPath('.github/workflows/build pr.yml'), '.github/workflows/build%20pr.yml');
 });

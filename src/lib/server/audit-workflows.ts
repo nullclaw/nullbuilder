@@ -89,10 +89,6 @@ export function decodeGitHubContent(
   return decoded.subarray(0, byteLimit).toString('utf8');
 }
 
-export function encodeGitHubPath(path: string): string {
-  return path.split('/').map(encodeURIComponent).join('/');
-}
-
 function normalizeByteLimit(maxBytes: number): number {
   return Number.isSafeInteger(maxBytes) && maxBytes > 0 ? maxBytes : 0;
 }
