@@ -505,7 +505,14 @@ jobs:
 
       - name: Resolve docker version
         id: docker_version
-        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          version_value="${GITHUB_REF_NAME#v}"
+          if [[ ! "${version_value}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${version_value}" == *..* ]]; then
+            echo "invalid docker version: use letters, numbers, dots, underscores, and dashes" >&2
+            exit 1
+          fi
+          printf 'value=%s\n' "${version_value}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
