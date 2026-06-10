@@ -394,6 +394,39 @@ test('readWebActionFormData parses bounded form bodies without content length', 
   }
 });
 
+test('readWebActionFormData avoids cloning non-content request headers', async () => {
+  const request = webFormRequest('webToken=web-secret', {
+    Authorization: 'Bearer private-token',
+    Cookie: 'session=private-cookie',
+    'Content-Type': ' application/x-www-form-urlencoded; charset=UTF-8 '
+  });
+  Object.defineProperty(request.headers, 'entries', {
+    configurable: true,
+    value: () => {
+      throw new Error('request header entries should not be called');
+    }
+  });
+  Object.defineProperty(request.headers, 'forEach', {
+    configurable: true,
+    value: () => {
+      throw new Error('request header forEach should not be called');
+    }
+  });
+  Object.defineProperty(request.headers, 'keys', {
+    configurable: true,
+    value: () => {
+      throw new Error('request header keys should not be called');
+    }
+  });
+
+  const result = await readWebActionFormData(request);
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.formData.get('webToken'), 'web-secret');
+  }
+});
+
 test('readWebActionFormData ignores empty streamed chunks while enforcing body limits', async () => {
   const result = await readWebActionFormData(
     webFormStreamRequest([

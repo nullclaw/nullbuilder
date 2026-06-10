@@ -184,9 +184,9 @@ export async function readWebActionFormData(request: Request): Promise<WebAction
     return contentLengthFailure;
   }
 
-  const contentTypeFailure = webActionContentTypeFailure(request.headers);
-  if (contentTypeFailure) {
-    return contentTypeFailure;
+  const contentType = webActionFormContentType(request.headers);
+  if (contentType === null) {
+    return webActionBodyParseFailure();
   }
 
   const body = await readBoundedWebActionBody(request);
@@ -194,11 +194,9 @@ export async function readWebActionFormData(request: Request): Promise<WebAction
     return body;
   }
 
-  const headers = new Headers(request.headers);
-  headers.delete('content-length');
   const boundedRequest = new Request(request.url, {
     method: request.method,
-    headers,
+    headers: webActionFormDataHeaders(contentType),
     body: new Blob([arrayBufferFromBytes(body.bytes)])
   });
 
@@ -617,17 +615,14 @@ function contentLengthExceedsWebActionLimit(value: string): boolean {
   return !Number.isSafeInteger(parsed) || parsed > MAX_WEB_ACTION_FORM_BYTES;
 }
 
-function webActionContentTypeFailure(headers: Headers): WebActionBodyParseFailure | null {
-  return isWebActionFormContentType(headers.get('content-type')) ? null : webActionBodyParseFailure();
-}
-
 function webActionMethodFailure(request: Request): WebActionMethodFailure | null {
   return request.method === 'POST' ? null : webActionInvalidMethodFailure();
 }
 
-function isWebActionFormContentType(value: string | null): boolean {
+function webActionFormContentType(headers: Headers): string | null {
+  const value = headers.get('content-type');
   if (!value) {
-    return false;
+    return null;
   }
 
   const safeValue = readSafeTextInput(value, {
@@ -635,16 +630,22 @@ function isWebActionFormContentType(value: string | null): boolean {
     trim: true
   });
   if (!safeValue) {
-    return false;
+    return null;
   }
   if (safeValue.includes(',')) {
-    return false;
+    return null;
   }
 
   const separatorIndex = safeValue.indexOf(';');
   const mediaType = (separatorIndex === -1 ? safeValue : safeValue.slice(0, separatorIndex)).trim().toLowerCase();
 
-  return mediaType === 'application/x-www-form-urlencoded' || mediaType === 'multipart/form-data';
+  return mediaType === 'application/x-www-form-urlencoded' || mediaType === 'multipart/form-data' ? safeValue : null;
+}
+
+function webActionFormDataHeaders(contentType: string): Headers {
+  const headers = new Headers();
+  headers.set('content-type', contentType);
+  return headers;
 }
 
 async function readBoundedWebActionBody(request: Request): Promise<WebActionRequestBodySuccess | WebActionBodyLimitFailure> {
