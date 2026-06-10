@@ -26,7 +26,8 @@ export const MAX_AUDIT_REPOSITORY_FINDINGS = 1000;
 export function checkStatus(findings: readonly AuditFinding[]): AuditStatus {
   let status: AuditStatus = 'ok';
 
-  for (const finding of findings) {
+  for (let index = 0; index < findings.length; index += 1) {
+    const finding = findings[index];
     if (finding.severity === 'critical') {
       return 'critical';
     }
@@ -43,7 +44,8 @@ export function checkStatus(findings: readonly AuditFinding[]): AuditStatus {
 export function scoreFindings(findings: readonly AuditFinding[]): number {
   let penalty = 0;
 
-  for (const finding of findings) {
+  for (let index = 0; index < findings.length; index += 1) {
+    const finding = findings[index];
     penalty += SEVERITY_PENALTY[finding.severity];
     if (penalty >= 100) {
       return 0;
@@ -78,9 +80,10 @@ export function collectCheckFindings(
 
   const findings: AuditFinding[] = [];
 
-  for (const check of checks) {
-    for (const finding of check.findings) {
-      insertSortedFinding(findings, finding, findingLimit);
+  for (let checkIndex = 0; checkIndex < checks.length; checkIndex += 1) {
+    const check = checks[checkIndex];
+    for (let findingIndex = 0; findingIndex < check.findings.length; findingIndex += 1) {
+      insertSortedFinding(findings, check.findings[findingIndex], findingLimit);
     }
   }
 
@@ -98,9 +101,10 @@ export function collectAuditFindings(
 
   const findings: AuditFinding[] = [];
 
-  for (const repo of repositories) {
-    for (const finding of repo.findings) {
-      insertSortedFinding(findings, finding, findingLimit);
+  for (let repoIndex = 0; repoIndex < repositories.length; repoIndex += 1) {
+    const repo = repositories[repoIndex];
+    for (let findingIndex = 0; findingIndex < repo.findings.length; findingIndex += 1) {
+      insertSortedFinding(findings, repo.findings[findingIndex], findingLimit);
     }
   }
 
@@ -139,7 +143,8 @@ export function buildAuditTotals(repositories: readonly AuditRepositoryResult[])
   let loadedRepositories = 0;
   let scoreTotal = 0;
 
-  for (const repo of repositories) {
+  for (let index = 0; index < repositories.length; index += 1) {
+    const repo = repositories[index];
     if (repo.status === 'ok') {
       loadedRepositories += 1;
       scoreTotal = saturatingSafeIntegerAdd(scoreTotal, normalizeScore(repo.score));
@@ -165,7 +170,8 @@ function emptySeverityCounts(): Record<AuditSeverity, number> {
 }
 
 function countSeverityFindings(counts: Record<AuditSeverity, number>, findings: readonly AuditFinding[]): void {
-  for (const finding of findings) {
+  for (let index = 0; index < findings.length; index += 1) {
+    const finding = findings[index];
     counts[finding.severity] = saturatingSafeIntegerAdd(counts[finding.severity], 1);
   }
 }

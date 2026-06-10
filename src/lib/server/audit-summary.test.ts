@@ -135,6 +135,36 @@ test('collectCheckFindings isolates collected findings from check results', () =
   assert.equal(sourceFinding.title, 'Original title');
 });
 
+test('audit summary helpers avoid user-controlled array iterators', () => {
+  class UnsafeIteratorArray<T> extends Array<T> {
+    override [Symbol.iterator](): ArrayIterator<T> {
+      throw new Error('iterator should not be called');
+    }
+  }
+  const findings = new UnsafeIteratorArray(finding('warning', 'nullclaw/zeta', 'Zeta'));
+  const checks = new UnsafeIteratorArray({
+    id: 'iterator-check',
+    title: 'Iterator check',
+    area: 'workflow',
+    status: 'warning',
+    findings
+  } as const);
+  const repositories = new UnsafeIteratorArray(repository('ok', 90, findings));
+
+  assert.equal(checkStatus(findings), 'warning');
+  assert.deepEqual(countFindings(findings), { critical: 0, warning: 1, info: 0 });
+  assert.equal(scoreFindings(findings), 85);
+  assert.deepEqual(
+    collectCheckFindings(checks).map((item) => item.title),
+    ['Zeta']
+  );
+  assert.deepEqual(
+    collectAuditFindings(repositories).map((item) => item.title),
+    ['Zeta']
+  );
+  assert.equal(buildAuditTotals(repositories).warning, 1);
+});
+
 test('collectAuditFindings returns a bounded sorted report list', () => {
   const collected = collectAuditFindings(
     [
