@@ -4,6 +4,8 @@ import { encodeGitHubPath, encodeGitHubPathSegment } from './github-url-encoding
 
 test('encodeGitHubPath encodes path segments without flattening slashes', () => {
   assert.equal(encodeGitHubPath('.github/workflows/build pr.yml'), '.github/workflows/build%20pr.yml');
+  assert.equal(encodeGitHubPath('/.github//workflow!.yml/'), '/.github//workflow%21.yml/');
+  assert.equal(encodeGitHubPath('release/v1?draft#notes'), 'release/v1%3Fdraft%23notes');
 });
 
 test('encodeGitHubPathSegment escapes reserved path and query characters', () => {
