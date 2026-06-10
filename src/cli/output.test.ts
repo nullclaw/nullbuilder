@@ -192,6 +192,26 @@ test('formatDashboard bounds large terminal tables without spreading row widths'
   assert.equal(output.length < 200_000, true);
 });
 
+test('formatDashboard does not materialize table rows past the display cap', () => {
+  const baseIssue = dashboardFixture().issues[0];
+  const issues = Array.from({ length: 1001 }, (_, index) => ({
+    ...baseIssue,
+    number: index + 1,
+    title: `Issue ${index + 1}`
+  }));
+  Object.defineProperty(issues, 1000, {
+    get() {
+      throw new Error('read past terminal row cap');
+    }
+  });
+
+  const output = formatDashboard('issues', dashboardFixture({ issues }));
+
+  assert.match(output, /\.\.\. 1 rows omitted; use --json for full output\./);
+  assert.equal(output.includes('#1000'), true);
+  assert.equal(output.includes('#1001'), false);
+});
+
 test('formatters truncate by code point without splitting surrogate pairs', () => {
   const output = formatCliError(new Error('🙂'.repeat(3000)));
 

@@ -144,8 +144,10 @@ export function formatCliError(error: unknown): string {
 }
 
 function formatRepos(dashboard: DashboardData): string {
-  return formatTable(
-    dashboard.repositories.map((repo) => ({
+  return formatTableFromItems(
+    dashboard.repositories,
+    ['repo', 'state', 'issues', 'prs', 'stars', 'nightly', 'ci', 'url'],
+    (repo) => ({
       repo: repo.slug,
       state: repo.status,
       issues: formatNullableNumber(repo.openIssues),
@@ -154,8 +156,7 @@ function formatRepos(dashboard: DashboardData): string {
       nightly: workflowRunLabel(repo.latestRuns.nightly),
       ci: workflowRunLabel(repo.latestRuns.ci),
       url: repo.url
-    })),
-    ['repo', 'state', 'issues', 'prs', 'stars', 'nightly', 'ci', 'url']
+    })
   );
 }
 
@@ -164,15 +165,16 @@ function formatIssues(dashboard: DashboardData): string {
     return 'No issue rows from loaded repositories. Some repositories failed to load.';
   }
 
-  return formatTable(
-    dashboard.issues.map((issue) => ({
+  return formatTableFromItems(
+    dashboard.issues,
+    ['repo', 'issue', 'updated', 'title', 'url'],
+    (issue) => ({
       repo: issue.repo,
       issue: `#${issue.number}`,
       updated: formatDate(issue.updatedAt),
       title: issue.title,
       url: issue.url
-    })),
-    ['repo', 'issue', 'updated', 'title', 'url']
+    })
   );
 }
 
@@ -181,58 +183,91 @@ function formatPullRequests(dashboard: DashboardData): string {
     return 'No PR rows from loaded repositories. Some repositories failed to load.';
   }
 
-  return formatTable(
-    dashboard.pullRequests.map((pull) => ({
+  return formatTableFromItems(
+    dashboard.pullRequests,
+    ['repo', 'pr', 'draft', 'updated', 'title', 'url'],
+    (pull) => ({
       repo: pull.repo,
       pr: `#${pull.number}`,
       draft: pull.draft ? 'yes' : 'no',
       updated: formatDate(pull.updatedAt),
       title: pull.title,
       url: pull.url
-    })),
-    ['repo', 'pr', 'draft', 'updated', 'title', 'url']
+    })
   );
 }
 
 function formatRuns(dashboard: DashboardData): string {
-  return formatTable(
-    dashboard.repositories.flatMap((repo) =>
-      RUN_KINDS.map((kind) => {
-        const run = repo.latestRuns[kind];
-        return {
-          repo: repo.slug,
-          kind,
-          status: repo.status === 'error' ? 'unknown' : workflowRunLabel(run),
-          branch: run?.branch ?? '',
-          updated: run ? formatDate(run.updatedAt) : '',
-          url: run?.url ?? ''
-        };
-      })
-    ),
-    ['repo', 'kind', 'status', 'branch', 'updated', 'url']
-  );
+  const columns = ['repo', 'kind', 'status', 'branch', 'updated', 'url'];
+  const rowCount = dashboard.repositories.length * RUN_KINDS.length;
+  return formatBoundedTable(rowCount, columns, (rowIndex) => {
+    const repo = dashboard.repositories[Math.floor(rowIndex / RUN_KINDS.length)];
+    const kind = RUN_KINDS[rowIndex % RUN_KINDS.length];
+    const run = repo.latestRuns[kind];
+    return {
+      repo: repo.slug,
+      kind,
+      status: repo.status === 'error' ? 'unknown' : workflowRunLabel(run),
+      branch: run?.branch ?? '',
+      updated: run ? formatDate(run.updatedAt) : '',
+      url: run?.url ?? ''
+    };
+  });
 }
 
 function formatStars(dashboard: DashboardData): string {
-  return formatTable(
-    dashboard.repositories.map((repo) => ({
+  return formatTableFromItems(
+    dashboard.repositories,
+    ['repo', 'stars', '7d', '30d', 'url'],
+    (repo) => ({
       repo: repo.slug,
       stars: formatNullableNumber(repo.starGrowth.current),
       '7d': formatGrowth(repo.starGrowth.last7Days),
       '30d': formatGrowth(repo.starGrowth.last30Days),
       url: repo.url
-    })),
-    ['repo', 'stars', '7d', '30d', 'url']
+    })
   );
 }
 
 function formatTable(rows: Array<Record<string, string>>, columns: string[]): string {
-  if (rows.length === 0) {
+  return formatTableFromItems(rows, columns, (row) => row);
+}
+
+function formatTableFromItems<T>(
+  items: readonly T[],
+  columns: string[],
+  rowForItem: (item: T) => Record<string, string>
+): string {
+  return formatBoundedTable(items.length, columns, (index) => rowForItem(items[index]));
+}
+
+function formatBoundedTable(
+  rowCount: number,
+  columns: string[],
+  rowAt: (index: number) => Record<string, string>
+): string {
+  if (rowCount === 0) {
     return 'No rows.';
   }
 
-  const omittedRows = Math.max(0, rows.length - MAX_TERMINAL_TABLE_ROWS);
-  const safeRows = sanitizeRows(rows.slice(0, MAX_TERMINAL_TABLE_ROWS), columns);
+  const rowLimit = Math.min(rowCount, MAX_TERMINAL_TABLE_ROWS);
+  const safeRows: Array<Record<string, string>> = [];
+  for (let index = 0; index < rowLimit; index += 1) {
+    safeRows.push(sanitizeRow(rowAt(index), columns));
+  }
+
+  return formatSanitizedTable(safeRows, columns, rowCount - rowLimit);
+}
+
+function formatSanitizedTable(
+  safeRows: Array<Record<string, string>>,
+  columns: string[],
+  omittedRows: number
+): string {
+  if (safeRows.length === 0) {
+    return 'No rows.';
+  }
+
   const widths = columnWidths(safeRows, columns);
   const lines = [
     columns.map((column, index) => column.padEnd(widths[index])).join('  '),
@@ -294,14 +329,12 @@ function formatDate(value: string): string {
   return formatDashboardDateOnly(value);
 }
 
-function sanitizeRows(rows: Array<Record<string, string>>, columns: string[]): Array<Record<string, string>> {
-  return rows.map((row) => {
-    const sanitized: Record<string, string> = {};
-    for (const column of columns) {
-      sanitized[column] = terminalCell(row[column] ?? '');
-    }
-    return sanitized;
-  });
+function sanitizeRow(row: Record<string, string>, columns: string[]): Record<string, string> {
+  const sanitized: Record<string, string> = {};
+  for (const column of columns) {
+    sanitized[column] = terminalCell(row[column] ?? '');
+  }
+  return sanitized;
 }
 
 function terminalLine(value: string): string {
