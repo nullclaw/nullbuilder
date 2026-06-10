@@ -41,7 +41,7 @@ export function githubRepositoryUrlContext(
   const fallbackUrl = new URL(repositoryUrlFallback);
   const repositoryOrigin = fallbackUrl.origin;
   const repositoryPathPrefix = fallbackUrl.pathname;
-  const repositoryUrl = safeGitHubWebUrl(
+  const repositoryUrl = safeGitHubRepositoryRootUrl(
     repositoryHtmlUrl,
     repositoryUrlFallback,
     repositoryOrigin,
@@ -66,6 +66,25 @@ export function githubActionsBranchQueryUrl(context: GitHubWebUrlContext, branch
 
 export function safeGitHubWebUrl(value: string, fallback: string, allowedOrigin = '', allowedPathPrefix = ''): string {
   return isSafeGitHubWebUrl(value, allowedOrigin, allowedPathPrefix) ? value : fallback;
+}
+
+function safeGitHubRepositoryRootUrl(
+  value: string,
+  fallback: string,
+  allowedOrigin: string,
+  allowedPathPrefix: string
+): string {
+  if (!isSafeGitHubWebUrl(value, allowedOrigin, allowedPathPrefix)) {
+    return fallback;
+  }
+
+  const url = new URL(value);
+  const pathMatchesRepositoryRoot = url.pathname === allowedPathPrefix || url.pathname === `${allowedPathPrefix}/`;
+  if (!pathMatchesRepositoryRoot || url.search !== '' || url.hash !== '') {
+    return fallback;
+  }
+
+  return url.toString().replace(/\/$/, '');
 }
 
 function isSafeGitHubWebUrl(value: string, allowedOrigin: string, allowedPathPrefix: string): boolean {

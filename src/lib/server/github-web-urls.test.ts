@@ -86,6 +86,11 @@ test('safeGitHubWebUrl rejects unsafe URLs before they become hrefs', () => {
 });
 
 test('githubRepositoryUrlContext falls back to configured repository URLs', () => {
+  const trailingSlashContext = githubRepositoryUrlContext(
+    'https://github.example.test',
+    REPO,
+    'https://github.example.test/nullclaw/nullbuilder/'
+  );
   const crossOriginContext = githubRepositoryUrlContext(
     'https://github.example.test',
     REPO,
@@ -96,7 +101,26 @@ test('githubRepositoryUrlContext falls back to configured repository URLs', () =
     REPO,
     'https://github.example.test/other/repo'
   );
+  const nestedPathContext = githubRepositoryUrlContext(
+    'https://github.example.test',
+    REPO,
+    'https://github.example.test/nullclaw/nullbuilder/issues/7'
+  );
+  const queryContext = githubRepositoryUrlContext(
+    'https://github.example.test',
+    REPO,
+    'https://github.example.test/nullclaw/nullbuilder?token=secret'
+  );
+  const fragmentContext = githubRepositoryUrlContext(
+    'https://github.example.test',
+    REPO,
+    'https://github.example.test/nullclaw/nullbuilder#secret'
+  );
 
+  assert.equal(trailingSlashContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
   assert.equal(crossOriginContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
   assert.equal(wrongPathContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
+  assert.equal(nestedPathContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
+  assert.equal(queryContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
+  assert.equal(fragmentContext.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
 });
