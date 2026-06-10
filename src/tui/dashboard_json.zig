@@ -6,7 +6,7 @@ pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
 pub const max_safe_json_integer: u64 = 9_007_199_254_740_991;
 
-pub fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue {
+fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue {
     const value = object.get(field_name) orelse return null;
     return switch (value) {
         .array => |array| array.items,
@@ -24,29 +24,6 @@ pub fn objectField(object: JsonObject, field_name: []const u8) ?JsonObject {
     return switch (value) {
         .object => |child| child,
         else => null,
-    };
-}
-
-pub fn stringField(object: JsonObject, field_name: []const u8, fallback: []const u8) []const u8 {
-    const value = object.get(field_name) orelse return fallback;
-    return switch (value) {
-        .string => |string| string,
-        .null => fallback,
-        else => fallback,
-    };
-}
-
-pub fn boundedStringField(
-    object: JsonObject,
-    field_name: []const u8,
-    fallback: []const u8,
-    max_len: usize,
-) []const u8 {
-    const value = object.get(field_name) orelse return fallback;
-    return switch (value) {
-        .string => |string| if (string.len <= max_len) string else fallback,
-        .null => fallback,
-        else => fallback,
     };
 }
 
@@ -70,7 +47,7 @@ pub fn requiredSafeTextField(
     return if (string.len > 0) string else null;
 }
 
-pub fn intField(object: JsonObject, field_name: []const u8) u64 {
+fn intField(object: JsonObject, field_name: []const u8) u64 {
     const value = object.get(field_name) orelse return 0;
     return switch (value) {
         .integer => |integer| if (integer > 0) std.math.cast(u64, integer) orelse 0 else 0,
@@ -100,8 +77,7 @@ test "field helpers return typed values and fallbacks" {
         \\{
         \\  "items": [1, 2],
         \\  "owner": {"login": "nullclaw"},
-        \\  "name": "nullbuilder",
-        \\  "empty": null
+        \\  "name": "nullbuilder"
         \\}
     , .{});
     defer parsed.deinit();
@@ -109,8 +85,7 @@ test "field helpers return typed values and fallbacks" {
 
     try std.testing.expectEqual(@as(usize, 2), arrayField(object, "items").?.len);
     try std.testing.expect(objectField(object, "owner") != null);
-    try std.testing.expectEqualStrings("nullbuilder", stringField(object, "name", "fallback"));
-    try std.testing.expectEqualStrings("fallback", stringField(object, "empty", "fallback"));
+    try std.testing.expectEqualStrings("nullbuilder", safeTextField(object, "name", "fallback", 64));
     try std.testing.expectEqual(null, arrayField(object, "name"));
     try std.testing.expectEqual(null, objectField(object, "items"));
 }
@@ -127,20 +102,6 @@ test "boundedArrayField caps external arrays" {
     try std.testing.expectEqual(@as(usize, 0), boundedArrayField(object, "items", 0).?.len);
     try std.testing.expectEqual(null, boundedArrayField(object, "name", 2));
     try std.testing.expectEqual(null, boundedArrayField(object, "missing", 2));
-}
-
-test "boundedStringField rejects oversized strings" {
-    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
-        \\{"short":"repo","long":"xxxxxxxxxx","empty":null}
-    , .{});
-    defer parsed.deinit();
-    const object = parsed.value.object;
-
-    try std.testing.expectEqualStrings("repo", boundedStringField(object, "short", "fallback", 4));
-    try std.testing.expectEqualStrings("fallback", boundedStringField(object, "short", "fallback", 3));
-    try std.testing.expectEqualStrings("fallback", boundedStringField(object, "long", "fallback", 4));
-    try std.testing.expectEqualStrings("fallback", boundedStringField(object, "empty", "fallback", 4));
-    try std.testing.expectEqualStrings("fallback", boundedStringField(object, "missing", "fallback", 4));
 }
 
 test "safeTextField rejects oversized and control-bearing strings" {
