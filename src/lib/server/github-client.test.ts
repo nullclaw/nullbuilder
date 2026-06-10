@@ -113,6 +113,61 @@ test('githubGetPages keeps commas inside pagination link URLs', async () => {
   ]);
 });
 
+test('githubGetPages parses quoted pagination relation parameters', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://quoted-link.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+
+    if (requests.length === 1) {
+      return new Response(JSON.stringify([{ id: 1 }]), {
+        headers: {
+          Link: '<https://quoted-link.example.test/repos?page=2>; title="safe; title"; REL = "prev next"'
+        }
+      });
+    }
+
+    return new Response(JSON.stringify([{ id: 2 }]));
+  }) as typeof fetch;
+
+  const pages = await githubGetPages<{ id: number }>(config, '/repos', {}, 5);
+
+  assert.deepEqual(pages, [{ id: 1 }, { id: 2 }]);
+  assert.deepEqual(requests, [
+    'https://quoted-link.example.test/repos',
+    'https://quoted-link.example.test/repos?page=2'
+  ]);
+});
+
+test('githubGetPages ignores relation parameters without next tokens', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://not-next-link.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify([{ id: 1 }]), {
+      headers: {
+        Link: '<https://not-next-link.example.test/repos?page=2>; rel="not-next newest"'
+      }
+    });
+  }) as typeof fetch;
+
+  const pages = await githubGetPages<{ id: number }>(config, '/repos', {}, 5);
+
+  assert.deepEqual(pages, [{ id: 1 }]);
+  assert.deepEqual(requests, ['https://not-next-link.example.test/repos']);
+});
+
 test('githubGetPages ignores oversized pagination link headers', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

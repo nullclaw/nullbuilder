@@ -423,8 +423,22 @@ function parseNextLink(link: string | null): string | null {
 }
 
 function parseNextLinkEntry(entry: string): string | null {
-  const match = entry.trim().match(/^<([^>]+)>\s*(?:;(.*))?$/);
-  return match && linkParametersIncludeRelation(match[2] ?? '', 'next') ? match[1] : null;
+  const trimmed = entry.trim();
+  if (!trimmed.startsWith('<')) {
+    return null;
+  }
+
+  const urlEnd = trimmed.indexOf('>');
+  if (urlEnd <= 1) {
+    return null;
+  }
+
+  const parameters = trimmed.slice(urlEnd + 1).trimStart();
+  if (!parameters.startsWith(';')) {
+    return null;
+  }
+
+  return linkParametersIncludeRelation(parameters.slice(1), 'next') ? trimmed.slice(1, urlEnd) : null;
 }
 
 function linkParametersIncludeRelation(parameters: string, relation: string): boolean {
@@ -464,8 +478,18 @@ function linkParametersIncludeRelation(parameters: string, relation: string): bo
 }
 
 function parameterIncludesRelation(parameter: string, relation: string): boolean {
-  const match = parameter.trim().match(/^rel\s*=\s*(?:"([^"]*)"|([^;]*))$/i);
-  const value = match?.[1] ?? match?.[2]?.trim();
+  const trimmed = parameter.trim();
+  if (trimmed.slice(0, 3).toLowerCase() !== 'rel') {
+    return false;
+  }
+
+  let valueStart = skipWhitespace(trimmed, 3);
+  if (trimmed[valueStart] !== '=') {
+    return false;
+  }
+
+  valueStart = skipWhitespace(trimmed, valueStart + 1);
+  const value = readRelationParameterValue(trimmed, valueStart);
   return value ? relationTokenListIncludes(value, relation) : false;
 }
 
@@ -473,7 +497,7 @@ function relationTokenListIncludes(value: string, relation: string): boolean {
   let start = 0;
 
   for (let index = 0; index <= value.length; index += 1) {
-    if (index === value.length || /\s/.test(value[index])) {
+    if (index === value.length || isWhitespace(value[index])) {
       if (index > start && value.slice(start, index) === relation) {
         return true;
       }
@@ -482,6 +506,31 @@ function relationTokenListIncludes(value: string, relation: string): boolean {
   }
 
   return false;
+}
+
+function readRelationParameterValue(parameter: string, valueStart: number): string | null {
+  if (valueStart >= parameter.length) {
+    return null;
+  }
+
+  if (parameter[valueStart] !== '"') {
+    return parameter.slice(valueStart).trim();
+  }
+
+  const quoteEnd = parameter.indexOf('"', valueStart + 1);
+  return quoteEnd === parameter.length - 1 ? parameter.slice(valueStart + 1, quoteEnd) : null;
+}
+
+function skipWhitespace(value: string, start: number): number {
+  let index = start;
+  while (index < value.length && isWhitespace(value[index])) {
+    index += 1;
+  }
+  return index;
+}
+
+function isWhitespace(value: string): boolean {
+  return value.trim() === '';
 }
 
 export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): string {
