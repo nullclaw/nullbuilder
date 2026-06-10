@@ -203,9 +203,11 @@ test('mapRepositorySummary bounds and sanitizes display strings from GitHub payl
   assert.equal(summary.latestRuns.ci?.conclusion, 'failure later');
   assert.equal(summary.latestRuns.ci?.branch, 'main branch');
   assert.equal(summary.latestRuns.ci?.event, 'workflow_dispatch now');
-  assert.equal(summary.updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
-  assert.equal(summary.issues[0].updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
-  assert.equal(summary.latestRuns.ci?.updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
+  assert.equal(summary.updatedAt, '');
+  assert.equal(summary.issues[0].createdAt, '');
+  assert.equal(summary.issues[0].updatedAt, '');
+  assert.equal(summary.latestRuns.ci?.createdAt, '');
+  assert.equal(summary.latestRuns.ci?.updatedAt, '');
 });
 
 test('mapRepositorySummary validates dashboard URLs from GitHub payloads', () => {

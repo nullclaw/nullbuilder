@@ -1,5 +1,5 @@
 import type { RepoSlug } from '../repositories';
-import { sanitizeText } from '../text-safety';
+import { readSafeTextInput, sanitizeText } from '../text-safety';
 import type {
   GitHubIssueResponse,
   GitHubLabel,
@@ -254,7 +254,7 @@ function safeWorkItemTitle(value: string, fallback: string): string {
 }
 
 function safeTimestamp(value: string): string {
-  return safeDashboardText(value, '', MAX_TIMESTAMP_TEXT_LENGTH);
+  return readSafeTextInput(value, { maxLength: MAX_TIMESTAMP_TEXT_LENGTH, trim: true }) ?? '';
 }
 
 function safeOptionalTimestamp(value: string | null): string | null {
