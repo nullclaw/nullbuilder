@@ -94,6 +94,11 @@ fn validateValueToken(flag: []const u8, value: []const u8) error{InvalidArgument
         printDiagnostic("invalid value for {s}\n", flag);
         return error.InvalidArguments;
     }
+
+    if (hasUnsafeValueControl(value)) {
+        printDiagnostic("invalid value for {s}\n", flag);
+        return error.InvalidArguments;
+    }
 }
 
 fn isOptionLikeValue(value: []const u8) bool {
@@ -102,6 +107,17 @@ fn isOptionLikeValue(value: []const u8) bool {
 
 fn isOversizedValueToken(value: []const u8) bool {
     return value.len > MAX_VALUE_TOKEN_BYTES;
+}
+
+fn hasUnsafeValueControl(value: []const u8) bool {
+    var index: usize = 0;
+    while (index < value.len) {
+        if (value[index] == 0x1b or isDiagnosticControlByte(value[index]) or isUtf8C1Control(value, index)) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
 }
 
 fn isDiagnosticControlByte(byte: u8) bool {
@@ -129,6 +145,15 @@ test "value tokens are bounded before duplication" {
     try validateValueToken("--flag", max_value[0..]);
     try std.testing.expect(!isOversizedValueToken(max_value[0..]));
     try std.testing.expect(isOversizedValueToken(oversized_value[0..]));
+}
+
+test "value tokens reject terminal controls before duplication" {
+    try validateValueToken("--flag", "value with spaces");
+
+    try std.testing.expect(hasUnsafeValueControl("bad\nvalue"));
+    try std.testing.expect(hasUnsafeValueControl("bad\x1b[31mvalue"));
+    try std.testing.expect(hasUnsafeValueControl("bad\xc2\x85value"));
+    try std.testing.expect(hasUnsafeValueControl("bad\x85value"));
 }
 
 test "diagnostic tokens replace controls and bound output" {
