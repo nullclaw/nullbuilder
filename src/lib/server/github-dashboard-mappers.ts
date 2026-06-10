@@ -38,6 +38,12 @@ export const MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN = 20;
 export const MAX_REPOSITORY_WORK_ITEMS_TO_SCAN =
   GITHUB_WORK_ITEMS_PAGE_SIZE * MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN;
 export const MAX_WORKFLOW_RUNS_PER_REPOSITORY = 100;
+const CI_RUN_NAME_KEYWORDS = ['ci', 'test'] as const;
+const CI_RUN_PATH_KEYWORDS = ['ci.yml', 'zig-ci.yml'] as const;
+const NIGHTLY_RUN_NAME_KEYWORDS = ['nightly'] as const;
+const NIGHTLY_RUN_PATH_KEYWORDS = ['nightly.yml', 'zig-nightly.yml'] as const;
+const RELEASE_RUN_NAME_KEYWORDS = ['release'] as const;
+const RELEASE_RUN_PATH_KEYWORDS = ['release.yml', 'zig-release.yml'] as const;
 
 export function mapRepositorySummary(
   repo: RepoSlug,
@@ -117,7 +123,8 @@ function collectBoundedWorkItems<Input, Output extends IssueSummary | PullReques
   const collector = new RecentWorkItemCollector<Output>(maxItems);
   let total = 0;
 
-  for (const value of values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
     const item = mapper(value);
     if (item === null) {
       continue;
@@ -218,11 +225,13 @@ function mapPullRequest(
 
 function mapLabels(labels: unknown): GitHubLabel[] {
   const mapped: GitHubLabel[] = [];
+  const boundedLabels = readBoundedArray(labels, MAX_LABELS_TO_SCAN);
 
-  for (const label of readBoundedArray(labels, MAX_LABELS_TO_SCAN)) {
+  for (let index = 0; index < boundedLabels.length; index += 1) {
     if (mapped.length >= MAX_LABELS_PER_WORK_ITEM) {
       break;
     }
+    const label = boundedLabels[index];
     if (typeof label === 'string') {
       mapped.push({
         name: safeLabelName(label),
@@ -325,7 +334,8 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
     release: null
   };
 
-  for (const [ordinal, run] of runs.entries()) {
+  for (let ordinal = 0; ordinal < runs.length; ordinal += 1) {
+    const run = runs[ordinal];
     const runObject = readObjectRecord(run);
     if (!runObject) {
       continue;
@@ -339,13 +349,13 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
       ordinal
     };
 
-    if (matchesRun(name, path, ['ci', 'test'], ['ci.yml', 'zig-ci.yml'])) {
+    if (matchesRun(name, path, CI_RUN_NAME_KEYWORDS, CI_RUN_PATH_KEYWORDS)) {
       selectedRuns.ci = newerWorkflowRun(rankedRun, selectedRuns.ci);
     }
-    if (matchesRun(name, path, ['nightly'], ['nightly.yml', 'zig-nightly.yml'])) {
+    if (matchesRun(name, path, NIGHTLY_RUN_NAME_KEYWORDS, NIGHTLY_RUN_PATH_KEYWORDS)) {
       selectedRuns.nightly = newerWorkflowRun(rankedRun, selectedRuns.nightly);
     }
-    if (matchesRun(name, path, ['release'], ['release.yml', 'zig-release.yml'])) {
+    if (matchesRun(name, path, RELEASE_RUN_NAME_KEYWORDS, RELEASE_RUN_PATH_KEYWORDS)) {
       selectedRuns.release = newerWorkflowRun(rankedRun, selectedRuns.release);
     }
   }
@@ -382,13 +392,23 @@ function workflowRunTimestamp(run: Record<string, unknown>): number {
 function matchesRun(
   name: string,
   path: string,
-  nameKeywords: string[],
-  pathKeywords: string[]
+  nameKeywords: readonly string[],
+  pathKeywords: readonly string[]
 ): boolean {
-  return (
-    nameKeywords.some((keyword) => name.includes(keyword)) ||
-    pathKeywords.some((keyword) => path.endsWith(keyword) || path.includes(`/${keyword}`))
-  );
+  for (let index = 0; index < nameKeywords.length; index += 1) {
+    if (name.includes(nameKeywords[index])) {
+      return true;
+    }
+  }
+
+  for (let index = 0; index < pathKeywords.length; index += 1) {
+    const keyword = pathKeywords[index];
+    if (path.endsWith(keyword) || path.includes(`/${keyword}`)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function mapRun(value: unknown, urlContext: GitHubWebUrlContext): WorkflowRunSummary | null {

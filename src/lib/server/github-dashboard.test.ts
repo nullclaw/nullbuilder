@@ -610,6 +610,60 @@ test('mapRepositorySummary caps work item scanning before reading oversized payl
   assert.equal(summary.pullRequests.some((item) => item.number === MAX_REPOSITORY_WORK_ITEMS_TO_SCAN + 1), false);
 });
 
+test('mapRepositorySummary avoids global array iterators while mapping bounded GitHub payloads', () => {
+  const issues = [
+    issue({
+      number: 7,
+      labels: ['bug', { name: 'security', color: 'b60205' }],
+      updated_at: '2026-06-09T00:00:00Z'
+    })
+  ];
+  const pulls = [
+    pull({
+      number: 9,
+      updated_at: '2026-06-08T00:00:00Z'
+    })
+  ];
+  const workflowRuns = [
+    workflowRun({
+      id: 2,
+      name: 'CI',
+      path: '.github/workflows/ci.yml',
+      updated_at: '2026-06-10T00:00:00Z'
+    })
+  ];
+  const originalIterator = Array.prototype[Symbol.iterator];
+  let summary: RepositorySummary | undefined;
+
+  Array.prototype[Symbol.iterator] = function iteratorShouldNotBeCalled() {
+    throw new Error('Array.prototype iterator should not be called');
+  };
+
+  try {
+    summary = mapRepositorySummary(
+      REPO,
+      githubRepository(),
+      issues,
+      pulls,
+      workflowRuns,
+      { current: null, last7Days: null, last30Days: null }
+    );
+  } finally {
+    Array.prototype[Symbol.iterator] = originalIterator;
+  }
+
+  assert.deepEqual(
+    summary?.issues.map((item) => item.number),
+    [7]
+  );
+  assert.deepEqual(
+    summary?.pullRequests.map((item) => item.number),
+    [9]
+  );
+  assert.equal(summary?.issues[0].labels.length, 2);
+  assert.equal(summary?.latestRuns.ci?.id, 2);
+});
+
 test('buildDashboard summarizes loaded error and failing repositories', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder,broken',
