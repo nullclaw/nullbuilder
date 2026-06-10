@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   DASHBOARD_SECTIONS,
+  MAX_VISIBLE_AUDIT_FINDINGS,
   auditFindingHref,
   auditRepositoryHref,
   authGateCopy,
@@ -47,6 +48,20 @@ test('visibleAuditFindings bounds and validates the display limit', () => {
   assert.deepEqual(visibleAuditFindings([1, 2, 3], 2), [1, 2]);
   assert.deepEqual(visibleAuditFindings([1, 2, 3], 0), []);
   assert.deepEqual(visibleAuditFindings([1, 2, 3], Number.NaN), []);
+});
+
+test('visibleAuditFindings caps oversized limits before slicing', () => {
+  const findings = Array.from({ length: MAX_VISIBLE_AUDIT_FINDINGS + 1 }, (_, index) => index);
+  Object.defineProperty(findings, MAX_VISIBLE_AUDIT_FINDINGS, {
+    get() {
+      throw new Error('read past visible findings cap');
+    }
+  });
+
+  const visible = visibleAuditFindings(findings, Number.MAX_SAFE_INTEGER);
+
+  assert.equal(visible.length, MAX_VISIBLE_AUDIT_FINDINGS);
+  assert.deepEqual(visible, Array.from({ length: MAX_VISIBLE_AUDIT_FINDINGS }, (_, index) => index));
 });
 
 test('audit href helpers prefer safe finding URLs before repository fallbacks', () => {

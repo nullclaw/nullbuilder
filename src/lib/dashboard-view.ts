@@ -11,6 +11,7 @@ export const DASHBOARD_SECTIONS = [
 
 const DEFAULT_DASHBOARD_OWNER = 'nullclaw';
 const MAX_DASHBOARD_HREF_LENGTH = 2048;
+export const MAX_VISIBLE_AUDIT_FINDINGS = 100;
 const SAFE_LOCAL_DASHBOARD_HREF_PATTERN = /^#[A-Za-z][A-Za-z0-9_-]*$/;
 const AUDIT_SECTION_HREF = '#audit';
 
@@ -94,7 +95,7 @@ export function visibleAuditFindings<T>(findings: readonly T[], limit = 18): rea
     return [];
   }
 
-  return findings.slice(0, limit);
+  return findings.slice(0, Math.min(limit, MAX_VISIBLE_AUDIT_FINDINGS));
 }
 
 export function buildAuditRepositoryUrls(
