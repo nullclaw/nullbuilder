@@ -45,6 +45,8 @@ pub fn nextSanitizedSlice(
     options: SanitizeOptions,
     buffer: *[4]u8,
 ) ?[]const u8 {
+    if (index.* >= value.len) return null;
+
     const byte = value[index.*];
     if (byte == ascii_escape) {
         index.* = skipAnsiEscape(value, index.*);
@@ -99,6 +101,22 @@ pub fn nextSanitizedSlice(
     const sequence_len = utf8SequenceLength(value, start);
     index.* += sequence_len;
     return value[start..index.*];
+}
+
+pub fn sanitizeIntoBuffer(value: []const u8, buffer: []u8, options: SanitizeOptions) []const u8 {
+    var written: usize = 0;
+    var index: usize = 0;
+    var slice_buffer: [4]u8 = undefined;
+
+    while (index < value.len) {
+        const slice = nextSanitizedSlice(value, &index, options, &slice_buffer) orelse continue;
+        if (slice.len > buffer.len - written) break;
+
+        @memcpy(buffer[written..][0..slice.len], slice);
+        written += slice.len;
+    }
+
+    return buffer[0..written];
 }
 
 pub fn isControlByte(byte: u8) bool {
@@ -373,4 +391,22 @@ test "text safety shared scanner can preserve newlines" {
     var index: usize = 2;
     try std.testing.expectEqualStrings("\n", nextSanitizedSlice("ok\nbad", &index, .{ .preserve_newlines = true }, &buffer).?);
     try std.testing.expectEqual(@as(usize, 3), index);
+}
+
+test "text safety sanitizes into caller buffers without splitting UTF-8" {
+    var token_buffer: [16]u8 = undefined;
+    try std.testing.expectEqualStrings(
+        "bad  value",
+        sanitizeIntoBuffer("bad\n\x1b[31m\tvalue", &token_buffer, .{}),
+    );
+
+    const text = "repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82";
+    var partial_buffer: [6]u8 = undefined;
+    try std.testing.expectEqualStrings("repo-", sanitizeIntoBuffer(text, &partial_buffer, .{}));
+
+    var complete_buffer: [7]u8 = undefined;
+    try std.testing.expectEqualStrings("repo-\xd0\xbf", sanitizeIntoBuffer(text, &complete_buffer, .{}));
+
+    var empty_buffer: [0]u8 = .{};
+    try std.testing.expectEqualStrings("", sanitizeIntoBuffer("value", &empty_buffer, .{}));
 }

@@ -5,18 +5,7 @@ const text_safety = @import("text_safety");
 pub const ascii_escape: u8 = text_safety.ascii_escape;
 
 pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
-    var written: usize = 0;
-    var index: usize = 0;
-    var slice_buffer: [4]u8 = undefined;
-    while (index < value.len) {
-        const slice = text_safety.nextSanitizedSlice(value, &index, .{}, &slice_buffer) orelse continue;
-        if (slice.len > buffer.len - written) break;
-
-        @memcpy(buffer[written..][0..slice.len], slice);
-        written += slice.len;
-    }
-
-    return buffer[0..written];
+    return text_safety.sanitizeIntoBuffer(value, buffer, .{});
 }
 
 pub fn hasControl(value: []const u8) bool {
