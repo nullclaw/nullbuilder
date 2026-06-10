@@ -73,7 +73,54 @@ fn isTagCommand(value: []const u8) bool {
 fn isSafeCliPath(value: []const u8) bool {
     if (value.len == 0 or value.len > max_cli_path_bytes) return false;
     if (std.mem.startsWith(u8, value, "-")) return false;
+    if (hasUnsafeCliPathSyntax(value)) return false;
     return !terminal.hasUnsafeControl(value, .{});
+}
+
+fn hasUnsafeCliPathSyntax(value: []const u8) bool {
+    if (std.mem.endsWith(u8, value, "/")) return true;
+    if (std.mem.indexOfScalar(u8, value, '\\') != null) return true;
+    if (hasWindowsDrivePrefix(value)) return true;
+
+    var segment_start: usize = 0;
+    var segment_index: usize = 0;
+    while (segment_start <= value.len) {
+        var segment_end = segment_start;
+        while (segment_end < value.len and value[segment_end] != '/') {
+            segment_end += 1;
+        }
+
+        const segment = value[segment_start..segment_end];
+        if (!isSafeCliPathSegment(value, segment, segment_index, segment_end)) {
+            return true;
+        }
+
+        if (segment_end == value.len) return false;
+        segment_start = segment_end + 1;
+        segment_index += 1;
+    }
+
+    return false;
+}
+
+fn isSafeCliPathSegment(
+    path: []const u8,
+    segment: []const u8,
+    segment_index: usize,
+    segment_end: usize,
+) bool {
+    if (segment.len == 0) {
+        return segment_index == 0 and path[0] == '/';
+    }
+    if (std.mem.eql(u8, segment, "..")) return false;
+    if (std.mem.eql(u8, segment, ".")) {
+        return segment_index == 0 and segment_end < path.len;
+    }
+    return true;
+}
+
+fn hasWindowsDrivePrefix(value: []const u8) bool {
+    return value.len >= 2 and std.ascii.isAlphabetic(value[0]) and value[1] == ':';
 }
 
 fn isSafeForwardedArgs(args: []const []const u8) bool {
@@ -260,6 +307,28 @@ test "node cli path rejects option injection and controls" {
     try std.testing.expect(!isSafeCliPath("bad\x00path"));
     try std.testing.expect(!isSafeCliPath("bad\xc2\x85path"));
     try std.testing.expect(!isSafeCliPath(oversized[0..]));
+}
+
+test "node cli path rejects traversal and ambiguous path segments" {
+    try std.testing.expect(isSafeCliPath("./bin/nullbuilder.js"));
+    try std.testing.expect(isSafeCliPath("/tmp/nullbuilder.js"));
+    try std.testing.expect(isSafeCliPath("scripts/nullbuilder.js"));
+
+    try std.testing.expect(!isSafeCliPath("."));
+    try std.testing.expect(!isSafeCliPath("./"));
+    try std.testing.expect(!isSafeCliPath("/"));
+    try std.testing.expect(!isSafeCliPath("../bin/nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("./../bin/nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("bin/../nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("bin/./nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("bin//nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("//tmp/nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("/tmp//nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("/tmp/../nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("/tmp/./nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("/tmp/nullbuilder.js/"));
+    try std.testing.expect(!isSafeCliPath("C:/tmp/nullbuilder.js"));
+    try std.testing.expect(!isSafeCliPath("C:\\tmp\\nullbuilder.js"));
 }
 
 test "forwarded tag arguments are bounded before spawning node" {
