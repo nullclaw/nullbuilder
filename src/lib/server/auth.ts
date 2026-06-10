@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Cookies } from '@sveltejs/kit';
 import type { NullbuilderConfig } from './config';
+import { readSafeTextInput } from '../text-safety';
 
 export const AUTH_COOKIE = 'nullbuilder_auth';
 export const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;
@@ -18,6 +19,8 @@ const DEFAULT_LOGIN_RATE_LIMIT_MAX_KEYS = 1000;
 const MAX_LOGIN_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_LOGIN_RATE_LIMIT_FAILURES = 1000;
 const MAX_LOGIN_RATE_LIMIT_KEYS = 100_000;
+const MAX_LOGIN_RATE_LIMIT_KEY_LENGTH = 128;
+const FALLBACK_LOGIN_RATE_LIMIT_KEY = 'unknown-client';
 
 export type LoginRateLimiterOptions = {
   windowMs: number;
@@ -62,19 +65,21 @@ export class LoginRateLimiter {
   }
 
   isAllowed(key: string): boolean {
+    const normalizedKey = normalizeLoginRateLimitKey(key);
     const now = this.#nowMs();
     this.#prune(now);
-    const attempt = this.#attempts.get(key);
+    const attempt = this.#attempts.get(normalizedKey);
     return !attempt || attempt.failures < this.#options.maxFailures;
   }
 
   recordFailure(key: string): void {
+    const normalizedKey = normalizeLoginRateLimitKey(key);
     const now = this.#nowMs();
     this.#prune(now);
-    const current = this.#attempts.get(key);
+    const current = this.#attempts.get(normalizedKey);
 
     if (!current || current.resetAt <= now) {
-      this.#attempts.set(key, {
+      this.#attempts.set(normalizedKey, {
         failures: 1,
         resetAt: now + this.#options.windowMs
       });
@@ -86,7 +91,7 @@ export class LoginRateLimiter {
   }
 
   clear(key: string): void {
-    this.#attempts.delete(key);
+    this.#attempts.delete(normalizeLoginRateLimitKey(key));
   }
 
   get size(): number {
@@ -113,6 +118,14 @@ export class LoginRateLimiter {
       this.#attempts.delete(oldestKey);
     }
   }
+}
+
+function normalizeLoginRateLimitKey(value: string): string {
+  const safe = readSafeTextInput(value, {
+    maxLength: MAX_LOGIN_RATE_LIMIT_KEY_LENGTH,
+    trim: true
+  });
+  return safe || FALLBACK_LOGIN_RATE_LIMIT_KEY;
 }
 
 function normalizeLoginRateLimiterOptions(options: LoginRateLimiterOptions): NormalizedLoginRateLimiterOptions {

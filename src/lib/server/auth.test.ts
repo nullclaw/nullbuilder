@@ -136,6 +136,27 @@ test('login rate limiter bounds distinct failed clients immediately', () => {
   assert.equal(limiter.size, 2);
 });
 
+test('login rate limiter normalizes unsafe client keys before storage', () => {
+  const limiter = new LoginRateLimiter({
+    windowMs: 1000,
+    maxFailures: 1,
+    maxKeys: 10,
+    now: () => 10_000
+  });
+
+  limiter.recordFailure(' client ');
+  assert.equal(limiter.isAllowed('client'), false);
+  limiter.clear('client');
+  assert.equal(limiter.isAllowed(' client '), true);
+
+  limiter.recordFailure('x'.repeat(10_000));
+  assert.equal(limiter.size, 1);
+  assert.equal(limiter.isAllowed('bad\nclient'), false);
+  limiter.clear('bad\x1b[31mclient');
+  assert.equal(limiter.isAllowed('x'.repeat(10_000)), true);
+  assert.equal(limiter.size, 0);
+});
+
 test('login rate limiter normalizes unsafe numeric options', () => {
   let now = 10_000;
   const limiter = new LoginRateLimiter({
