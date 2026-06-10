@@ -35,9 +35,17 @@ pub fn printDiagnostic(comptime format: []const u8, value: []const u8) void {
 
 pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
     var written: usize = 0;
-    for (value) |byte| {
+    var index: usize = 0;
+    while (index < value.len) {
         if (written >= buffer.len) break;
-        buffer[written] = if (isDiagnosticControlByte(byte)) ' ' else byte;
+        const byte = value[index];
+        if (isUtf8C1Control(value, index)) {
+            buffer[written] = ' ';
+            index += 2;
+        } else {
+            buffer[written] = if (isDiagnosticControlByte(byte)) ' ' else byte;
+            index += 1;
+        }
         written += 1;
     }
 
@@ -56,7 +64,11 @@ fn isOptionLikeValue(value: []const u8) bool {
 }
 
 fn isDiagnosticControlByte(byte: u8) bool {
-    return byte < 0x20 or byte == 0x7f;
+    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
+}
+
+fn isUtf8C1Control(value: []const u8, index: usize) bool {
+    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
 }
 
 test "required returns present values" {
@@ -74,6 +86,12 @@ test "diagnostic tokens replace controls and bound output" {
     try std.testing.expectEqualStrings(
         "bad  [31m value",
         sanitizeDiagnosticToken("bad\n\x1b[31m\tvalue", &buffer),
+    );
+
+    var c1_buffer: [32]u8 = undefined;
+    try std.testing.expectEqualStrings(
+        "bad next raw",
+        sanitizeDiagnosticToken("bad\xc2\x85next\x85raw", &c1_buffer),
     );
 
     var short_buffer: [4]u8 = undefined;
