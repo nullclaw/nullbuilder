@@ -279,6 +279,34 @@ test('discoverRepositories skips malformed API repository entries', async () => 
   ]);
 });
 
+test('discoverRepositories preserves configured slugs when discovery returns duplicates', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'NullBuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://discover-configured.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          name: 'nullbuilder',
+          full_name: 'nullclaw/nullbuilder',
+          language: 'TypeScript',
+          archived: false
+        },
+        {
+          name: 'nullthing',
+          full_name: 'nullclaw/nullthing',
+          language: 'TypeScript',
+          archived: false
+        }
+      ])
+    )) as typeof fetch;
+
+  assert.deepEqual(await discoverRepositories(config), ['nullclaw/NullBuilder', 'nullclaw/nullthing']);
+});
+
 test('discoverRepositories caps discovered repositories before dashboard fan-out', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

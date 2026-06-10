@@ -47,8 +47,8 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
     archived: boolean;
   };
 
-  const configured = new Map(config.repos.map((repo) => [repoKey(repo), repo]));
-  const ignored = new Set(config.ignoredRepos.map(repoKey));
+  const configured = repositorySlugMap(config.repos);
+  const ignored = repositoryKeySet(config.ignoredRepos);
 
   try {
     const repos = await githubGetPages<RepositoryListItem>(
@@ -78,8 +78,8 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
       const name = repoName(slug);
       const isNullRepo = name.startsWith('null') || name === 'nllclw';
       const isZigRepo = discoveredRepo.language === 'Zig';
-      if (!discoveredRepo.archived && (isNullRepo || isZigRepo)) {
-        if (!configured.has(key) && configured.size >= MAX_REPOSITORY_LIST_ENTRIES) {
+      if (!discoveredRepo.archived && (isNullRepo || isZigRepo) && !configured.has(key)) {
+        if (configured.size >= MAX_REPOSITORY_LIST_ENTRIES) {
           break;
         }
         configured.set(key, slug);
@@ -121,6 +121,29 @@ function normalizeDiscoveredRepoSlug(fullName: string, defaultOwner: string): Re
   } catch {
     return null;
   }
+}
+
+function repositorySlugMap(repos: readonly RepoSlug[]): Map<string, RepoSlug> {
+  const slugs = new Map<string, RepoSlug>();
+
+  for (const repo of repos) {
+    const key = repoKey(repo);
+    if (!slugs.has(key)) {
+      slugs.set(key, repo);
+    }
+  }
+
+  return slugs;
+}
+
+function repositoryKeySet(repos: readonly RepoSlug[]): Set<string> {
+  const keys = new Set<string>();
+
+  for (const repo of repos) {
+    keys.add(repoKey(repo));
+  }
+
+  return keys;
 }
 
 function repoKey(repo: RepoSlug): string {
