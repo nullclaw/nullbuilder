@@ -25,6 +25,7 @@ import {
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
 const originalJsonParse = JSON.parse;
+const originalArrayPush = Array.prototype.push;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalMapKeys = Map.prototype.keys;
 const originalMapIterator = Map.prototype[Symbol.iterator];
@@ -33,9 +34,39 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
   JSON.parse = originalJsonParse;
+  restoreArrayPush();
   Array.prototype[Symbol.iterator] = originalArrayIterator;
   restoreMapIteration();
 });
+
+function restoreArrayPush(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
+  });
+}
+
+async function withGuardedArrayPush<T>(callback: () => Promise<T>): Promise<{ result: T; pushCalls: number }> {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: await callback(),
+      pushCalls
+    };
+  } finally {
+    restoreArrayPush();
+  }
+}
 
 function rejectMapIteration(): void {
   Map.prototype.keys = function mapKeysShouldNotBeCalled(): ReturnType<Map<unknown, unknown>['keys']> {
@@ -295,6 +326,28 @@ test('githubGetPages avoids user-controlled page iterators', async () => {
 
   const values = await githubGetPages<{ id: number }>(config, '/repos', {}, 1);
 
+  assert.deepEqual(values, [{ id: 1 }, { id: 2 }]);
+});
+
+test('githubGetPages collects page values without global array push hooks', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://page-push.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  let fetches = 0;
+
+  globalThis.fetch = (async () => {
+    fetches += 1;
+    return new Response('[{"id":1},{"id":2}]');
+  }) as typeof fetch;
+
+  const { result: values, pushCalls } = await withGuardedArrayPush(() =>
+    githubGetPages<{ id: number }>(config, '/repos', {}, 1)
+  );
+
+  assert.equal(pushCalls, 0);
+  assert.equal(fetches, 1);
   assert.deepEqual(values, [{ id: 1 }, { id: 2 }]);
 });
 
@@ -569,6 +622,30 @@ test('githubRequest keeps cache keys structured across delimiter-bearing inputs'
       accept: 'first'
     }
   ]);
+});
+
+test('githubRequest tracks cache order without global array push hooks', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://cache-push.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  let requests = 0;
+
+  globalThis.fetch = (async () => {
+    requests += 1;
+    return new Response(JSON.stringify({ id: requests }));
+  }) as typeof fetch;
+
+  const { result: first, pushCalls } = await withGuardedArrayPush(() =>
+    githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder')
+  );
+  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.equal(pushCalls, 0);
+  assert.equal(requests, 1);
+  assert.deepEqual(first, { id: 1 });
+  assert.deepEqual(second, { id: 1 });
 });
 
 test('githubRequest strips caller-supplied credential headers before fetching GitHub', async () => {

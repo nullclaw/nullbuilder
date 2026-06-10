@@ -783,7 +783,7 @@ function appendPageValues<T>(values: T[], page: unknown, maxItems: number): void
     if (values.length >= maxItems) {
       return;
     }
-    values.push(page[index]);
+    values[values.length] = page[index];
   }
 }
 
@@ -855,7 +855,7 @@ function pruneExpiredCacheEntries(now: number): void {
 
 function rememberOrderedKey(order: string[], key: string): void {
   removeOrderedKey(order, key);
-  order.push(key);
+  order[order.length] = key;
 }
 
 function removeOrderedKey(order: string[], key: string): void {
