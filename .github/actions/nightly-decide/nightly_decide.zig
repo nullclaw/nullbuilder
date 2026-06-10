@@ -103,6 +103,12 @@ fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void 
     }
 }
 
+fn validateActionOutputUrl(value: []const u8) error{InvalidActionOutput}!void {
+    if (!action_values.isHttpUrl(value, MAX_OUTPUT_VALUE_BYTES)) {
+        return error.InvalidActionOutput;
+    }
+}
+
 fn writeOutputLine(out: *std.Io.Writer, key: []const u8, value: []const u8) !void {
     try out.print("{s}={s}\n", .{ key, value });
 }
@@ -112,7 +118,7 @@ fn writeDecision(out: *std.Io.Writer, decision: Decision) !void {
     try validateActionOutputValue(should_build);
     try validateActionOutputValue(decision.reason);
     if (decision.matched_run_url.len > 0) {
-        try validateActionOutputValue(decision.matched_run_url);
+        try validateActionOutputUrl(decision.matched_run_url);
     }
 
     try writeOutputLine(out, "should_build", should_build);
@@ -357,6 +363,21 @@ test "nightly decision output rejects multiline values before writing" {
         .reason = "successful-nightly-exists",
         .matched_run_id = 9,
         .matched_run_url = "https://example.com/run/9\nshould_build=true",
+    };
+
+    try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
+    try std.testing.expectEqualStrings("", out.writer.buffered());
+}
+
+test "nightly decision output rejects non-url matched run URLs" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const decision = Decision{
+        .should_build = false,
+        .reason = "successful-nightly-exists",
+        .matched_run_id = 9,
+        .matched_run_url = "not-a-url",
     };
 
     try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));

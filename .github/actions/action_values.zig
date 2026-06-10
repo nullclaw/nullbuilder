@@ -44,6 +44,26 @@ pub fn isHttpUrlBase(value: []const u8) bool {
     return isHttpAuthority(value[scheme_len..]);
 }
 
+pub fn isHttpUrl(value: []const u8, max_len: usize) bool {
+    if (!isSafeSingleLineText(value, max_len)) return false;
+    for (value) |byte| {
+        if (byte == ' ') return false;
+    }
+
+    const scheme_len: usize = if (std.mem.startsWith(u8, value, "https://"))
+        "https://".len
+    else if (std.mem.startsWith(u8, value, "http://"))
+        "http://".len
+    else
+        return false;
+
+    const rest = value[scheme_len..];
+    const authority_len = std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len;
+    if (!isHttpAuthority(rest[0..authority_len])) return false;
+
+    return true;
+}
+
 const HostPort = struct {
     host: []const u8,
     port: ?[]const u8 = null,
@@ -255,6 +275,21 @@ test "action values validate URL bases and metadata" {
     try std.testing.expect(!isSafeMetadataValue("", 64));
     try std.testing.expect(!isSafeMetadataValue("line\nbreak", 64));
     try std.testing.expect(!isSafeMetadataValue("too-long", 3));
+}
+
+test "action values validate HTTP URLs with paths" {
+    try std.testing.expect(isHttpUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(isHttpUrl("http://github.example.local/runs/1?check=true", 256));
+    try std.testing.expect(isHttpUrl("https://github.com:8443/actions/runs/123#summary", 256));
+
+    try std.testing.expect(!isHttpUrl("", 256));
+    try std.testing.expect(!isHttpUrl("github.com/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("https://github..com/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com:bad/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com\n/actions/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com@evil.example/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/path with spaces", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/runs/1", 10));
 }
 
 test "action values validate single-line GitHub output values" {
