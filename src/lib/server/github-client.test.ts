@@ -24,12 +24,30 @@ import {
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
 const originalJsonParse = JSON.parse;
+const originalMapKeys = Map.prototype.keys;
+const originalMapIterator = Map.prototype[Symbol.iterator];
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
   JSON.parse = originalJsonParse;
+  restoreMapIteration();
 });
+
+function rejectMapIteration(): void {
+  Map.prototype.keys = function mapKeysShouldNotBeCalled(): ReturnType<Map<unknown, unknown>['keys']> {
+    throw new Error('Map.prototype.keys should not be called');
+  } as typeof originalMapKeys;
+  Map.prototype[Symbol.iterator] =
+    function mapIteratorShouldNotBeCalled(): ReturnType<Map<unknown, unknown>[typeof Symbol.iterator]> {
+      throw new Error('Map.prototype[Symbol.iterator] should not be called');
+    } as typeof originalMapIterator;
+}
+
+function restoreMapIteration(): void {
+  Map.prototype.keys = originalMapKeys;
+  Map.prototype[Symbol.iterator] = originalMapIterator;
+}
 
 test('githubGetPages follows same-origin pagination links', async () => {
   const config = readConfig({
@@ -767,16 +785,24 @@ test('githubRequest bounds in-flight cacheable GET coalescing entries', async ()
     return new Response(JSON.stringify({ url }));
   }) as typeof fetch;
 
-  const pendingRequests = Array.from({ length: GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 1 }, (_, index) =>
-    githubRequest<{ url: string }>(config, `/repos/nullclaw/repo-${index}`)
-  );
+  let pendingRequests: Array<Promise<{ url: string }>> = [];
+  let duplicateFirst: Promise<{ url: string }> | undefined;
+  rejectMapIteration();
+  try {
+    pendingRequests = Array.from({ length: GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 1 }, (_, index) =>
+      githubRequest<{ url: string }>(config, `/repos/nullclaw/repo-${index}`)
+    );
 
-  assert.equal(requests.length, GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 1);
+    assert.equal(requests.length, GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 1);
 
-  const duplicateFirst = githubRequest<{ url: string }>(config, '/repos/nullclaw/repo-0');
-  assert.equal(requests.length, GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 2);
-  assert.equal(requests.at(-1), 'https://bounded-inflight.example.test/repos/nullclaw/repo-0');
+    duplicateFirst = githubRequest<{ url: string }>(config, '/repos/nullclaw/repo-0');
+    assert.equal(requests.length, GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES + 2);
+    assert.equal(requests.at(-1), 'https://bounded-inflight.example.test/repos/nullclaw/repo-0');
+  } finally {
+    restoreMapIteration();
+  }
 
+  assert.ok(duplicateFirst);
   releaseFetches.forEach((release) => release());
   await Promise.all([...pendingRequests, duplicateFirst]);
 });
@@ -795,11 +821,16 @@ test('githubRequest bounds cached responses and evicts the oldest entry', async 
     return new Response(JSON.stringify({ url }));
   }) as typeof fetch;
 
-  for (let index = 0; index <= GITHUB_RESPONSE_CACHE_MAX_ENTRIES; index += 1) {
-    await githubRequest<{ url: string }>(config, `/repos/nullclaw/repo-${index}`);
-  }
+  rejectMapIteration();
+  try {
+    for (let index = 0; index <= GITHUB_RESPONSE_CACHE_MAX_ENTRIES; index += 1) {
+      await githubRequest<{ url: string }>(config, `/repos/nullclaw/repo-${index}`);
+    }
 
-  await githubRequest<{ url: string }>(config, '/repos/nullclaw/repo-0');
+    await githubRequest<{ url: string }>(config, '/repos/nullclaw/repo-0');
+  } finally {
+    restoreMapIteration();
+  }
 
   assert.equal(requests.length, GITHUB_RESPONSE_CACHE_MAX_ENTRIES + 2);
   assert.equal(requests.at(-1), 'https://bounded-cache.example.test/repos/nullclaw/repo-0');

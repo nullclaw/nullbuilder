@@ -62,6 +62,8 @@ const PUBLIC_ERROR_MESSAGES = new Set([
 ]);
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
+const cacheKeyOrder: string[] = [];
+const inFlightRequestKeyOrder: string[] = [];
 
 export async function githubGetPages<T>(
   config: NullbuilderConfig,
@@ -136,6 +138,7 @@ async function githubFetchJson<T>(
   } finally {
     if (inFlightRequests.get(key) === request) {
       inFlightRequests.delete(key);
+      removeOrderedKey(inFlightRequestKeyOrder, key);
     }
   }
 }
@@ -654,6 +657,7 @@ function touchCacheEntry<T>(key: string, entry: CacheEntry<T>): void {
 
   cache.delete(key);
   cache.set(key, entry);
+  rememberOrderedKey(cacheKeyOrder, key);
 }
 
 function writeCacheEntry<T>(key: string, entry: CacheEntry<T>, now: number): void {
@@ -726,11 +730,12 @@ function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | und
 function rememberPendingRequest<T>(key: string, request: Promise<GitHubFetchResult<T>>): void {
   pruneInFlightRequests();
   inFlightRequests.set(key, request);
+  rememberOrderedKey(inFlightRequestKeyOrder, key);
 }
 
 function pruneInFlightRequests(): void {
   while (inFlightRequests.size >= GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES) {
-    const oldestKey = inFlightRequests.keys().next().value;
+    const oldestKey = takeOldestExistingKey(inFlightRequests, inFlightRequestKeyOrder);
     if (!oldestKey) {
       return;
     }
@@ -740,20 +745,64 @@ function pruneInFlightRequests(): void {
 }
 
 function pruneCache(now: number): void {
-  for (const [key, entry] of cache) {
-    if (entry.expiresAt <= now) {
-      cache.delete(key);
-    }
-  }
+  pruneExpiredCacheEntries(now);
 
   while (cache.size > GITHUB_RESPONSE_CACHE_MAX_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
+    const oldestKey = takeOldestExistingKey(cache, cacheKeyOrder);
     if (!oldestKey) {
       return;
     }
 
     cache.delete(oldestKey);
   }
+}
+
+function pruneExpiredCacheEntries(now: number): void {
+  let index = 0;
+  while (index < cacheKeyOrder.length) {
+    const key = cacheKeyOrder[index];
+    const entry = cache.get(key);
+    if (!entry || entry.expiresAt <= now) {
+      cache.delete(key);
+      removeOrderedKeyAt(cacheKeyOrder, index);
+      continue;
+    }
+
+    index += 1;
+  }
+}
+
+function rememberOrderedKey(order: string[], key: string): void {
+  removeOrderedKey(order, key);
+  order.push(key);
+}
+
+function removeOrderedKey(order: string[], key: string): void {
+  for (let index = 0; index < order.length; index += 1) {
+    if (order[index] === key) {
+      removeOrderedKeyAt(order, index);
+      return;
+    }
+  }
+}
+
+function removeOrderedKeyAt(order: string[], index: number): void {
+  for (let nextIndex = index + 1; nextIndex < order.length; nextIndex += 1) {
+    order[nextIndex - 1] = order[nextIndex];
+  }
+  order.length -= 1;
+}
+
+function takeOldestExistingKey<T>(map: Map<string, T>, order: string[]): string | undefined {
+  while (order.length > 0) {
+    const key = order[0];
+    removeOrderedKeyAt(order, 0);
+    if (map.has(key)) {
+      return key;
+    }
+  }
+
+  return undefined;
 }
 
 export class GitHubApiError extends Error {
