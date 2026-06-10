@@ -508,6 +508,19 @@ test "nightly omits unsafe matched run URLs from API payload" {
     , out.writer.buffered());
 }
 
+test "nightly omits encoded-control matched run URLs from API payload" {
+    const json =
+        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42%0aoutput=true"}]}
+    ;
+    var parsed = try parseRunsPayload(std.testing.allocator, json);
+    defer parsed.deinit();
+
+    const decision = decideShouldBuild(parsed.value.workflow_runs, "43", "abc", "Nightly", false);
+    try std.testing.expect(!decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
+    try std.testing.expectEqualStrings("", decision.matched_run_url);
+}
+
 test "nightly validates action options before reading runs json" {
     const valid_options = DecideOptions{
         .runs_json_path = "previous-nightly-runs.json",

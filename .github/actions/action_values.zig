@@ -138,7 +138,7 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
 
         switch (byte) {
             '%' => {
-                if (!isPercentEncodedByte(value, index)) return false;
+                if (!isSafePercentEncodedByte(value, index)) return false;
                 index += 3;
                 continue;
             },
@@ -151,10 +151,23 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
     return true;
 }
 
-fn isPercentEncodedByte(value: []const u8, index: usize) bool {
-    return index + 2 < value.len and
-        std.ascii.isHex(value[index + 1]) and
-        std.ascii.isHex(value[index + 2]);
+fn isSafePercentEncodedByte(value: []const u8, index: usize) bool {
+    if (index + 2 >= value.len) return false;
+    const decoded = decodePercentEncodedByte(value[index + 1], value[index + 2]) orelse return false;
+    return !action_text.isControlByte(decoded);
+}
+
+fn decodePercentEncodedByte(high: u8, low: u8) ?u8 {
+    const high_value = hexValue(high) orelse return null;
+    const low_value = hexValue(low) orelse return null;
+    return high_value * 16 + low_value;
+}
+
+fn hexValue(byte: u8) ?u8 {
+    if (byte >= '0' and byte <= '9') return byte - '0';
+    if (byte >= 'a' and byte <= 'f') return byte - 'a' + 10;
+    if (byte >= 'A' and byte <= 'F') return byte - 'A' + 10;
+    return null;
 }
 
 pub fn isSafeMetadataToken(value: []const u8, max_len: usize) bool {
@@ -423,6 +436,11 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%2", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%zz", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%0G", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%0a", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%1B", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%7f", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%85", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%c2%85", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/runs/1", 10));
 }
 
