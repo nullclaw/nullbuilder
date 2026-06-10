@@ -121,6 +121,11 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
         return null;
     }
 
+    if (isRawAnsiStringControl(byte)) {
+        index.* = skipAnsiStringControl(value, index.* + 1);
+        return null;
+    }
+
     if (text_safety.isUtf8C1Control(value, index.*)) {
         index.* += 2;
         buffer[0] = ' ';
@@ -181,10 +186,15 @@ fn skipAnsiStringControl(value: []const u8, start: usize) usize {
     var index = start;
     while (index < value.len) {
         if (value[index] == 0x07) return index + 1;
+        if (value[index] == 0x9c) return index + 1;
         if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
         index += 1;
     }
     return index;
+}
+
+fn isRawAnsiStringControl(byte: u8) bool {
+    return byte == 0x90 or byte == 0x98 or byte == 0x9d or byte == 0x9e or byte == 0x9f;
 }
 
 fn isUnsafeTerminalControlByte(byte: u8, options: SanitizeOptions) bool {
@@ -270,6 +280,19 @@ test "terminal sanitizer strips ANSI string control payloads" {
     try std.testing.expectEqualStrings("startmidpmapcend", safe);
     try std.testing.expect(std.mem.indexOf(u8, safe, "private") == null);
     try std.testing.expect(std.mem.indexOfScalar(u8, safe, ascii_escape) == null);
+}
+
+test "terminal sanitizer strips raw C1 string control payloads" {
+    const safe = try sanitizeAlloc(
+        std.testing.allocator,
+        "start\x90private-dcs\x9cmid\x98private-sos\x1b\\pm\x9eprivate-pm\x07apc\x9fprivate-apc\x9cend\x9dprivate-osc\x9cdone",
+        .{},
+    );
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("startmidpmapcenddone", safe);
+    try std.testing.expect(std.mem.indexOf(u8, safe, "private") == null);
+    try std.testing.expect(!hasUnsafeControl(safe, .{}));
 }
 
 test "terminal sanitizer can preserve newlines for child output" {
