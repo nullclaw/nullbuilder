@@ -230,7 +230,7 @@ async function requestGitHubJson<T>(
       writeCacheEntry(
         key,
         {
-          data,
+          data: cloneCachedData(data),
           next,
           etag: response.headers.get('ETag') ?? undefined,
           expiresAt: cacheExpiresAt(now, config.cacheTtlMs)
@@ -640,9 +640,13 @@ function readCacheEntry<T>(key: string): CacheEntry<T> | undefined {
 
 function resultFromCacheEntry<T>(entry: CacheEntry<T>): GitHubFetchResult<T> {
   return {
-    data: entry.data,
+    data: cloneCachedData(entry.data),
     next: entry.next
   };
+}
+
+function cloneCachedData<T>(data: T): T {
+  return structuredClone(data);
 }
 
 function safeCacheClockMillis(): number | null {

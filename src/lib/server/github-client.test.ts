@@ -324,6 +324,40 @@ test('githubRequest reuses fresh cached GET responses', async () => {
   assert.deepEqual(requests, ['https://cache.example.test/repos/nullclaw/nullbuilder']);
 });
 
+test('githubRequest keeps cached response data isolated from caller mutations', async () => {
+  type CachedPayload = {
+    id: number;
+    nested: {
+      topics: string[];
+    };
+  };
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://cache-mutation.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify({ id: 1, nested: { topics: ['zig'] } }));
+  }) as typeof fetch;
+
+  const first = await githubRequest<CachedPayload>(config, '/repos/nullclaw/nullbuilder');
+  first.nested.topics.push('mutated-first');
+
+  const second = await githubRequest<CachedPayload>(config, '/repos/nullclaw/nullbuilder');
+  second.nested.topics.push('mutated-second');
+
+  const third = await githubRequest<CachedPayload>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.deepEqual(second, { id: 1, nested: { topics: ['zig', 'mutated-second'] } });
+  assert.deepEqual(third, { id: 1, nested: { topics: ['zig'] } });
+  assert.notEqual(first, second);
+  assert.notEqual(second, third);
+  assert.deepEqual(requests, ['https://cache-mutation.example.test/repos/nullclaw/nullbuilder']);
+});
+
 test('githubRequest bypasses cache writes and fresh hits while cache clock is unsafe', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
