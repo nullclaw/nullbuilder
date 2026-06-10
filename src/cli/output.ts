@@ -298,14 +298,21 @@ function terminalCell(value: string): string {
 }
 
 function truncateTerminalText(value: string, maxLength: number): string {
-  const characters = Array.from(value);
-  if (characters.length <= maxLength) {
-    return value;
+  const suffixLength = maxLength > TRUNCATION_SUFFIX.length ? TRUNCATION_SUFFIX.length : 0;
+  const prefixLimit = maxLength - suffixLength;
+  let prefix = '';
+  let length = 0;
+
+  for (const character of value) {
+    if (length >= maxLength) {
+      return suffixLength > 0 ? `${prefix}${TRUNCATION_SUFFIX}` : prefix;
+    }
+
+    if (length < prefixLimit) {
+      prefix += character;
+    }
+    length += 1;
   }
 
-  if (maxLength <= TRUNCATION_SUFFIX.length) {
-    return characters.slice(0, maxLength).join('');
-  }
-
-  return `${characters.slice(0, maxLength - TRUNCATION_SUFFIX.length).join('')}${TRUNCATION_SUFFIX}`;
+  return value;
 }

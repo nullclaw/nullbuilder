@@ -115,6 +115,14 @@ test('formatters bound terminal output from external text', () => {
   assert.match(output, /x{20}\.\.\./);
 });
 
+test('formatters truncate by code point without splitting surrogate pairs', () => {
+  const output = formatCliError(new Error('🙂'.repeat(3000)));
+
+  assert.equal(Array.from(output).length, 2048);
+  assert.match(output, /^🙂+\.\.\.$/u);
+  assert.equal(output.includes('\uFFFD'), false);
+});
+
 test('formatAuditReport includes per-repository counts and finding details', () => {
   const output = formatAuditReport(auditReportFixture());
 
