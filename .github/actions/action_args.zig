@@ -2,6 +2,7 @@ const std = @import("std");
 
 const MAX_DIAGNOSTIC_TOKEN_BYTES = 512;
 const MAX_VALUE_TOKEN_BYTES = 4096;
+pub const invalid_arguments_exit_code: u8 = 2;
 
 pub fn takeValue(
     iterator: *std.process.Args.Iterator,
@@ -26,6 +27,13 @@ pub fn required(value: ?[]const u8, flag: []const u8) ![]const u8 {
 pub fn unexpectedOption(arg: []const u8) error{InvalidArguments} {
     printDiagnostic("unknown option: {s}\n", arg);
     return error.InvalidArguments;
+}
+
+pub fn invalidArgumentExitCode(err: anyerror) ?u8 {
+    return switch (err) {
+        error.InvalidArguments => invalid_arguments_exit_code,
+        else => null,
+    };
 }
 
 pub fn printDiagnostic(comptime format: []const u8, value: []const u8) void {
@@ -130,6 +138,11 @@ fn isUtf8C1Control(value: []const u8, index: usize) bool {
 
 test "required returns present values" {
     try std.testing.expectEqualStrings("value", try required("value", "--flag"));
+}
+
+test "invalid argument errors map to usage exit code only" {
+    try std.testing.expectEqual(@as(?u8, 2), invalidArgumentExitCode(error.InvalidArguments));
+    try std.testing.expectEqual(@as(?u8, null), invalidArgumentExitCode(error.OutOfMemory));
 }
 
 test "value tokens reject option-looking arguments" {

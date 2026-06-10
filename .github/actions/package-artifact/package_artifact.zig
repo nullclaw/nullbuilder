@@ -255,8 +255,14 @@ pub fn main(init: std.process.Init) !u8 {
     defer iterator.deinit();
 
     _ = iterator.next();
-    const options = parseArgs(&iterator, allocator) catch return try printUsage(init.io);
-    try runPackage(init.io, allocator, options);
+    const options = parseArgs(&iterator, allocator) catch |err| switch (err) {
+        error.InvalidArguments => return try printUsage(init.io),
+        else => return err,
+    };
+    runPackage(init.io, allocator, options) catch |err| {
+        if (action_args.invalidArgumentExitCode(err)) |exit_code| return exit_code;
+        return err;
+    };
     return 0;
 }
 
