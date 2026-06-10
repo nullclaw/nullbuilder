@@ -22,6 +22,7 @@ export const GITHUB_RESPONSE_CACHE_MAX_ENTRIES = 256;
 export const GITHUB_JSON_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 export const GITHUB_DEFAULT_MAX_PAGES = 20;
 export const GITHUB_ABSOLUTE_MAX_PAGES = 100;
+export const GITHUB_LINK_HEADER_MAX_LENGTH = 16 * 1024;
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
@@ -272,31 +273,20 @@ function parseRateLimitResetDate(reset: string): Date | null {
 }
 
 function parseNextLink(link: string | null): string | null {
-  if (!link) {
+  if (!link || link.length > GITHUB_LINK_HEADER_MAX_LENGTH) {
     return null;
   }
 
-  for (const part of splitLinkHeaderEntries(link)) {
-    const match = part.trim().match(/^<([^>]+)>\s*(?:;(.*))?$/);
-    if (match && linkParametersIncludeRelation(match[2] ?? '', 'next')) {
-      return match[1];
-    }
-  }
-
-  return null;
-}
-
-function splitLinkHeaderEntries(link: string): string[] {
-  const entries: string[] = [];
   let start = 0;
   let inUrl = false;
   let inQuotedString = false;
   let escaped = false;
 
-  for (let index = 0; index < link.length; index += 1) {
+  for (let index = 0; index <= link.length; index += 1) {
     const char = link[index];
+    const atEnd = index === link.length;
 
-    if (inQuotedString) {
+    if (!atEnd && inQuotedString) {
       if (escaped) {
         escaped = false;
       } else if (char === '\\') {
@@ -307,33 +297,91 @@ function splitLinkHeaderEntries(link: string): string[] {
       continue;
     }
 
-    if (inUrl) {
+    if (!atEnd && inUrl) {
       if (char === '>') {
         inUrl = false;
       }
       continue;
     }
 
-    if (char === '<') {
+    if (!atEnd && char === '<') {
       inUrl = true;
-    } else if (char === '"') {
+      continue;
+    }
+
+    if (!atEnd && char === '"') {
       inQuotedString = true;
-    } else if (char === ',') {
-      entries.push(link.slice(start, index));
+      continue;
+    }
+
+    if (atEnd || char === ',') {
+      const next = parseNextLinkEntry(link.slice(start, index));
+      if (next) {
+        return next;
+      }
       start = index + 1;
     }
   }
 
-  entries.push(link.slice(start));
-  return entries;
+  return null;
+}
+
+function parseNextLinkEntry(entry: string): string | null {
+  const match = entry.trim().match(/^<([^>]+)>\s*(?:;(.*))?$/);
+  return match && linkParametersIncludeRelation(match[2] ?? '', 'next') ? match[1] : null;
 }
 
 function linkParametersIncludeRelation(parameters: string, relation: string): boolean {
-  for (const parameter of parameters.split(';')) {
-    const match = parameter.trim().match(/^rel\s*=\s*(?:"([^"]*)"|([^;]*))$/i);
-    const value = match?.[1] ?? match?.[2]?.trim();
-    if (value?.split(/\s+/).includes(relation)) {
-      return true;
+  let start = 0;
+  let inQuotedString = false;
+  let escaped = false;
+
+  for (let index = 0; index <= parameters.length; index += 1) {
+    const char = parameters[index];
+    const atEnd = index === parameters.length;
+
+    if (!atEnd && inQuotedString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inQuotedString = false;
+      }
+      continue;
+    }
+
+    if (!atEnd && char === '"') {
+      inQuotedString = true;
+      continue;
+    }
+
+    if (atEnd || char === ';') {
+      if (parameterIncludesRelation(parameters.slice(start, index), relation)) {
+        return true;
+      }
+      start = index + 1;
+    }
+  }
+
+  return false;
+}
+
+function parameterIncludesRelation(parameter: string, relation: string): boolean {
+  const match = parameter.trim().match(/^rel\s*=\s*(?:"([^"]*)"|([^;]*))$/i);
+  const value = match?.[1] ?? match?.[2]?.trim();
+  return value ? relationTokenListIncludes(value, relation) : false;
+}
+
+function relationTokenListIncludes(value: string, relation: string): boolean {
+  let start = 0;
+
+  for (let index = 0; index <= value.length; index += 1) {
+    if (index === value.length || /\s/.test(value[index])) {
+      if (index > start && value.slice(start, index) === relation) {
+        return true;
+      }
+      start = index + 1;
     }
   }
 

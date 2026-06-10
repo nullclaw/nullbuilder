@@ -5,6 +5,7 @@ import {
   GITHUB_ABSOLUTE_MAX_PAGES,
   GITHUB_DEFAULT_MAX_PAGES,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
+  GITHUB_LINK_HEADER_MAX_LENGTH,
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
   GitHubApiError,
   githubGetPages,
@@ -101,6 +102,29 @@ test('githubGetPages keeps commas inside pagination link URLs', async () => {
     'https://comma-link.example.test/repos',
     'https://comma-link.example.test/repos?page=2&cursor=a,b'
   ]);
+});
+
+test('githubGetPages ignores oversized pagination link headers', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://oversized-link.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify([{ id: 1 }]), {
+      headers: {
+        Link: `${'x'.repeat(GITHUB_LINK_HEADER_MAX_LENGTH + 1)}, <https://oversized-link.example.test/repos?page=2>; rel="next"`
+      }
+    });
+  }) as typeof fetch;
+
+  const pages = await githubGetPages<{ id: number }>(config, '/repos', {}, 5);
+
+  assert.deepEqual(pages, [{ id: 1 }]);
+  assert.deepEqual(requests, ['https://oversized-link.example.test/repos']);
 });
 
 test('githubGetPages appends large pages without spreading array arguments', async () => {
