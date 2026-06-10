@@ -3,6 +3,7 @@ import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
 import {
   GITHUB_ABSOLUTE_MAX_PAGES,
+  GITHUB_ACCEPT_HEADER_MAX_LENGTH,
   GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH,
   GITHUB_DEFAULT_MAX_PAGES,
   GITHUB_ERROR_MESSAGE_MAX_LENGTH,
@@ -329,6 +330,33 @@ test('githubRequest strips caller-supplied credential headers before fetching Gi
       cookie: null
     }
   ]);
+});
+
+test('githubRequest validates custom accept headers before fetching GitHub', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://accept.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const accepts: Array<string | null> = [];
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    accepts.push(new Headers(init?.headers).get('Accept'));
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  await githubRequest(config, '/repos/nullclaw/nullbuilder', {
+    accept: ' application/vnd.github.star+json '
+  });
+
+  for (const accept of ['', 'bad\naccept', 'x'.repeat(GITHUB_ACCEPT_HEADER_MAX_LENGTH + 1)]) {
+    await assert.rejects(
+      githubRequest(config, `/repos/nullclaw/nullbuilder-${accept.length}`, { accept }),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub accept header.'
+    );
+  }
+
+  assert.deepEqual(accepts, ['application/vnd.github.star+json']);
 });
 
 test('githubRequest shares in-flight cacheable GET responses', async () => {

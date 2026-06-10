@@ -29,7 +29,9 @@ export const GITHUB_ERROR_MESSAGE_MAX_LENGTH = 512;
 export const GITHUB_STATUS_TEXT_MAX_LENGTH = 128;
 export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
 export const GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH = 32;
+export const GITHUB_ACCEPT_HEADER_MAX_LENGTH = 256;
 
+const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie'] as const;
 const PUBLIC_ERROR_MESSAGE_PREFIXES = [
   'Pull request is not trusted:',
@@ -93,7 +95,7 @@ async function githubFetchJson<T>(
 ): Promise<GitHubFetchResult<T>> {
   const { accept: requestedAccept, useCache, ...requestInit } = init;
   const method = requestInit.method?.toUpperCase() ?? 'GET';
-  const accept = requestedAccept ?? 'application/vnd.github+json';
+  const accept = normalizeGitHubAcceptHeader(requestedAccept);
   const url = resolveGitHubApiUrl(config, path);
   const shouldCache = method === 'GET' && useCache !== false && config.cacheTtlMs > 0;
   const shouldCoalesce = shouldCache && !requestInit.signal;
@@ -124,6 +126,22 @@ async function githubFetchJson<T>(
       inFlightRequests.delete(key);
     }
   }
+}
+
+function normalizeGitHubAcceptHeader(value: string | undefined): string {
+  if (value === undefined) {
+    return DEFAULT_GITHUB_ACCEPT;
+  }
+
+  const safeValue = readSafeTextInput(value, {
+    maxLength: GITHUB_ACCEPT_HEADER_MAX_LENGTH,
+    trim: true
+  });
+  if (!safeValue) {
+    throw new Error('Invalid GitHub accept header.');
+  }
+
+  return safeValue;
 }
 
 async function requestGitHubJson<T>(
