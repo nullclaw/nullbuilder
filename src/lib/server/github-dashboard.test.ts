@@ -143,6 +143,18 @@ test('buildDashboard sorts invalid updated timestamps after valid rows', () => {
   assert.deepEqual(dashboard.issues.map((item) => item.number), [2, 1, 3]);
 });
 
+test('buildDashboard saturates unsafe star totals', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+  const dashboard = buildDashboard(config, config.repos, [
+    repositorySummary({ stars: Number.MAX_SAFE_INTEGER }),
+    repositorySummary({ stars: 1 })
+  ]);
+
+  assert.equal(dashboard.totals.stars, Number.MAX_SAFE_INTEGER);
+});
+
 function githubRepository(overrides: Partial<GitHubRepositoryResponse> = {}): GitHubRepositoryResponse {
   return {
     name: 'nullbuilder',

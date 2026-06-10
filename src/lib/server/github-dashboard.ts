@@ -45,7 +45,7 @@ export function buildDashboard(
       erroredRepositories,
       issues: issues.length,
       pullRequests: pullRequests.length,
-      stars: loadedRepositories.reduce((total, repo) => total + (repo.stars ?? 0), 0),
+      stars: loadedRepositories.reduce((total, repo) => saturatingSafeIntegerAdd(total, repo.stars ?? 0), 0),
       failingRuns
     }
   };
@@ -105,4 +105,13 @@ function repositoryHasFailingRun(repo: RepositorySummary): boolean {
 function updatedAtTimestamp(value: string): number {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function saturatingSafeIntegerAdd(left: number, right: number): number {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || right < 0) {
+    return left;
+  }
+
+  const sum = left + right;
+  return Number.isSafeInteger(sum) ? sum : Number.MAX_SAFE_INTEGER;
 }
