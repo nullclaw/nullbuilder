@@ -28,9 +28,27 @@ test('session tokens validate signature and expiry', () => {
   const [, signature] = token.split('.');
 
   assert.equal(isSessionTokenMatch(token, 'secret', issuedAt), true);
+  assert.equal(isSessionTokenMatch(createSessionToken('secret', issuedAt + 0.9), 'secret', issuedAt), true);
   assert.equal(isSessionTokenMatch(token, 'wrong', issuedAt), false);
   assert.equal(isSessionTokenMatch(`bad!.${signature}`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(token, 'secret', issuedAt + AUTH_MAX_AGE_SECONDS * 1000 + 1), false);
+});
+
+test('session tokens reject unsafe clocks before checking expiry', () => {
+  const token = createSessionToken('secret', 1_000_000);
+
+  for (const now of [Number.NaN, Number.POSITIVE_INFINITY, -1, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(isSessionTokenMatch(token, 'secret', now), false);
+  }
+});
+
+test('session token creation rejects unsafe issue timestamps', () => {
+  for (const now of [Number.NaN, Number.POSITIVE_INFINITY, -1, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(
+      () => createSessionToken('secret', now),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid session timestamp.'
+    );
+  }
 });
 
 test('session tokens reject malformed bounded parts before matching signatures', () => {

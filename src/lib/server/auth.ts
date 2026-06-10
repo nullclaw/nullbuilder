@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Cookies } from '@sveltejs/kit';
 import type { NullbuilderConfig } from './config';
 import { readSafeTextInput } from '../text-safety';
-import { normalizeBoundedPositiveInteger } from './number-safety';
+import { isSafeNonNegativeInteger, normalizeBoundedPositiveInteger } from './number-safety';
 
 export const AUTH_COOKIE = 'nullbuilder_auth';
 export const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;
@@ -170,17 +170,24 @@ export function authCookieOptions(isProduction: boolean): AuthCookieOptions {
 }
 
 export function createSessionToken(secret: string, now = Date.now()): string {
-  const issuedAt = now.toString(36);
+  const timestamp = normalizeSessionTimestamp(now);
+  if (timestamp === null) {
+    throw new Error('Invalid session timestamp.');
+  }
+
+  const issuedAt = timestamp.toString(36);
   return `${issuedAt}.${sessionSignature(issuedAt, secret)}`;
 }
 
 export function isSessionTokenMatch(value: string, secret: string, now = Date.now()): boolean {
   const token = parseSessionToken(value);
+  const currentTimestamp = normalizeSessionTimestamp(now);
 
   if (
     !token ||
-    token.timestamp > now + ALLOWED_CLOCK_SKEW_MS ||
-    now - token.timestamp > AUTH_MAX_AGE_SECONDS * 1000
+    currentTimestamp === null ||
+    token.timestamp > currentTimestamp + ALLOWED_CLOCK_SKEW_MS ||
+    currentTimestamp - token.timestamp > AUTH_MAX_AGE_SECONDS * 1000
   ) {
     return false;
   }
@@ -243,6 +250,15 @@ function parseSessionToken(value: string): SessionTokenParts | null {
     signature,
     timestamp
   };
+}
+
+function normalizeSessionTimestamp(value: number): number | null {
+  if (!Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  const timestamp = Math.floor(value);
+  return isSafeNonNegativeInteger(timestamp) ? timestamp : null;
 }
 
 function isIssuedAtTokenPart(value: string): boolean {
