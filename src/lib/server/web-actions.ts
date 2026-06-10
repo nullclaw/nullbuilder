@@ -73,6 +73,7 @@ const UNKNOWN_FORM_FIELD_MESSAGE = 'Unknown form field.';
 const WEB_ACTION_FORM_INVALID_MESSAGE = 'Invalid form body.';
 const WEB_ACTION_FORM_TOO_LARGE_MESSAGE = 'Request body is too large.';
 const MAX_WEB_ACTION_CONTENT_LENGTH_HEADER = 32;
+const MAX_WEB_ACTION_CONTENT_TYPE_HEADER = 128;
 export const MAX_WEB_ACTION_FORM_BYTES = 16 * 1024;
 const LOGIN_FORM_FIELDS = ['webToken'] as const;
 const LOGOUT_FORM_FIELDS = ['csrfToken'] as const;
@@ -151,6 +152,11 @@ export async function readWebActionFormData(request: Request): Promise<WebAction
   const contentLengthFailure = webActionContentLengthFailure(request.headers);
   if (contentLengthFailure) {
     return contentLengthFailure;
+  }
+
+  const contentTypeFailure = webActionContentTypeFailure(request.headers);
+  if (contentTypeFailure) {
+    return contentTypeFailure;
   }
 
   const body = await readBoundedWebActionBody(request);
@@ -527,6 +533,29 @@ function contentLengthExceedsWebActionLimit(value: string): boolean {
 
   const parsed = Number(safeValue);
   return !Number.isSafeInteger(parsed) || parsed > MAX_WEB_ACTION_FORM_BYTES;
+}
+
+function webActionContentTypeFailure(headers: Headers): WebActionBodyParseFailure | null {
+  return isWebActionFormContentType(headers.get('content-type')) ? null : webActionBodyParseFailure();
+}
+
+function isWebActionFormContentType(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const safeValue = readSafeTextInput(value, {
+    maxLength: MAX_WEB_ACTION_CONTENT_TYPE_HEADER,
+    trim: true
+  });
+  if (!safeValue) {
+    return false;
+  }
+
+  const separatorIndex = safeValue.indexOf(';');
+  const mediaType = (separatorIndex === -1 ? safeValue : safeValue.slice(0, separatorIndex)).trim().toLowerCase();
+
+  return mediaType === 'application/x-www-form-urlencoded' || mediaType === 'multipart/form-data';
 }
 
 async function readBoundedWebActionBody(request: Request): Promise<WebActionRequestBodySuccess | WebActionBodyLimitFailure> {

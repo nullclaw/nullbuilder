@@ -249,7 +249,11 @@ test('web action content length guard rejects oversized and malformed bodies bef
 });
 
 test('readWebActionFormData parses bounded form bodies without content length', async () => {
-  const result = await readWebActionFormData(webFormRequest('webToken=web-secret'));
+  const result = await readWebActionFormData(
+    webFormRequest('webToken=web-secret', {
+      'Content-Type': 'APPLICATION/X-WWW-FORM-URLENCODED; charset=UTF-8'
+    })
+  );
 
   assert.equal(result.ok, true);
   if (result.ok) {
@@ -279,6 +283,25 @@ test('readWebActionFormData rejects bodies larger than the declared content leng
     status: 413,
     message: 'Request body is too large.'
   });
+});
+
+test('readWebActionFormData rejects unsupported content types before streamed body size checks', async () => {
+  const result = await readWebActionFormData(
+    new Request('https://nullbuilder.example.test/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain'
+      },
+      body: `private=${'x'.repeat(MAX_WEB_ACTION_FORM_BYTES)}`
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    message: 'Invalid form body.'
+  });
+  assert.equal(result.message.includes('private'), false);
 });
 
 test('readWebActionFormData rejects malformed form bodies without throwing parser details', async () => {
