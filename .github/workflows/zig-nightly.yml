@@ -157,7 +157,7 @@ jobs:
           api_url="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs"
           query="branch=${GITHUB_REF_NAME}&status=success&head_sha=${GITHUB_SHA}&per_page=100"
           http_status="$(
-            curl -sS -L \
+            curl -sS -L --retry 3 --retry-all-errors --connect-timeout 10 --max-time 30 \
               -o previous-nightly-runs.json \
               -w "%{http_code}" \
               -H "Accept: application/vnd.github+json" \
@@ -168,7 +168,8 @@ jobs:
 
           if [ "${http_status}" != "200" ]; then
             echo "failed to fetch workflow history: HTTP ${http_status}" >&2
-            cat previous-nightly-runs.json >&2
+            head -c 4096 previous-nightly-runs.json >&2
+            printf '\n' >&2
             exit 1
           fi
 
