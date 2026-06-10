@@ -6,6 +6,7 @@ export type WorkItemWithUpdatedAt = {
 };
 
 const MAX_UPDATED_AT_LENGTH = 64;
+export const MAX_RECENT_WORK_ITEM_LIMIT = 1000;
 
 type RankedRecentWorkItem<T extends WorkItemWithUpdatedAt> = {
   item: T;
@@ -61,7 +62,7 @@ export function collectRecentWorkItems<T extends WorkItemWithUpdatedAt>(
 }
 
 export function hasValidRecentWorkItemLimit(maxItems: number): boolean {
-  return isSafePositiveInteger(maxItems);
+  return isSafePositiveInteger(maxItems) && maxItems <= MAX_RECENT_WORK_ITEM_LIMIT;
 }
 
 export function compareByUpdatedAtDesc(left: WorkItemWithUpdatedAt, right: WorkItemWithUpdatedAt): number {

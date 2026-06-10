@@ -4,6 +4,7 @@ import {
   collectRecentWorkItems,
   compareByUpdatedAtDesc,
   hasValidRecentWorkItemLimit,
+  MAX_RECENT_WORK_ITEM_LIMIT,
   RecentWorkItemCollector,
   type WorkItemWithUpdatedAt
 } from './recent-work-items';
@@ -36,10 +37,16 @@ test('collectRecentWorkItems treats invalid timestamps as older than valid times
 });
 
 test('recent work item helpers reject unsafe limits', () => {
+  assert.equal(hasValidRecentWorkItemLimit(MAX_RECENT_WORK_ITEM_LIMIT), true);
   assert.equal(hasValidRecentWorkItemLimit(0), false);
   assert.equal(hasValidRecentWorkItemLimit(1.5), false);
+  assert.equal(hasValidRecentWorkItemLimit(MAX_RECENT_WORK_ITEM_LIMIT + 1), false);
   assert.equal(hasValidRecentWorkItemLimit(Number.MAX_SAFE_INTEGER + 1), false);
   assert.deepEqual(collectRecentWorkItems([workItem(1, '2026-06-09T00:00:00Z')], 0), []);
+  assert.deepEqual(
+    collectRecentWorkItems([workItem(1, '2026-06-09T00:00:00Z')], MAX_RECENT_WORK_ITEM_LIMIT + 1),
+    []
+  );
 });
 
 test('compareByUpdatedAtDesc orders invalid timestamps after any valid timestamp', () => {
