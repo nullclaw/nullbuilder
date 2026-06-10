@@ -57,6 +57,14 @@ test('decodeGitHubContent decodes and bounds base64 content', () => {
   assert.equal(decodeGitHubContent({ encoding: 'utf8', content: encoded }), '');
 });
 
+test('decodeGitHubContent limits base64 before decoding', () => {
+  const encoded = Buffer.from('abcdef', 'utf8').toString('base64');
+  const wrapped = `${encoded.slice(0, 4)}\r\n${encoded.slice(4)}`;
+
+  assert.equal(decodeGitHubContent({ encoding: 'base64', content: wrapped }, 4), 'abcd');
+  assert.equal(decodeGitHubContent({ encoding: 'base64', content: encoded }, -1), '');
+});
+
 test('encodeGitHubPath encodes path segments without flattening slashes', () => {
   assert.equal(encodeGitHubPath('.github/workflows/build pr.yml'), '.github/workflows/build%20pr.yml');
 });

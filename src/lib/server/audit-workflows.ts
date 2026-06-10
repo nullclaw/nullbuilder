@@ -71,10 +71,33 @@ export function decodeGitHubContent(
     return '';
   }
 
-  const decoded = Buffer.from(file.content.replaceAll('\n', ''), 'base64');
-  return decoded.subarray(0, maxBytes).toString('utf8');
+  const byteLimit = normalizeByteLimit(maxBytes);
+  if (byteLimit === 0) {
+    return '';
+  }
+
+  const decoded = Buffer.from(boundedBase64Content(file.content, byteLimit), 'base64');
+  return decoded.subarray(0, byteLimit).toString('utf8');
 }
 
 export function encodeGitHubPath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/');
+}
+
+function normalizeByteLimit(maxBytes: number): number {
+  return Number.isSafeInteger(maxBytes) && maxBytes > 0 ? maxBytes : 0;
+}
+
+function boundedBase64Content(content: string, maxBytes: number): string {
+  const maxEncodedChars = Math.ceil(maxBytes / 3) * 4;
+  let encoded = '';
+
+  for (let index = 0; index < content.length && encoded.length < maxEncodedChars; index += 1) {
+    const char = content[index];
+    if (char !== '\n' && char !== '\r') {
+      encoded += char;
+    }
+  }
+
+  return encoded;
 }
