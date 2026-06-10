@@ -23,9 +23,7 @@ pub fn isDecimalId(value: []const u8) bool {
 }
 
 pub fn parseDecimalId(value: []const u8) ?u64 {
-    if (!isCanonicalDecimalText(value, max_decimal_id_digits)) return null;
-
-    const id = std.fmt.parseUnsigned(u64, value, 10) catch return null;
+    const id = parseCanonicalDecimal(u64, value, max_decimal_id_digits) orelse return null;
     return if (id > 0) id else null;
 }
 
@@ -168,10 +166,7 @@ fn isLoopbackIpv6(host: []const u8) bool {
 }
 
 fn isDecimalIpv4Octet(value: []const u8) bool {
-    if (!isCanonicalDecimalText(value, 3)) return false;
-
-    const octet = std.fmt.parseUnsigned(u8, value, 10) catch return false;
-    return octet <= 255;
+    return parseCanonicalDecimal(u8, value, 3) != null;
 }
 
 fn isSafeHostLabel(label: []const u8) bool {
@@ -190,8 +185,7 @@ fn isSafeHostLabel(label: []const u8) bool {
 }
 
 fn isSafePort(port: []const u8) bool {
-    if (!isCanonicalDecimalText(port, max_port_digits)) return false;
-    const parsed = std.fmt.parseUnsigned(u16, port, 10) catch return false;
+    const parsed = parseCanonicalDecimal(u16, port, max_port_digits) orelse return false;
     return parsed > 0;
 }
 
@@ -295,6 +289,11 @@ fn isCanonicalDecimalText(value: []const u8, max_digits: usize) bool {
     if (value.len == 0 or value.len > max_digits) return false;
     if (value.len > 1 and value[0] == '0') return false;
     return isAsciiDigitSlice(value);
+}
+
+fn parseCanonicalDecimal(comptime T: type, value: []const u8, max_digits: usize) ?T {
+    if (!isCanonicalDecimalText(value, max_digits)) return null;
+    return std.fmt.parseUnsigned(T, value, 10) catch null;
 }
 
 fn twoDigitValue(value: []const u8, index: usize) ?u8 {
