@@ -23,6 +23,7 @@ const error_message_width: usize = 90;
 const max_recent_work_items = 8;
 
 pub const max_json_bytes = 16 * 1024 * 1024;
+const max_json_value_bytes = 64 * 1024;
 
 pub fn render(
     arena: std.mem.Allocator,
@@ -32,7 +33,9 @@ pub fn render(
 ) !void {
     if (json.len > max_json_bytes) return error.DashboardJsonTooLarge;
 
-    var parsed = try std.json.parseFromSlice(JsonValue, arena, json, .{});
+    var parsed = try std.json.parseFromSlice(JsonValue, arena, json, .{
+        .max_value_len = max_json_value_bytes,
+    });
     defer parsed.deinit();
 
     const root = dashboard_json.objectValue(parsed.value) orelse return error.InvalidDashboardJson;
@@ -360,6 +363,24 @@ test "render rejects oversized dashboard json before parsing" {
     defer out.deinit();
 
     try std.testing.expectError(error.DashboardJsonTooLarge, render(std.testing.allocator, &out.writer, json, true));
+    try std.testing.expectEqual(@as(usize, 0), out.writer.buffered().len);
+}
+
+test "render rejects oversized json scalar values during parsing" {
+    const oversized = [_]u8{'x'} ** (max_json_value_bytes + 1);
+    const json = try std.fmt.allocPrint(std.testing.allocator,
+        \\{{
+        \\  "items": [
+        \\    {{"slug": "alpha", "issues": [{{"number": 7, "title": "{s}"}}]}}
+        \\  ]
+        \\}}
+    , .{oversized[0..]});
+    defer std.testing.allocator.free(json);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try std.testing.expectError(error.ValueTooLong, render(std.testing.allocator, &out.writer, json, true));
     try std.testing.expectEqual(@as(usize, 0), out.writer.buffered().len);
 }
 
