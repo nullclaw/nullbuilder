@@ -9,6 +9,7 @@ import {
 import type { NullbuilderConfig } from './config';
 
 const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
+const MAX_MUTATION_FORM_TEXT_LENGTH = 512;
 
 export type WebMutationOperation = 'build-pr' | 'release-tag';
 
@@ -233,7 +234,8 @@ export function parsePositiveFormInteger(value: FormDataEntryValue | null): numb
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {
-  return formString(value).trim();
+  const trimmed = formString(value).trim();
+  return trimmed.length <= MAX_MUTATION_FORM_TEXT_LENGTH ? trimmed : '';
 }
 
 function isChecked(value: FormDataEntryValue | null): boolean {

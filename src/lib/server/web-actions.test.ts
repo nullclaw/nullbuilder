@@ -59,6 +59,37 @@ test('parseReleaseTagMutationForm trims optional ref and drops empty target ref'
   });
 });
 
+test('mutation form parsers reject oversized text fields', () => {
+  const oversized = 'x'.repeat(10_000);
+  const buildFormData = new FormData();
+  buildFormData.set('repo', oversized);
+  buildFormData.set('prNumber', '17');
+  buildFormData.set('tagName', oversized);
+  buildFormData.set('confirm', 'on');
+
+  assert.deepEqual(parseBuildPrMutationForm(buildFormData), {
+    repo: '',
+    prNumber: 17,
+    tagName: undefined,
+    confirm: true,
+    force: false
+  });
+
+  const releaseFormData = new FormData();
+  releaseFormData.set('repo', oversized);
+  releaseFormData.set('tagName', oversized);
+  releaseFormData.set('targetRef', oversized);
+  releaseFormData.set('force', 'on');
+
+  assert.deepEqual(parseReleaseTagMutationForm(releaseFormData), {
+    repo: '',
+    tagName: '',
+    targetRef: undefined,
+    confirm: false,
+    force: true
+  });
+});
+
 test('mutationAccessError enforces enablement authentication and CSRF order', () => {
   const disabled = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
