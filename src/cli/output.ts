@@ -115,8 +115,14 @@ export function formatAuditReport(report: AuditReport): string {
 }
 
 export function formatRepositoryErrors(dashboard: DashboardData): string {
-  const errorRows = repositoryErrorRows(dashboard, MAX_TERMINAL_TABLE_ROWS);
-  const lines = errorRows.map((repo) => terminalLine(`${repo.repo}: ${repo.error}`));
+  const lines: string[] = [];
+
+  for (let index = 0; index < dashboard.repositories.length && lines.length < MAX_TERMINAL_TABLE_ROWS; index += 1) {
+    const repo = dashboard.repositories[index];
+    if (repo.status === 'error') {
+      lines.push(terminalLine(`${repo.slug}: ${repo.error ?? 'Unknown repository error.'}`));
+    }
+  }
 
   const omittedRows = Math.max(0, dashboard.totals.erroredRepositories - lines.length);
   if (omittedRows > 0) {

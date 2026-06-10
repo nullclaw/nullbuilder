@@ -56,6 +56,25 @@ test('formatRepositoryErrors and exit code helpers keep CLI policy pure', () => 
   const dashboard = dashboardFixture();
 
   assert.equal(formatRepositoryErrors(dashboard), 'nullclaw/broken: GitHub repository or resource was not found.');
+  assert.equal(
+    formatRepositoryErrors(
+      dashboardFixture({
+        repositories: [
+          {
+            ...dashboard.repositories[1],
+            error: undefined
+          }
+        ],
+        totals: {
+          ...dashboard.totals,
+          repositories: 1,
+          loadedRepositories: 0,
+          erroredRepositories: 1
+        }
+      })
+    ),
+    'nullclaw/broken: Unknown repository error.'
+  );
   assert.equal(readErrorExitCode(dashboard), 2);
   assert.equal(readErrorExitCode(dashboardFixture({ hasReadErrors: false })), null);
   assert.equal(auditExitCode(auditReportFixture({ hasReadErrors: true })), 2);
