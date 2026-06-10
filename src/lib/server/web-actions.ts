@@ -70,6 +70,9 @@ export type WebMutationResult<T, Field extends string> = WebMutationSuccess<T> |
 
 const DUPLICATE_FORM_FIELD_MESSAGE = 'Duplicate form field.';
 const UNKNOWN_FORM_FIELD_MESSAGE = 'Unknown form field.';
+const WEB_ACTION_FORM_TOO_LARGE_MESSAGE = 'Request body is too large.';
+const MAX_WEB_ACTION_CONTENT_LENGTH_HEADER = 32;
+export const MAX_WEB_ACTION_FORM_BYTES = 16 * 1024;
 const LOGIN_FORM_FIELDS = ['webToken'] as const;
 const LOGOUT_FORM_FIELDS = ['csrfToken'] as const;
 const BUILD_PR_FORM_FIELDS = ['repo', 'prNumber', 'tagName', 'confirm', 'force'] as const;
@@ -107,6 +110,25 @@ export function runLoginWebAction(
   return {
     ok: true,
     sessionToken: createSessionToken(config.webToken)
+  };
+}
+
+export type WebActionBodyLimitFailure = {
+  ok: false;
+  status: 413;
+  message: string;
+};
+
+export function webActionContentLengthFailure(headers: Headers): WebActionBodyLimitFailure | null {
+  const contentLength = headers.get('content-length');
+  if (!contentLength || !contentLengthExceedsWebActionLimit(contentLength)) {
+    return null;
+  }
+
+  return {
+    ok: false,
+    status: 413,
+    message: WEB_ACTION_FORM_TOO_LARGE_MESSAGE
   };
 }
 
@@ -448,6 +470,19 @@ function isInvalidFormShapeError(error: unknown): boolean {
     error instanceof Error &&
     (error.message === DUPLICATE_FORM_FIELD_MESSAGE || error.message === UNKNOWN_FORM_FIELD_MESSAGE)
   );
+}
+
+function contentLengthExceedsWebActionLimit(value: string): boolean {
+  const safeValue = readSafeTextInput(value, {
+    maxLength: MAX_WEB_ACTION_CONTENT_LENGTH_HEADER,
+    trim: true
+  });
+  if (!safeValue || !/^[0-9]+$/.test(safeValue)) {
+    return true;
+  }
+
+  const parsed = Number(safeValue);
+  return !Number.isSafeInteger(parsed) || parsed > MAX_WEB_ACTION_FORM_BYTES;
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {

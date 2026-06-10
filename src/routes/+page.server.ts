@@ -13,7 +13,8 @@ import {
   runBuildPrWebMutation,
   runLoginWebAction,
   runLogoutWebAction,
-  runReleaseTagWebMutation
+  runReleaseTagWebMutation,
+  webActionContentLengthFailure
 } from '$lib/server/web-actions';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -50,6 +51,13 @@ export const actions: Actions = {
   login: async ({ request, cookies, getClientAddress }) => {
     const config = readConfig();
     const rateLimitKey = getClientAddress();
+    const bodyLimit = webActionContentLengthFailure(request.headers);
+    if (bodyLimit) {
+      return fail(bodyLimit.status, {
+        authError: bodyLimit.message
+      });
+    }
+
     const formData = await request.formData();
     const login = runLoginWebAction(config, loginRateLimiter, rateLimitKey, formData);
 
@@ -68,6 +76,13 @@ export const actions: Actions = {
 
   logout: async ({ request, cookies }) => {
     const config = readConfig();
+    const bodyLimit = webActionContentLengthFailure(request.headers);
+    if (bodyLimit) {
+      return fail(bodyLimit.status, {
+        authError: bodyLimit.message
+      });
+    }
+
     const formData = await request.formData();
     const logout = runLogoutWebAction(config, cookies, formData);
 
@@ -86,6 +101,13 @@ export const actions: Actions = {
 
   buildPr: async ({ request, cookies }) => {
     const config = readConfig();
+    const bodyLimit = webActionContentLengthFailure(request.headers);
+    if (bodyLimit) {
+      return fail(bodyLimit.status, {
+        buildError: bodyLimit.message
+      });
+    }
+
     const formData = await request.formData();
     const mutation = await runBuildPrWebMutation(
       config,
@@ -108,6 +130,13 @@ export const actions: Actions = {
 
   releaseTag: async ({ request, cookies }) => {
     const config = readConfig();
+    const bodyLimit = webActionContentLengthFailure(request.headers);
+    if (bodyLimit) {
+      return fail(bodyLimit.status, {
+        releaseError: bodyLimit.message
+      });
+    }
+
     const formData = await request.formData();
     const mutation = await runReleaseTagWebMutation(
       config,

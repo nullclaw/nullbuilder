@@ -4,6 +4,7 @@ import type { Cookies } from '@sveltejs/kit';
 import { AUTH_COOKIE, createCsrfToken, createSessionToken, isSessionTokenMatch, LoginRateLimiter } from './auth';
 import { readConfig } from './config';
 import {
+  MAX_WEB_ACTION_FORM_BYTES,
   mutationAccessError,
   parseBuildPrMutationForm,
   parsePositiveFormInteger,
@@ -11,7 +12,8 @@ import {
   runBuildPrWebMutation,
   runLoginWebAction,
   runLogoutWebAction,
-  runReleaseTagWebMutation
+  runReleaseTagWebMutation,
+  webActionContentLengthFailure
 } from './web-actions';
 
 test('parsePositiveFormInteger accepts only safe positive base-10 integers', () => {
@@ -218,6 +220,31 @@ test('mutationAccessError enforces enablement authentication and CSRF order', ()
 
   const csrfToken = createCsrfToken(cookies, config);
   assert.equal(mutationAccessError(config, cookies, csrfToken, 'release-tag'), null);
+});
+
+test('web action content length guard rejects oversized and malformed bodies before parsing', () => {
+  assert.equal(webActionContentLengthFailure(new Headers()), null);
+  assert.equal(webActionContentLengthFailure(new Headers({ 'Content-Length': '0' })), null);
+  assert.equal(
+    webActionContentLengthFailure(new Headers({ 'Content-Length': String(MAX_WEB_ACTION_FORM_BYTES) })),
+    null
+  );
+
+  for (const contentLength of [
+    String(MAX_WEB_ACTION_FORM_BYTES + 1),
+    'not-a-number',
+    '1e9',
+    '-1',
+    '1.5',
+    '9007199254740992',
+    '1'.repeat(100)
+  ]) {
+    assert.deepEqual(webActionContentLengthFailure(new Headers({ 'Content-Length': contentLength })), {
+      ok: false,
+      status: 413,
+      message: 'Request body is too large.'
+    });
+  }
 });
 
 test('runLoginWebAction creates a session token and clears prior failures', () => {
