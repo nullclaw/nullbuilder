@@ -150,6 +150,21 @@ PY
   fi
 
   archive_name="${archive_url##*/}"
+  case "$archive_name" in
+    "" | .* | -* | *..* | */* | *\\* | *$'\n'* | *$'\r'* | *[!A-Za-z0-9._+-]*)
+      echo "invalid Zig archive filename" >&2
+      exit 1
+      ;;
+  esac
+  case "$archive_name" in
+    *.tar.xz | *.zip)
+      ;;
+    *)
+      echo "invalid Zig archive filename" >&2
+      exit 1
+      ;;
+  esac
+
   archive_dir="$(mktemp -d "${temp_root}/zig-archive.XXXXXX")"
   archive_path="${archive_dir}/${archive_name}"
   extract_dir="$(mktemp -d "${temp_root}/zig-extract.XXXXXX")"

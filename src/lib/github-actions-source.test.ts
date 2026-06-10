@@ -77,6 +77,15 @@ test('setup-zig cache paths reject multiline temp roots', () => {
   assert.ok(source.includes('mktemp -d "${temp_root}/zig-extract.XXXXXX"'));
 });
 
+test('setup-zig validates archive filenames before local writes', () => {
+  const source = readFileSync(join(actionsRoot, 'setup-zig', 'install-zig.sh'), 'utf8');
+
+  assert.ok(source.includes('archive_name="${archive_url##*/}"'));
+  assert.ok(source.includes('*..* | */* | *\\\\* | *$\'\\n\'* | *$\'\\r\'* | *[!A-Za-z0-9._+-]*'));
+  assert.ok(source.includes('*.tar.xz | *.zip)'));
+  assert.ok(source.includes('archive_path="${archive_dir}/${archive_name}"'));
+});
+
 function actionYamlFiles(directory: string): string[] {
   const files: string[] = [];
 
