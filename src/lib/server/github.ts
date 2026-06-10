@@ -99,7 +99,7 @@ export async function getRepositorySummary(config: NullbuilderConfig, repo: Repo
       getStarGrowth(config, repo, repository.stargazers_count)
     ]);
 
-    return mapRepositorySummary(repo, repository, issues, pulls, runs.workflow_runs, starGrowth);
+    return mapRepositorySummary(repo, repository, issues, pulls, runs.workflow_runs, starGrowth, config.webBaseUrl);
   } catch (error) {
     return makeErrorRepository(config, repo, error);
   }

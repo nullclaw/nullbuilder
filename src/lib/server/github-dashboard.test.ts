@@ -7,6 +7,7 @@ import {
   makeErrorRepository,
   mapRepositorySummary,
   MAX_DASHBOARD_TEXT_FIELD_LENGTH,
+  MAX_DASHBOARD_URL_LENGTH,
   MAX_DASHBOARD_WORK_LIST_ITEMS,
   MAX_LABELS_PER_WORK_ITEM,
   MAX_LABEL_NAME_LENGTH,
@@ -205,6 +206,55 @@ test('mapRepositorySummary bounds and sanitizes display strings from GitHub payl
   assert.equal(summary.updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
   assert.equal(summary.issues[0].updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
   assert.equal(summary.latestRuns.ci?.updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
+});
+
+test('mapRepositorySummary validates dashboard URLs from GitHub payloads', () => {
+  const webBaseUrl = 'https://github.example.test';
+  const repositoryUrl = `${webBaseUrl}/${REPO}`;
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository({
+      html_url: 'https://evil.example/nullclaw/nullbuilder'
+    }),
+    [
+      issue({
+        number: 7,
+        html_url: 'https://evil.example/nullclaw/nullbuilder/issues/7'
+      }),
+      issue({
+        number: 8,
+        html_url: 'https://user:pass@github.example.test/nullclaw/nullbuilder/issues/7'
+      })
+    ],
+    [
+      pull({
+        number: 9,
+        html_url: `${repositoryUrl}/pull/9/${'x'.repeat(MAX_DASHBOARD_URL_LENGTH)}`
+      })
+    ],
+    [
+      workflowRun({
+        html_url: `${repositoryUrl}/actions/runs/1 bad`
+      }),
+      workflowRun({
+        id: 2,
+        name: 'Nightly',
+        path: '.github/workflows/nightly.yml',
+        html_url: `${repositoryUrl}/actions/runs/2?check=true#summary`
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null },
+    `${webBaseUrl}/`
+  );
+
+  assert.equal(summary.url, repositoryUrl);
+  assert.deepEqual(
+    summary.issues.map((item) => item.url),
+    [`${repositoryUrl}/issues/7`, `${repositoryUrl}/issues/8`]
+  );
+  assert.equal(summary.pullRequests[0].url, `${repositoryUrl}/pull/9`);
+  assert.equal(summary.latestRuns.ci?.url, `${repositoryUrl}/actions`);
+  assert.equal(summary.latestRuns.nightly?.url, `${repositoryUrl}/actions/runs/2?check=true#summary`);
 });
 
 test('mapRepositorySummary skips invalid issue and pull request numbers', () => {
