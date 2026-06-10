@@ -296,13 +296,15 @@ test('githubRequest strips caller-supplied credential headers before fetching Gi
   const requests: Array<{
     authorization: string | null;
     cookie: string | null;
+    proxyAuthorization: string | null;
   }> = [];
 
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     requests.push({
       authorization: headers.get('Authorization'),
-      cookie: headers.get('Cookie')
+      cookie: headers.get('Cookie'),
+      proxyAuthorization: headers.get('Proxy-Authorization')
     });
     return new Response(JSON.stringify({ ok: true }));
   }) as typeof fetch;
@@ -310,24 +312,28 @@ test('githubRequest strips caller-supplied credential headers before fetching Gi
   await githubRequest(anonymousConfig, '/repos/nullclaw/nullbuilder', {
     headers: {
       Authorization: 'Bearer caller-token',
-      Cookie: 'session=caller-cookie'
+      Cookie: 'session=caller-cookie',
+      'Proxy-Authorization': 'Basic caller-proxy-token'
     }
   });
   await githubRequest(tokenConfig, '/repos/nullclaw/nullbuilder', {
     headers: {
       Authorization: 'Bearer caller-token',
-      Cookie: 'session=caller-cookie'
+      Cookie: 'session=caller-cookie',
+      'Proxy-Authorization': 'Basic caller-proxy-token'
     }
   });
 
   assert.deepEqual(requests, [
     {
       authorization: null,
-      cookie: null
+      cookie: null,
+      proxyAuthorization: null
     },
     {
       authorization: 'Bearer configured-token',
-      cookie: null
+      cookie: null,
+      proxyAuthorization: null
     }
   ]);
 });

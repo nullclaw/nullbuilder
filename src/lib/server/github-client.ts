@@ -32,7 +32,7 @@ export const GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH = 32;
 export const GITHUB_ACCEPT_HEADER_MAX_LENGTH = 256;
 
 const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
-const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie'] as const;
+const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie', 'Proxy-Authorization'] as const;
 const PUBLIC_ERROR_MESSAGE_PREFIXES = [
   'Pull request is not trusted:',
   'Build PR tag must start with ',
