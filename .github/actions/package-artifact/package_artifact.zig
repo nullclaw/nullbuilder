@@ -41,6 +41,18 @@ const ArtifactNameError = error{
     InvalidArtifactBinaryPath,
 };
 
+const PackageOutputPlan = struct {
+    sha_path: []u8,
+    manifest_path: []u8,
+    manifest: []u8,
+
+    fn deinit(self: PackageOutputPlan, allocator: std.mem.Allocator) void {
+        allocator.free(self.sha_path);
+        allocator.free(self.manifest_path);
+        allocator.free(self.manifest);
+    }
+};
+
 fn artifactNameFromPath(binary_path: []const u8) ArtifactNameError![]const u8 {
     if (!action_paths.isSafeRelativePath(binary_path)) return error.InvalidArtifactBinaryPath;
     return std.Io.Dir.path.basename(binary_path);
@@ -145,6 +157,23 @@ fn formatManifestPath(allocator: std.mem.Allocator, binary_path: []const u8, tar
 
 fn validateGeneratedPath(path: []const u8) error{InvalidGeneratedPath}!void {
     if (!action_paths.isSafeRelativePath(path)) return error.InvalidGeneratedPath;
+}
+
+fn preparePackageOutputPlan(allocator: std.mem.Allocator, options: PackageOptions) !PackageOutputPlan {
+    const sha_path = try formatSha256Path(allocator, options.binary_path);
+    errdefer allocator.free(sha_path);
+
+    const manifest_path = try formatManifestPath(allocator, options.binary_path, options.target);
+    errdefer allocator.free(manifest_path);
+
+    const manifest = try buildManifest(allocator, options);
+    errdefer allocator.free(manifest);
+
+    return .{
+        .sha_path = sha_path,
+        .manifest_path = manifest_path,
+        .manifest = manifest,
+    };
 }
 
 fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
@@ -259,6 +288,15 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
         },
     };
 
+    const output_plan = preparePackageOutputPlan(allocator, options) catch |err| switch (err) {
+        error.InvalidGeneratedPath => {
+            action_args.printDiagnostic("invalid generated artifact path for: {s}\n", options.binary_path);
+            return error.InvalidArguments;
+        },
+        else => return err,
+    };
+    defer output_plan.deinit(allocator);
+
     const binary_bytes = try std.Io.Dir.cwd().readFileAlloc(
         io,
         options.binary_path,
@@ -270,29 +308,8 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
     const sha_text = try formatSha256Line(allocator, binary_bytes, options.binary_path);
     defer allocator.free(sha_text);
 
-    const sha_path = formatSha256Path(allocator, options.binary_path) catch |err| switch (err) {
-        error.InvalidGeneratedPath => {
-            action_args.printDiagnostic("invalid generated artifact path for: {s}\n", options.binary_path);
-            return error.InvalidArguments;
-        },
-        else => return err,
-    };
-    defer allocator.free(sha_path);
-
-    const manifest_path = formatManifestPath(allocator, options.binary_path, options.target) catch |err| switch (err) {
-        error.InvalidGeneratedPath => {
-            action_args.printDiagnostic("invalid generated artifact path for: {s}\n", options.binary_path);
-            return error.InvalidArguments;
-        },
-        else => return err,
-    };
-    defer allocator.free(manifest_path);
-
-    const manifest = try buildManifest(allocator, options);
-    defer allocator.free(manifest);
-
-    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = sha_path, .data = sha_text });
-    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = manifest_path, .data = manifest });
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = output_plan.sha_path, .data = sha_text });
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = output_plan.manifest_path, .data = output_plan.manifest });
 }
 
 pub fn main(init: std.process.Init) !u8 {
@@ -452,6 +469,40 @@ test "package artifact formats safe generated paths" {
     const long_safe_target = "t" ** 128;
     try std.testing.expect(action_paths.isSafeLabel(long_safe_target));
     try std.testing.expectError(error.InvalidGeneratedPath, formatManifestPath(std.testing.allocator, long_safe_binary, long_safe_target));
+}
+
+test "package artifact prepares output metadata before reading binary bytes" {
+    const valid_options = PackageOptions{
+        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
+        .target = "linux-x86_64",
+        .zig_target = "x86_64-linux-musl",
+        .version = "nightly-20260504-abcdef0",
+        .repository = "nullclaw/nullclaw",
+        .commit = "abcdef0123456789abcdef0123456789abcdef01",
+        .run_id = "123",
+        .server_url = "https://github.com",
+        .built_at = "2026-05-04T02:23:00Z",
+    };
+
+    const output_plan = try preparePackageOutputPlan(std.testing.allocator, valid_options);
+    defer output_plan.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualStrings("nightly-artifacts/nullclaw-linux-x86_64.sha256", output_plan.sha_path);
+    try std.testing.expectEqualStrings("nightly-artifacts/manifest-linux-x86_64.json", output_plan.manifest_path);
+    try std.testing.expect(std.mem.indexOf(u8, output_plan.manifest, "\"run_url\"") != null);
+
+    const long_safe_binary =
+        ("a" ** 128) ++ "/" ++
+        ("b" ** 128) ++ "/" ++
+        ("c" ** 128) ++ "/" ++
+        ("d" ** 128) ++ "/" ++
+        ("e" ** 128) ++ "/" ++
+        ("f" ** 128) ++ "/" ++
+        ("g" ** 128) ++ "/" ++
+        ("h" ** 115);
+    var unsafe_generated_options = valid_options;
+    unsafe_generated_options.binary_path = long_safe_binary;
+    try std.testing.expectError(error.InvalidGeneratedPath, preparePackageOutputPlan(std.testing.allocator, unsafe_generated_options));
 }
 
 test "package artifact rejects duplicate options" {
