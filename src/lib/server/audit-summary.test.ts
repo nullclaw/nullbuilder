@@ -83,8 +83,13 @@ test('collectAuditFindings caps noisy audit reports', () => {
     finding('warning', 'nullclaw/noisy', `Finding ${String(index).padStart(4, '0')}`)
   );
   const collected = collectAuditFindings([repository('ok', 100, findings)]);
+  const explicitlyOversized = collectAuditFindings(
+    [repository('ok', 100, findings)],
+    MAX_AUDIT_REPORT_FINDINGS + 500
+  );
 
   assert.equal(collected.length, MAX_AUDIT_REPORT_FINDINGS);
+  assert.equal(explicitlyOversized.length, MAX_AUDIT_REPORT_FINDINGS);
   assert.equal(collected.at(-1)?.title, `Finding ${String(MAX_AUDIT_REPORT_FINDINGS - 1).padStart(4, '0')}`);
 });
 

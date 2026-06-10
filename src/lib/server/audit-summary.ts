@@ -16,31 +16,39 @@ const SEVERITY_PENALTY: Record<AuditSeverity, number> = {
 export const MAX_AUDIT_REPORT_FINDINGS = 1000;
 
 export function checkStatus(findings: readonly AuditFinding[]): AuditStatus {
-  if (findings.some((finding) => finding.severity === 'critical')) {
-    return 'critical';
+  let status: AuditStatus = 'ok';
+
+  for (const finding of findings) {
+    if (finding.severity === 'critical') {
+      return 'critical';
+    }
+    if (finding.severity === 'warning') {
+      status = 'warning';
+    } else if (status === 'ok') {
+      status = 'info';
+    }
   }
-  if (findings.some((finding) => finding.severity === 'warning')) {
-    return 'warning';
-  }
-  if (findings.some((finding) => finding.severity === 'info')) {
-    return 'info';
-  }
-  return 'ok';
+
+  return status;
 }
 
 export function scoreFindings(findings: readonly AuditFinding[]): number {
-  const penalty = findings.reduce((total, finding) => total + SEVERITY_PENALTY[finding.severity], 0);
-  return Math.max(0, 100 - penalty);
+  let penalty = 0;
+
+  for (const finding of findings) {
+    penalty += SEVERITY_PENALTY[finding.severity];
+    if (penalty >= 100) {
+      return 0;
+    }
+  }
+
+  return 100 - penalty;
 }
 
 export function countFindings(findings: readonly AuditFinding[]): Record<AuditSeverity, number> {
-  return findings.reduce(
-    (counts, finding) => {
-      counts[finding.severity] += 1;
-      return counts;
-    },
-    { critical: 0, warning: 0, info: 0 }
-  );
+  const counts = emptySeverityCounts();
+  countSeverityFindings(counts, findings);
+  return counts;
 }
 
 export function sortFindings(left: AuditFinding, right: AuditFinding): number {
@@ -55,7 +63,8 @@ export function collectAuditFindings(
   repositories: readonly AuditRepositoryResult[],
   maxFindings = MAX_AUDIT_REPORT_FINDINGS
 ): AuditFinding[] {
-  if (!isSafePositiveInteger(maxFindings)) {
+  const findingLimit = normalizeFindingLimit(maxFindings);
+  if (findingLimit === 0) {
     return [];
   }
 
@@ -63,7 +72,7 @@ export function collectAuditFindings(
 
   for (const repo of repositories) {
     for (const finding of repo.findings) {
-      insertSortedFinding(findings, finding, maxFindings);
+      insertSortedFinding(findings, finding, findingLimit);
     }
   }
 
@@ -94,39 +103,43 @@ function insertSortedFinding(findings: AuditFinding[], finding: AuditFinding, ma
 }
 
 export function buildAuditTotals(repositories: readonly AuditRepositoryResult[]): AuditReport['totals'] {
-  const loadedRepositories = repositories.filter((repo) => repo.status === 'ok');
-  const counts = countRepositoryFindings(repositories);
-  const averageScore =
-    loadedRepositories.length === 0
-      ? 0
-      : Math.round(
-          loadedRepositories.reduce((total, repo) => total + normalizeScore(repo.score), 0) /
-            loadedRepositories.length
-        );
+  const counts = emptySeverityCounts();
+  let loadedRepositories = 0;
+  let scoreTotal = 0;
+
+  for (const repo of repositories) {
+    if (repo.status === 'ok') {
+      loadedRepositories += 1;
+      scoreTotal = saturatingSafeIntegerAdd(scoreTotal, normalizeScore(repo.score));
+    }
+
+    countSeverityFindings(counts, repo.findings);
+  }
 
   return {
     repositories: repositories.length,
-    loadedRepositories: loadedRepositories.length,
-    erroredRepositories: repositories.length - loadedRepositories.length,
+    loadedRepositories,
+    erroredRepositories: repositories.length - loadedRepositories,
     critical: counts.critical,
     warning: counts.warning,
     info: counts.info,
     findings: totalFindingCount(counts),
-    averageScore
+    averageScore: loadedRepositories === 0 ? 0 : Math.round(scoreTotal / loadedRepositories)
   };
 }
 
-function countRepositoryFindings(repositories: readonly AuditRepositoryResult[]): Record<AuditSeverity, number> {
-  return repositories.reduce(
-    (counts, repo) => {
-      for (const finding of repo.findings) {
-        counts[finding.severity] = saturatingSafeIntegerAdd(counts[finding.severity], 1);
-      }
+function emptySeverityCounts(): Record<AuditSeverity, number> {
+  return { critical: 0, warning: 0, info: 0 };
+}
 
-      return counts;
-    },
-    { critical: 0, warning: 0, info: 0 }
-  );
+function countSeverityFindings(counts: Record<AuditSeverity, number>, findings: readonly AuditFinding[]): void {
+  for (const finding of findings) {
+    counts[finding.severity] = saturatingSafeIntegerAdd(counts[finding.severity], 1);
+  }
+}
+
+function normalizeFindingLimit(value: number): number {
+  return isSafePositiveInteger(value) ? Math.min(value, MAX_AUDIT_REPORT_FINDINGS) : 0;
 }
 
 function totalFindingCount(counts: Record<AuditSeverity, number>): number {
