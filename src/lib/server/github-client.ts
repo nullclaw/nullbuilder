@@ -297,6 +297,10 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
         break;
       }
 
+      if (value.byteLength === 0) {
+        continue;
+      }
+
       if (value.byteLength > maxBytes - totalBytes) {
         await reader.cancel().catch(() => undefined);
         throw new Error('GitHub response body is too large.');

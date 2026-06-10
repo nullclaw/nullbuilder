@@ -740,6 +740,28 @@ test('githubRequest releases response stream readers after successful reads', as
   assert.equal(stream.locked, false);
 });
 
+test('githubRequest ignores empty streamed response chunks while enforcing limits', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://empty-stream-chunks.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array());
+          controller.enqueue(new TextEncoder().encode('{"ok":true}'));
+          controller.enqueue(new Uint8Array());
+          controller.close();
+        }
+      })
+    )) as typeof fetch;
+
+  assert.deepEqual(await githubRequest(config, '/repos/nullclaw/nullbuilder'), { ok: true });
+});
+
 test('githubRequest rejects malformed content-length before parsing', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
