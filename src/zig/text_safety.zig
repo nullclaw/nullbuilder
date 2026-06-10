@@ -89,6 +89,28 @@ pub fn skipAnsiStringControl(value: []const u8, start: usize) usize {
     return index;
 }
 
+pub fn skipAnsiEscape(value: []const u8, start: usize) usize {
+    var index = start + 1;
+    if (index >= value.len) return index;
+
+    const introducer = value[index];
+    if (introducer == '[') {
+        index += 1;
+        while (index < value.len) {
+            const byte = value[index];
+            index += 1;
+            if (byte >= 0x40 and byte <= 0x7e) return index;
+        }
+        return index;
+    }
+
+    if (isAnsiStringControlIntroducer(introducer)) {
+        return skipAnsiStringControl(value, index + 1);
+    }
+
+    return index + 1;
+}
+
 fn hasValidUtf8ScalarRange(sequence: []const u8) bool {
     return switch (sequence.len) {
         2 => true,
@@ -157,4 +179,13 @@ test "text safety identifies ANSI string control boundaries" {
     try std.testing.expectEqual(@as(usize, 4), skipAnsiStringControl("abc\x9ctail", 0));
     try std.testing.expectEqual(@as(usize, 5), skipAnsiStringControl("abc\x1b\\tail", 0));
     try std.testing.expectEqual(@as(usize, 3), skipAnsiStringControl("abc", 0));
+}
+
+test "text safety skips ANSI escape sequences" {
+    try std.testing.expectEqual(@as(usize, 5), skipAnsiEscape("\x1b[31mred", 0));
+    try std.testing.expectEqual(@as(usize, 10), skipAnsiEscape("\x1b]0;title\x07done", 0));
+    try std.testing.expectEqual(@as(usize, 15), skipAnsiEscape("\x1bPprivate-dcs\x1b\\done", 0));
+    try std.testing.expectEqual(@as(usize, 1), skipAnsiEscape("\x1b", 0));
+    try std.testing.expectEqual(@as(usize, 2), skipAnsiEscape("\x1bc", 0));
+    try std.testing.expectEqual(@as(usize, 4), skipAnsiEscape("\x1b[31", 0));
 }

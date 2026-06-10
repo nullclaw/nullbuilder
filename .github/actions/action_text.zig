@@ -10,7 +10,7 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
     while (index < value.len) {
         const byte = value[index];
         if (byte == ascii_escape) {
-            index = skipAnsiEscape(value, index);
+            index = text_safety.skipAnsiEscape(value, index);
             continue;
         }
 
@@ -72,28 +72,6 @@ pub fn isAsciiControlOrSpace(byte: u8) bool {
 
 pub fn isControlByte(byte: u8) bool {
     return text_safety.isControlByte(byte);
-}
-
-fn skipAnsiEscape(value: []const u8, start: usize) usize {
-    var index = start + 1;
-    if (index >= value.len) return index;
-
-    const introducer = value[index];
-    if (introducer == '[') {
-        index += 1;
-        while (index < value.len) {
-            const byte = value[index];
-            index += 1;
-            if (byte >= 0x40 and byte <= 0x7e) return index;
-        }
-        return index;
-    }
-
-    if (text_safety.isAnsiStringControlIntroducer(introducer)) {
-        return text_safety.skipAnsiStringControl(value, index + 1);
-    }
-
-    return index + 1;
 }
 
 test "action text detects ASCII and UTF-8 encoded control characters" {

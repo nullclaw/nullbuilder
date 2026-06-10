@@ -117,7 +117,7 @@ fn isSafe(value: []const u8, options: SanitizeOptions) bool {
 fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions, buffer: *[4]u8) ?[]const u8 {
     const byte = value[index.*];
     if (byte == ascii_escape) {
-        index.* = skipAnsiEscape(value, index.*);
+        index.* = text_safety.skipAnsiEscape(value, index.*);
         return null;
     }
 
@@ -154,28 +154,6 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
     const sequence_len = text_safety.utf8SequenceLength(value, start);
     index.* += sequence_len;
     return value[start..index.*];
-}
-
-fn skipAnsiEscape(value: []const u8, start: usize) usize {
-    var index = start + 1;
-    if (index >= value.len) return index;
-
-    const introducer = value[index];
-    if (introducer == '[') {
-        index += 1;
-        while (index < value.len) {
-            const byte = value[index];
-            index += 1;
-            if (byte >= 0x40 and byte <= 0x7e) return index;
-        }
-        return index;
-    }
-
-    if (text_safety.isAnsiStringControlIntroducer(introducer)) {
-        return text_safety.skipAnsiStringControl(value, index + 1);
-    }
-
-    return index + 1;
 }
 
 fn isUnsafeTerminalControlByte(byte: u8, options: SanitizeOptions) bool {
