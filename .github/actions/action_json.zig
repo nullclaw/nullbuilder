@@ -1,10 +1,11 @@
 const std = @import("std");
 
 const action_values = @import("action_values");
+const json_safety = @import("json_safety");
 
 pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
-pub const max_safe_json_integer: u64 = 9_007_199_254_740_991;
+pub const max_safe_json_integer: u64 = json_safety.max_safe_json_integer;
 
 const empty_json_values = [_]JsonValue{};
 
@@ -38,16 +39,7 @@ pub fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 
 }
 
 fn safePositiveIntegerValue(value: JsonValue) u64 {
-    return switch (value) {
-        .integer => |integer| safePositiveJsonInteger(integer),
-        else => 0,
-    };
-}
-
-fn safePositiveJsonInteger(integer: i64) u64 {
-    if (integer <= 0) return 0;
-    const unsigned = std.math.cast(u64, integer) orelse return 0;
-    return if (unsigned <= max_safe_json_integer) unsigned else 0;
+    return json_safety.safePositiveIntegerValue(value);
 }
 
 pub fn safeTextField(

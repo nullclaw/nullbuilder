@@ -1,10 +1,11 @@
 const std = @import("std");
 
+const json_safety = @import("json_safety");
 const text_safety = @import("text_safety");
 
 pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
-pub const max_safe_json_integer: u64 = 9_007_199_254_740_991;
+pub const max_safe_json_integer: u64 = json_safety.max_safe_json_integer;
 
 const empty_json_values = [_]JsonValue{};
 
@@ -65,11 +66,7 @@ pub fn requiredSafeTextField(
 
 fn intField(object: JsonObject, field_name: []const u8) u64 {
     const value = object.get(field_name) orelse return 0;
-    return switch (value) {
-        .integer => |integer| if (integer > 0) std.math.cast(u64, integer) orelse 0 else 0,
-        .null => 0,
-        else => 0,
-    };
+    return json_safety.safePositiveIntegerValue(value);
 }
 
 pub fn boundedIntField(object: JsonObject, field_name: []const u8, max_value: u64) u64 {
@@ -198,13 +195,14 @@ test "intField accepts only safe positive integers" {
 
 test "boundedIntField rejects positive integers above a domain limit" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
-        \\{"valid":999,"tooLarge":1000,"missing":null}
+        \\{"valid":999,"tooLarge":1000,"unsafe":9007199254740992,"missing":null}
     , .{});
     defer parsed.deinit();
     const object = parsed.value.object;
 
     try std.testing.expectEqual(@as(u64, 999), boundedIntField(object, "valid", 999));
     try std.testing.expectEqual(@as(u64, 0), boundedIntField(object, "tooLarge", 999));
+    try std.testing.expectEqual(@as(u64, 0), boundedIntField(object, "unsafe", max_safe_json_integer + 100));
     try std.testing.expectEqual(@as(u64, 0), boundedIntField(object, "missing", 999));
 }
 
