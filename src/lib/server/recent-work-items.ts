@@ -51,7 +51,7 @@ export class RecentWorkItemCollector<T extends WorkItemWithUpdatedAt> {
 }
 
 export function collectRecentWorkItems<T extends WorkItemWithUpdatedAt>(
-  values: Iterable<T>,
+  values: readonly T[],
   maxItems: number
 ): T[] {
   if (!hasValidRecentWorkItemLimit(maxItems)) {
@@ -59,16 +59,8 @@ export function collectRecentWorkItems<T extends WorkItemWithUpdatedAt>(
   }
 
   const collector = new RecentWorkItemCollector<T>(maxItems);
-  if (Array.isArray(values)) {
-    for (let index = 0; index < values.length; index += 1) {
-      collector.add(values[index]);
-    }
-
-    return collector.items();
-  }
-
-  for (const value of values) {
-    collector.add(value);
+  for (let index = 0; index < values.length; index += 1) {
+    collector.add(values[index]);
   }
 
   return collector.items();
