@@ -14,7 +14,8 @@ export function securityHeaderEntries(): ReadonlyArray<readonly [string, string]
 }
 
 export function applySecurityHeaders(headers: Headers): void {
-  for (const [name, value] of SECURITY_HEADERS) {
-    headers.set(name, value);
+  for (let index = 0; index < SECURITY_HEADERS.length; index += 1) {
+    const header = SECURITY_HEADERS[index];
+    headers.set(header[0], header[1]);
   }
 }

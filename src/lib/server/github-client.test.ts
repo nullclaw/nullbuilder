@@ -14,6 +14,7 @@ import {
   GITHUB_METHOD_MAX_LENGTH,
   GITHUB_PAGINATED_ITEMS_MAX,
   GITHUB_RATE_LIMIT_RESET_MAX_LENGTH,
+  GITHUB_REQUEST_HEADER_MAX_ENTRIES,
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
   GITHUB_STATUS_TEXT_MAX_LENGTH,
   GitHubApiError,
@@ -24,6 +25,7 @@ import {
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
 const originalJsonParse = JSON.parse;
+const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalMapKeys = Map.prototype.keys;
 const originalMapIterator = Map.prototype[Symbol.iterator];
 
@@ -31,6 +33,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
   JSON.parse = originalJsonParse;
+  Array.prototype[Symbol.iterator] = originalArrayIterator;
   restoreMapIteration();
 });
 
@@ -47,6 +50,18 @@ function rejectMapIteration(): void {
 function restoreMapIteration(): void {
   Map.prototype.keys = originalMapKeys;
   Map.prototype[Symbol.iterator] = originalMapIterator;
+}
+
+async function withGuardedArrayIterator<T>(callback: () => Promise<T>): Promise<T> {
+  Array.prototype[Symbol.iterator] = function arrayIteratorShouldNotBeCalled(): ArrayIterator<unknown> {
+    throw new Error('Array.prototype[Symbol.iterator] should not be called');
+  };
+
+  try {
+    return await callback();
+  } finally {
+    Array.prototype[Symbol.iterator] = originalArrayIterator;
+  }
 }
 
 test('githubGetPages follows same-origin pagination links', async () => {
@@ -573,30 +588,39 @@ test('githubRequest strips caller-supplied credential headers before fetching Gi
     cookie: string | null;
     proxyAuthorization: string | null;
   }> = [];
+  const responses = [new Response(JSON.stringify({ ok: true })), new Response(JSON.stringify({ ok: true }))];
+  let responseIndex = 0;
 
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const headers = new Headers(init?.headers);
+    if (!(init?.headers instanceof Headers)) {
+      throw new Error('expected normalized headers');
+    }
+    const headers = init.headers;
     requests.push({
       authorization: headers.get('Authorization'),
       cookie: headers.get('Cookie'),
       proxyAuthorization: headers.get('Proxy-Authorization')
     });
-    return new Response(JSON.stringify({ ok: true }));
+    const response = responses[responseIndex];
+    responseIndex += 1;
+    return response;
   }) as typeof fetch;
 
-  await githubRequest(anonymousConfig, '/repos/nullclaw/nullbuilder', {
-    headers: {
-      Authorization: 'Bearer caller-token',
-      Cookie: 'session=caller-cookie',
-      'Proxy-Authorization': 'Basic caller-proxy-token'
-    }
-  });
-  await githubRequest(tokenConfig, '/repos/nullclaw/nullbuilder', {
-    headers: {
-      Authorization: 'Bearer caller-token',
-      Cookie: 'session=caller-cookie',
-      'Proxy-Authorization': 'Basic caller-proxy-token'
-    }
+  await withGuardedArrayIterator(async () => {
+    await githubRequest(anonymousConfig, '/repos/nullclaw/nullbuilder', {
+      headers: {
+        Authorization: 'Bearer caller-token',
+        Cookie: 'session=caller-cookie',
+        'Proxy-Authorization': 'Basic caller-proxy-token'
+      }
+    });
+    await githubRequest(tokenConfig, '/repos/nullclaw/nullbuilder', {
+      headers: {
+        Authorization: 'Bearer caller-token',
+        Cookie: 'session=caller-cookie',
+        'Proxy-Authorization': 'Basic caller-proxy-token'
+      }
+    });
   });
 
   assert.deepEqual(requests, [
@@ -611,6 +635,48 @@ test('githubRequest strips caller-supplied credential headers before fetching Gi
       proxyAuthorization: null
     }
   ]);
+});
+
+test('githubRequest validates caller request headers before fetching GitHub', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://invalid-header.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  let fetched = false;
+  globalThis.fetch = (async () => {
+    fetched = true;
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () =>
+      githubRequest(config, '/repos/nullclaw/nullbuilder', {
+        headers: {
+          'bad\nsecret-header': 'private-value'
+        }
+      }),
+    (error) => {
+      assert(error instanceof Error);
+      assert.equal(error.message, 'Invalid GitHub request header.');
+      assert.doesNotMatch(error.message, /secret|private/);
+      return true;
+    }
+  );
+
+  const tooManyHeaders: Record<string, string> = {};
+  for (let index = 0; index <= GITHUB_REQUEST_HEADER_MAX_ENTRIES; index += 1) {
+    tooManyHeaders[`X-Test-${index}`] = 'value';
+  }
+
+  await assert.rejects(
+    () =>
+      githubRequest(config, '/repos/nullclaw/nullbuilder', {
+        headers: tooManyHeaders
+      }),
+    /^Error: Invalid GitHub request header\.$/
+  );
+  assert.equal(fetched, false);
 });
 
 test('githubRequest validates custom accept headers before fetching GitHub', async () => {

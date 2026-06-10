@@ -11,6 +11,8 @@ import {
   type Probe
 } from './audit-rules';
 
+const originalArrayIterator = Array.prototype[Symbol.iterator];
+
 test('evaluateAuditChecks reports missing repository security controls', () => {
   const checks = evaluateAuditChecks(
     auditContext({
@@ -97,6 +99,26 @@ jobs:
   assert.ok(findingTitles.includes('Reusable workflow uses a mutable ref'));
 });
 
+test('evaluateAuditChecks avoids array iterators while scanning static rules', () => {
+  const checks = withGuardedArrayIterator(() => evaluateAuditChecks(auditContext()));
+
+  assert.deepEqual(
+    checks.map(({ id }) => id),
+    [
+      'repository-active',
+      'security-policy',
+      'dependabot',
+      'codeowners',
+      'branch-protection',
+      'nullbuilder-workflows',
+      'workflow-dangerous-triggers',
+      'workflow-permissions',
+      'workflow-pinning',
+      'nullbuilder-workflow-ref'
+    ]
+  );
+});
+
 function auditContext(overrides: Partial<AuditContext> = {}): AuditContext {
   return {
     repo: 'nullclaw/nullbuilder' as RepoSlug,
@@ -146,4 +168,16 @@ function check(checks: readonly AuditCheckResult[], id: string): AuditCheckResul
   const result = checks.find((item) => item.id === id);
   assert.ok(result, `expected audit check ${id}`);
   return result;
+}
+
+function withGuardedArrayIterator<T>(callback: () => T): T {
+  Array.prototype[Symbol.iterator] = function arrayIteratorShouldNotBeCalled(): ArrayIterator<unknown> {
+    throw new Error('Array.prototype[Symbol.iterator] should not be called');
+  };
+
+  try {
+    return callback();
+  } finally {
+    Array.prototype[Symbol.iterator] = originalArrayIterator;
+  }
 }

@@ -178,7 +178,8 @@ const RULES = [
 export function evaluateAuditChecks(context: AuditContext): AuditCheckResult[] {
   const checks: AuditCheckResult[] = [];
 
-  for (const rule of RULES) {
+  for (let index = 0; index < RULES.length; index += 1) {
+    const rule = RULES[index];
     checks.push(evaluateAuditRule(rule, context));
   }
 

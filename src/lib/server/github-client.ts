@@ -40,6 +40,9 @@ export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
 export const GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH = 32;
 export const GITHUB_ACCEPT_HEADER_MAX_LENGTH = 256;
 export const GITHUB_METHOD_MAX_LENGTH = 16;
+export const GITHUB_REQUEST_HEADER_NAME_MAX_LENGTH = 128;
+export const GITHUB_REQUEST_HEADER_VALUE_MAX_LENGTH = 4096;
+export const GITHUB_REQUEST_HEADER_MAX_ENTRIES = 64;
 export const GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES = 256;
 
 const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
@@ -186,7 +189,7 @@ async function requestGitHubJson<T>(
   key: string,
   cached: CacheEntry<T> | undefined
 ): Promise<GitHubFetchResult<T>> {
-  const headers = new Headers(requestInit.headers);
+  const headers = cloneGitHubRequestHeaders(requestInit.headers);
   stripCallerCredentialHeaders(headers);
   headers.set('Accept', accept);
   headers.set('X-GitHub-Api-Version', '2022-11-28');
@@ -250,8 +253,71 @@ async function requestGitHubJson<T>(
 }
 
 function stripCallerCredentialHeaders(headers: Headers): void {
-  for (const header of CALLER_SUPPLIED_CREDENTIAL_HEADERS) {
+  for (let index = 0; index < CALLER_SUPPLIED_CREDENTIAL_HEADERS.length; index += 1) {
+    const header = CALLER_SUPPLIED_CREDENTIAL_HEADERS[index];
     headers.delete(header);
+  }
+}
+
+function cloneGitHubRequestHeaders(value: HeadersInit | undefined): Headers {
+  const headers = new Headers();
+  if (value === undefined) {
+    return headers;
+  }
+
+  if (value instanceof Headers) {
+    value.forEach((headerValue, headerName) => {
+      appendGitHubRequestHeader(headers, headerName, headerValue);
+    });
+    return headers;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length > GITHUB_REQUEST_HEADER_MAX_ENTRIES) {
+      throw new Error('Invalid GitHub request header.');
+    }
+
+    for (let index = 0; index < value.length; index += 1) {
+      const entry = value[index];
+      if (!Array.isArray(entry) || entry.length < 2) {
+        throw new Error('Invalid GitHub request header.');
+      }
+
+      appendGitHubRequestHeader(headers, entry[0], entry[1]);
+    }
+
+    return headers;
+  }
+
+  const record = readObjectRecord(value);
+  if (!record) {
+    throw new Error('Invalid GitHub request header.');
+  }
+
+  const names = Object.getOwnPropertyNames(record);
+  if (names.length > GITHUB_REQUEST_HEADER_MAX_ENTRIES) {
+    throw new Error('Invalid GitHub request header.');
+  }
+
+  for (let index = 0; index < names.length; index += 1) {
+    const name = names[index];
+    appendGitHubRequestHeader(headers, name, record[name]);
+  }
+
+  return headers;
+}
+
+function appendGitHubRequestHeader(headers: Headers, name: unknown, value: unknown): void {
+  const safeName = readSafeTextInput(name, { maxLength: GITHUB_REQUEST_HEADER_NAME_MAX_LENGTH });
+  const safeValue = readSafeTextInput(value, { maxLength: GITHUB_REQUEST_HEADER_VALUE_MAX_LENGTH });
+  if (!safeName || safeValue === null) {
+    throw new Error('Invalid GitHub request header.');
+  }
+
+  try {
+    headers.append(safeName, safeValue);
+  } catch {
+    throw new Error('Invalid GitHub request header.');
   }
 }
 
