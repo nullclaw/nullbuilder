@@ -27,6 +27,7 @@ export const GITHUB_PAGINATED_ITEMS_MAX = GITHUB_ABSOLUTE_MAX_PAGES * 100;
 export const GITHUB_LINK_HEADER_MAX_LENGTH = 16 * 1024;
 export const GITHUB_ERROR_MESSAGE_MAX_LENGTH = 512;
 export const GITHUB_STATUS_TEXT_MAX_LENGTH = 128;
+export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
@@ -278,11 +279,14 @@ function rateLimitResetMessage(remaining: string | null, reset: string | null): 
 }
 
 function parseRateLimitResetDate(reset: string): Date | null {
-  if (!/^[1-9]\d*$/.test(reset)) {
+  const safeReset = readSafeTextInput(reset, {
+    maxLength: GITHUB_RATE_LIMIT_RESET_MAX_LENGTH
+  });
+  if (!safeReset || !/^[1-9]\d*$/.test(safeReset)) {
     return null;
   }
 
-  const resetSeconds = Number.parseInt(reset, 10);
+  const resetSeconds = Number.parseInt(safeReset, 10);
   if (!Number.isSafeInteger(resetSeconds)) {
     return null;
   }

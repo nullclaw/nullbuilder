@@ -8,6 +8,7 @@ import {
   GITHUB_JSON_RESPONSE_MAX_BYTES,
   GITHUB_LINK_HEADER_MAX_LENGTH,
   GITHUB_PAGINATED_ITEMS_MAX,
+  GITHUB_RATE_LIMIT_RESET_MAX_LENGTH,
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
   GITHUB_STATUS_TEXT_MAX_LENGTH,
   GitHubApiError,
@@ -570,7 +571,14 @@ test('githubRequest keeps malformed rate-limit reset headers from masking API er
     NULLBUILDER_CACHE_TTL_MS: '0'
   });
 
-  for (const reset of ['not-a-timestamp', '1760000000.5', '1e3', '0', '9007199254740992']) {
+  for (const [index, reset] of [
+    'not-a-timestamp',
+    '1760000000.5',
+    '1e3',
+    '0',
+    '9007199254740992',
+    '1'.repeat(GITHUB_RATE_LIMIT_RESET_MAX_LENGTH + 1)
+  ].entries()) {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ message: 'rate limited' }), {
         status: 403,
@@ -582,7 +590,7 @@ test('githubRequest keeps malformed rate-limit reset headers from masking API er
       })) as typeof fetch;
 
     await assert.rejects(
-      githubRequest(config, `/repos/nullclaw/nullbuilder-${reset}`),
+      githubRequest(config, `/repos/nullclaw/nullbuilder-${index}`),
       (error: unknown) =>
         error instanceof GitHubApiError &&
         error.status === 403 &&
