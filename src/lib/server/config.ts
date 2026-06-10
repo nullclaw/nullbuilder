@@ -180,18 +180,45 @@ function isSafeOptionalPort(port: string | null): boolean {
 }
 
 function isLoopbackIpv4(hostname: string): boolean {
-  const octets = hostname.split('.');
-  if (octets.length !== 4 || octets[0] !== '127') {
-    return false;
-  }
+  let octetStart = 0;
+  let octetIndex = 0;
 
-  return octets.every((octet) => {
-    if (!/^(?:0|[1-9]\d{0,2})$/.test(octet)) {
+  for (let index = 0; index <= hostname.length; index += 1) {
+    if (index !== hostname.length && hostname[index] !== '.') {
+      continue;
+    }
+
+    if (octetIndex >= 4) {
       return false;
     }
-    const parsed = Number.parseInt(octet, 10);
-    return parsed >= 0 && parsed <= 255;
-  });
+
+    const octet = parseCanonicalIpv4Octet(hostname, octetStart, index);
+    if (octet === null || (octetIndex === 0 && octet !== 127)) {
+      return false;
+    }
+
+    octetIndex += 1;
+    octetStart = index + 1;
+  }
+
+  return octetIndex === 4;
+}
+
+function parseCanonicalIpv4Octet(hostname: string, start: number, end: number): number | null {
+  if (end <= start || end - start > 3 || (end - start > 1 && hostname[start] === '0')) {
+    return null;
+  }
+
+  let value = 0;
+  for (let index = start; index < end; index += 1) {
+    const digit = hostname.charCodeAt(index) - 48;
+    if (digit < 0 || digit > 9) {
+      return null;
+    }
+    value = value * 10 + digit;
+  }
+
+  return value <= 255 ? value : null;
 }
 
 function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
