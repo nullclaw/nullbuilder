@@ -69,10 +69,10 @@ pub fn render(
     for (dashboard.items) |item| {
         const repo = dashboard_model.repositoryFromValue(item) orelse continue;
         const repo_slug = try sanitizeTerminalText(arena, repo.slug);
-        defer arena.free(repo_slug);
+        defer repo_slug.deinit(arena);
 
         try out.print("{s:<[3]} {d:>[4]} {d:>[4]} ", .{
-            clipUtf8(repo_slug, repo_column_width),
+            clipUtf8(repo_slug.value, repo_column_width),
             repo.open_issues,
             repo.open_pulls,
             repo_column_width,
@@ -97,13 +97,13 @@ pub fn render(
         var errors = dashboard_model.LoadErrorIterator.init(dashboard);
         while (errors.next()) |load_error| {
             const error_repo = try sanitizeTerminalText(arena, load_error.repo);
-            defer arena.free(error_repo);
+            defer error_repo.deinit(arena);
             const message = try sanitizeTerminalText(arena, load_error.message);
-            defer arena.free(message);
+            defer message.deinit(arena);
 
             try out.print("  {s:<[2]} {s}\n", .{
-                clipUtf8(error_repo, repo_column_width),
-                clipUtf8(message, error_message_width),
+                clipUtf8(error_repo.value, repo_column_width),
+                clipUtf8(message.value, error_message_width),
                 repo_column_width,
             });
         }
@@ -123,14 +123,14 @@ fn printWorkItems(
     while (printed < max_recent_work_items) {
         const work = items.next() orelse break;
         const work_repo = try sanitizeTerminalText(arena, work.repo);
-        defer arena.free(work_repo);
+        defer work_repo.deinit(arena);
         const title = try sanitizeTerminalText(arena, work.title);
-        defer arena.free(title);
+        defer title.deinit(arena);
 
         try out.print("  {s:<[3]} #{d:<[4]} {s}\n", .{
-            clipUtf8(work_repo, repo_column_width),
+            clipUtf8(work_repo.value, repo_column_width),
             work.number,
-            clipUtf8(title, work_title_width),
+            clipUtf8(title.value, work_title_width),
             repo_column_width,
             work_number_width,
         });
@@ -144,10 +144,10 @@ fn printWorkItems(
 
 fn printStatus(arena: std.mem.Allocator, out: *std.Io.Writer, no_color: bool, status: []const u8, width: usize) !void {
     const safe_status = try sanitizeTerminalText(arena, status);
-    defer arena.free(safe_status);
+    defer safe_status.deinit(arena);
 
-    try out.writeAll(statusColor(no_color, safe_status));
-    try out.print("{s:<[1]}", .{ clipUtf8(safe_status, width), width });
+    try out.writeAll(statusColor(no_color, safe_status.value));
+    try out.print("{s:<[1]}", .{ clipUtf8(safe_status.value, width), width });
     try out.writeAll(color(no_color, reset));
 }
 
@@ -180,8 +180,8 @@ fn isUtf8ContinuationByte(byte: u8) bool {
     return byte & 0b1100_0000 == 0b1000_0000;
 }
 
-fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) ![]u8 {
-    return terminal.sanitizeAlloc(arena, value, .{});
+fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) !terminal.SanitizedText {
+    return terminal.sanitizeMaybeAlloc(arena, value, .{});
 }
 
 test "clipUtf8 does not split multibyte sequences" {
@@ -194,11 +194,12 @@ test "clipUtf8 does not split multibyte sequences" {
 
 test "sanitizeTerminalText replaces UTF-8 encoded C1 controls" {
     const safe = try sanitizeTerminalText(std.testing.allocator, "safe\xc2\x9bcontrol\xc2\x85next");
-    defer std.testing.allocator.free(safe);
+    defer safe.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings("safe control next", safe);
-    try std.testing.expect(std.mem.indexOf(u8, safe, "\xc2\x9b") == null);
-    try std.testing.expect(std.mem.indexOf(u8, safe, "\xc2\x85") == null);
+    try std.testing.expect(safe.allocated);
+    try std.testing.expectEqualStrings("safe control next", safe.value);
+    try std.testing.expect(std.mem.indexOf(u8, safe.value, "\xc2\x9b") == null);
+    try std.testing.expect(std.mem.indexOf(u8, safe.value, "\xc2\x85") == null);
 }
 
 test "printStatus honors requested display width" {

@@ -7,6 +7,26 @@ pub const SanitizeOptions = struct {
     preserve_newlines: bool = false,
 };
 
+pub const SanitizedText = struct {
+    value: []const u8,
+    allocated: bool = false,
+
+    pub fn deinit(self: SanitizedText, allocator: std.mem.Allocator) void {
+        if (self.allocated) allocator.free(self.value);
+    }
+};
+
+pub fn sanitizeMaybeAlloc(allocator: std.mem.Allocator, value: []const u8, options: SanitizeOptions) !SanitizedText {
+    if (isSafe(value, options)) {
+        return .{ .value = value };
+    }
+
+    return .{
+        .value = try sanitizeAlloc(allocator, value, options),
+        .allocated = true,
+    };
+}
+
 pub fn sanitizeAlloc(allocator: std.mem.Allocator, value: []const u8, options: SanitizeOptions) ![]u8 {
     var sanitized = std.array_list.Managed(u8).init(allocator);
     errdefer sanitized.deinit();
@@ -47,6 +67,19 @@ pub fn writeSafeBounded(out: *std.Io.Writer, value: []const u8, max_bytes: usize
     }
 
     return false;
+}
+
+fn isSafe(value: []const u8, options: SanitizeOptions) bool {
+    var index: usize = 0;
+    while (index < value.len) {
+        const byte = value[index];
+        if (byte == ascii_escape or isUnsafeTerminalControlByte(byte, options) or isUtf8C1Control(value, index)) {
+            return false;
+        }
+        index += 1;
+    }
+
+    return true;
 }
 
 fn nextSanitizedByte(value: []const u8, index: *usize, options: SanitizeOptions) ?u8 {
@@ -112,6 +145,24 @@ test "terminal sanitizer strips escape sequences and controls" {
 
     try std.testing.expectEqualStrings("ok badred text next rawdone", safe);
     try std.testing.expect(std.mem.indexOfScalar(u8, safe, ascii_escape) == null);
+}
+
+test "terminal sanitizer borrows already safe text" {
+    const input = "safe text";
+    const safe = try sanitizeMaybeAlloc(std.testing.allocator, input, .{});
+    defer safe.deinit(std.testing.allocator);
+
+    try std.testing.expect(!safe.allocated);
+    try std.testing.expectEqual(@intFromPtr(input.ptr), @intFromPtr(safe.value.ptr));
+    try std.testing.expectEqualStrings(input, safe.value);
+}
+
+test "terminal sanitizer allocates only when text changes" {
+    const safe = try sanitizeMaybeAlloc(std.testing.allocator, "bad\x1b[31mred\x1b[0m", .{});
+    defer safe.deinit(std.testing.allocator);
+
+    try std.testing.expect(safe.allocated);
+    try std.testing.expectEqualStrings("badred", safe.value);
 }
 
 test "terminal sanitizer can preserve newlines for child output" {
