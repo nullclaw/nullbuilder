@@ -2,6 +2,7 @@ import type { RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { githubRequest } from './github-client';
 import type { StarGrowthSummary } from './github-dashboard-types';
+import { safeNonNegativeInteger } from './number-safety';
 
 const STAR_PAGE_SIZE = 100;
 const MAX_STAR_PAGES_TO_SCAN = 10;
@@ -111,5 +112,5 @@ function starAgeMs(starredAt: string | undefined, now: number): number | null {
 }
 
 function safeCurrentStars(value: number): number | null {
-  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  return safeNonNegativeInteger(value);
 }

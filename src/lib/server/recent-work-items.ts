@@ -1,3 +1,5 @@
+import { isSafePositiveInteger } from './number-safety';
+
 export type WorkItemWithUpdatedAt = {
   updatedAt: string;
 };
@@ -56,7 +58,7 @@ export function collectRecentWorkItems<T extends WorkItemWithUpdatedAt>(
 }
 
 export function hasValidRecentWorkItemLimit(maxItems: number): boolean {
-  return Number.isSafeInteger(maxItems) && maxItems > 0;
+  return isSafePositiveInteger(maxItems);
 }
 
 export function compareByUpdatedAtDesc(left: WorkItemWithUpdatedAt, right: WorkItemWithUpdatedAt): number {

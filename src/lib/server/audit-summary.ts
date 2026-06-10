@@ -1,4 +1,5 @@
 import type { AuditFinding, AuditReport, AuditRepositoryResult, AuditSeverity, AuditStatus } from './audit-types';
+import { isSafePositiveInteger, saturatingSafeIntegerAdd } from './number-safety';
 
 const SEVERITY_ORDER: Record<AuditSeverity, number> = {
   critical: 0,
@@ -54,7 +55,7 @@ export function collectAuditFindings(
   repositories: readonly AuditRepositoryResult[],
   maxFindings = MAX_AUDIT_REPORT_FINDINGS
 ): AuditFinding[] {
-  if (!Number.isSafeInteger(maxFindings) || maxFindings <= 0) {
+  if (!isSafePositiveInteger(maxFindings)) {
     return [];
   }
 
@@ -137,13 +138,4 @@ function totalFindingCount(counts: Record<AuditSeverity, number>): number {
 
 function normalizeScore(value: number): number {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
-}
-
-function saturatingSafeIntegerAdd(left: number, right: number): number {
-  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || right < 0) {
-    return left;
-  }
-
-  const sum = left + right;
-  return Number.isSafeInteger(sum) ? sum : Number.MAX_SAFE_INTEGER;
 }

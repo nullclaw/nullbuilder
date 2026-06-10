@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Cookies } from '@sveltejs/kit';
 import type { NullbuilderConfig } from './config';
 import { readSafeTextInput } from '../text-safety';
+import { normalizeBoundedPositiveInteger } from './number-safety';
 
 export const AUTH_COOKIE = 'nullbuilder_auth';
 export const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;
@@ -147,14 +148,6 @@ function normalizeLoginRateLimiterOptions(options: LoginRateLimiterOptions): Nor
       MAX_LOGIN_RATE_LIMIT_KEYS
     )
   };
-}
-
-function normalizeBoundedPositiveInteger(value: number, fallback: number, max: number): number {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    return fallback;
-  }
-
-  return Math.min(value, max);
 }
 
 export function isAuthenticated(cookies: Cookies, config: NullbuilderConfig): boolean {

@@ -21,6 +21,7 @@ import {
   safeGitHubWebUrl,
   type GitHubWebUrlContext
 } from './github-web-urls';
+import { isSafePositiveInteger, safeNonNegativeInteger, saturatingSafeIntegerAdd } from './number-safety';
 import { hasValidRecentWorkItemLimit, RecentWorkItemCollector } from './recent-work-items';
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';
@@ -265,24 +266,15 @@ function normalizeLabelColor(color: string | undefined): string {
 }
 
 function safeCount(value: number | null | undefined): number {
-  return safeNullableCount(value) ?? 0;
+  return safeNonNegativeInteger(value) ?? 0;
 }
 
 function safeNullableCount(value: number | null | undefined): number | null {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  return safeNonNegativeInteger(value);
 }
 
 function safeWorkItemNumber(value: number): number | null {
-  return Number.isSafeInteger(value) && value > 0 ? value : null;
-}
-
-function saturatingSafeIntegerAdd(left: number, right: number): number {
-  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || right < 0) {
-    return left;
-  }
-
-  const sum = left + right;
-  return Number.isSafeInteger(sum) ? sum : Number.MAX_SAFE_INTEGER;
+  return isSafePositiveInteger(value) ? value : null;
 }
 
 function findRun(

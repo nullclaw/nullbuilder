@@ -20,6 +20,7 @@ import {
   sanitizeBuildPrTagName,
   sanitizeReleaseTagName
 } from './tags';
+import { isSafePositiveInteger } from './number-safety';
 
 export type BuildPrResult = {
   repo: RepoSlug;
@@ -296,7 +297,7 @@ function isValidationError(error: unknown): boolean {
 }
 
 function assertPositivePrNumber(value: number): number {
-  if (!Number.isSafeInteger(value) || value <= 0) {
+  if (!isSafePositiveInteger(value)) {
     throw new Error('Invalid pull request number.');
   }
 

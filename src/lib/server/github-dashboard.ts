@@ -3,6 +3,7 @@ import type { NullbuilderConfig } from './config';
 import { publicErrorMessage } from './github-client';
 import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary } from './github-dashboard-types';
 import { githubRepositoryWebUrl } from './github-web-urls';
+import { saturatingSafeIntegerAdd } from './number-safety';
 import {
   compareByUpdatedAtDesc,
   hasValidRecentWorkItemLimit,
@@ -151,13 +152,4 @@ export function sortByUpdatedAt(left: WorkItemWithUpdatedAt, right: WorkItemWith
 function repositoryHasFailingRun(repo: RepositorySummary): boolean {
   const runs = Object.values(repo.latestRuns);
   return runs.some((run) => run?.status === 'completed' && run.conclusion !== 'success');
-}
-
-function saturatingSafeIntegerAdd(left: number, right: number): number {
-  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || right < 0) {
-    return left;
-  }
-
-  const sum = left + right;
-  return Number.isSafeInteger(sum) ? sum : Number.MAX_SAFE_INTEGER;
 }

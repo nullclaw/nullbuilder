@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { isSafePositiveInteger } from './number-safety';
 
 const DEFAULT_MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
 export const MAX_WORKFLOW_REFERENCE_MATCHES = 200;
@@ -90,11 +91,11 @@ export function decodeGitHubContent(
 }
 
 function normalizeByteLimit(maxBytes: number): number {
-  return Number.isSafeInteger(maxBytes) && maxBytes > 0 ? maxBytes : 0;
+  return isSafePositiveInteger(maxBytes) ? maxBytes : 0;
 }
 
 function normalizeMatchLimit(maxMatches: number): number {
-  return Number.isSafeInteger(maxMatches) && maxMatches > 0 ? maxMatches : 0;
+  return isSafePositiveInteger(maxMatches) ? maxMatches : 0;
 }
 
 function boundedBase64Content(content: string, maxBytes: number): string {
