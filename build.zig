@@ -8,6 +8,7 @@ const ZigBuildOptions = struct {
 const SharedActionModules = struct {
     args: *std.Build.Module,
     paths: *std.Build.Module,
+    text: *std.Build.Module,
     values: *std.Build.Module,
 };
 
@@ -36,13 +37,18 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run Zig tests");
     addModuleTest(b, test_step, tui_module);
 
+    const action_text_module = createModule(b, options, ".github/actions/action_text.zig");
     const action_modules = SharedActionModules{
         .args = createModule(b, options, ".github/actions/action_args.zig"),
         .paths = createModule(b, options, ".github/actions/action_paths.zig"),
+        .text = action_text_module,
         .values = createModule(b, options, ".github/actions/action_values.zig"),
     };
+    action_modules.args.addImport("action_text", action_modules.text);
+    action_modules.values.addImport("action_text", action_modules.text);
     addModuleTest(b, test_step, action_modules.args);
     addModuleTest(b, test_step, action_modules.paths);
+    addModuleTest(b, test_step, action_modules.text);
     addModuleTest(b, test_step, action_modules.values);
 
     const nightly_decide_module = createActionModule(

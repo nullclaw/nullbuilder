@@ -1,4 +1,5 @@
 const std = @import("std");
+const action_text = @import("action_text");
 
 const max_decimal_id_digits = "18446744073709551615".len;
 const full_sha_bytes = 40;
@@ -73,7 +74,7 @@ fn isHttpAuthority(authority: []const u8) bool {
     if (authority.len == 0) return false;
 
     for (authority) |byte| {
-        if (isAsciiControlOrSpace(byte)) return false;
+        if (action_text.isAsciiControlOrSpace(byte)) return false;
         if (byte == '/' or byte == '?' or byte == '#' or byte == '@') return false;
     }
 
@@ -131,9 +132,7 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
         if (std.ascii.isAlphabetic(byte) or std.ascii.isDigit(byte)) continue;
 
         switch (byte) {
-            '-', '.', '_', '~',
-            '%', '!', '$', '&', '(', ')', '*', '+', ',', ';', '=',
-            ':', '@', '/', '?', '#' => continue,
+            '-', '.', '_', '~', '%', '!', '$', '&', '(', ')', '*', '+', ',', ';', '=', ':', '@', '/', '?', '#' => continue,
             else => return false,
         }
     }
@@ -185,23 +184,7 @@ pub fn isSafeActionOutputValue(value: []const u8, max_len: usize) bool {
 
 fn isSafeSingleLineText(value: []const u8, max_len: usize) bool {
     if (value.len == 0 or value.len > max_len) return false;
-
-    var index: usize = 0;
-    while (index < value.len) {
-        const byte = value[index];
-        if (isControlByte(byte) or isUtf8C1Control(value, index)) return false;
-        index += 1;
-    }
-
-    return true;
-}
-
-fn isControlByte(byte: u8) bool {
-    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
-}
-
-fn isUtf8C1Control(value: []const u8, index: usize) bool {
-    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+    return !action_text.hasControl(value);
 }
 
 fn isAsciiDigitSlice(value: []const u8) bool {
@@ -265,10 +248,6 @@ fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
     }
 
     return true;
-}
-
-fn isAsciiControlOrSpace(byte: u8) bool {
-    return byte <= ' ' or byte == 0x7f;
 }
 
 test "action values validate decimal ids and full shas" {

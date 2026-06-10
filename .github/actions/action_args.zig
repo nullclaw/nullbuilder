@@ -1,4 +1,5 @@
 const std = @import("std");
+const action_text = @import("action_text");
 
 const MAX_DIAGNOSTIC_TOKEN_BYTES = 512;
 const MAX_VALUE_TOKEN_BYTES = 4096;
@@ -43,53 +44,7 @@ pub fn printDiagnostic(comptime format: []const u8, value: []const u8) void {
 }
 
 pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
-    var written: usize = 0;
-    var index: usize = 0;
-    while (index < value.len) {
-        if (written >= buffer.len) break;
-        const byte = value[index];
-        if (byte == 0x1b) {
-            index = skipAnsiEscape(value, index);
-            continue;
-        } else if (isUtf8C1Control(value, index)) {
-            buffer[written] = ' ';
-            index += 2;
-        } else {
-            buffer[written] = if (isDiagnosticControlByte(byte)) ' ' else byte;
-            index += 1;
-        }
-        written += 1;
-    }
-
-    return buffer[0..written];
-}
-
-fn skipAnsiEscape(value: []const u8, start: usize) usize {
-    var index = start + 1;
-    if (index >= value.len) return index;
-
-    const introducer = value[index];
-    if (introducer == '[') {
-        index += 1;
-        while (index < value.len) {
-            const byte = value[index];
-            index += 1;
-            if (byte >= 0x40 and byte <= 0x7e) return index;
-        }
-        return index;
-    }
-
-    if (introducer == ']') {
-        index += 1;
-        while (index < value.len) {
-            if (value[index] == 0x07) return index + 1;
-            if (value[index] == 0x1b and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
-            index += 1;
-        }
-        return index;
-    }
-
-    return index + 1;
+    return action_text.sanitizeDiagnosticToken(value, buffer);
 }
 
 fn validateValueToken(flag: []const u8, value: []const u8) error{InvalidArguments}!void {
@@ -118,22 +73,7 @@ fn isOversizedValueToken(value: []const u8) bool {
 }
 
 fn hasUnsafeValueControl(value: []const u8) bool {
-    var index: usize = 0;
-    while (index < value.len) {
-        if (value[index] == 0x1b or isDiagnosticControlByte(value[index]) or isUtf8C1Control(value, index)) {
-            return true;
-        }
-        index += 1;
-    }
-    return false;
-}
-
-fn isDiagnosticControlByte(byte: u8) bool {
-    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
-}
-
-fn isUtf8C1Control(value: []const u8, index: usize) bool {
-    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+    return action_text.hasControl(value);
 }
 
 test "required returns present values" {

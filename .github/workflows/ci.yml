@@ -55,9 +55,12 @@ jobs:
           --dep action_paths
           --dep action_values
           -Mroot=.github/actions/nightly-decide/nightly_decide.zig
+          --dep action_text
           -Maction_args=.github/actions/action_args.zig
           -Maction_paths=.github/actions/action_paths.zig
+          --dep action_text
           -Maction_values=.github/actions/action_values.zig
+          -Maction_text=.github/actions/action_text.zig
 
       - name: Test artifact package helper
         run: >-
@@ -66,6 +69,9 @@ jobs:
           --dep action_paths
           --dep action_values
           -Mroot=.github/actions/package-artifact/package_artifact.zig
+          --dep action_text
           -Maction_args=.github/actions/action_args.zig
           -Maction_paths=.github/actions/action_paths.zig
+          --dep action_text
           -Maction_values=.github/actions/action_values.zig
+          -Maction_text=.github/actions/action_text.zig
