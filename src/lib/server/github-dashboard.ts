@@ -5,7 +5,7 @@ import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary
 
 export const MAX_DASHBOARD_WORK_LIST_ITEMS = 500;
 
-export { mapLatestRuns, mapRepositorySummary } from './github-dashboard-mappers';
+export { mapLatestRuns, mapRepositorySummary, MAX_REPOSITORY_WORK_ITEMS } from './github-dashboard-mappers';
 export type {
   DashboardData,
   GitHubIssueResponse,
@@ -31,8 +31,11 @@ export function buildDashboard(
   const pullRequests = collectRecentWorkItems(loadedRepositories, (repo) => repo.pullRequests);
   const failingRuns = loadedRepositories.filter(repositoryHasFailingRun).length;
   const erroredRepositories = repositories.length - loadedRepositories.length;
-  const issueCount = countWorkItems(loadedRepositories, (repo) => repo.issues.length);
-  const pullRequestCount = countWorkItems(loadedRepositories, (repo) => repo.pullRequests.length);
+  const issueCount = countWorkItems(loadedRepositories, (repo) => repo.openIssues ?? repo.issues.length);
+  const pullRequestCount = countWorkItems(
+    loadedRepositories,
+    (repo) => repo.openPulls ?? repo.pullRequests.length
+  );
 
   return {
     generatedAt,

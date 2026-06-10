@@ -15,6 +15,7 @@ import type {
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';
 const LABEL_COLOR_PATTERN = /^[0-9a-f]{6}$/i;
+export const MAX_REPOSITORY_WORK_ITEMS = 100;
 
 export function mapRepositorySummary(
   repo: RepoSlug,
@@ -24,10 +25,8 @@ export function mapRepositorySummary(
   workflowRuns: GitHubWorkflowRunResponse[],
   starGrowth: StarGrowthSummary
 ): RepositorySummary {
-  const openIssues = issues
-    .filter((issue) => !issue.pull_request)
-    .flatMap((issue) => mapIssue(repo, issue) ?? []);
-  const pullRequests = pulls.flatMap((pull) => mapPullRequest(repo, pull) ?? []);
+  const openIssues = mapIssueSummaries(repo, issues);
+  const pullRequests = mapPullRequestSummaries(repo, pulls);
 
   return {
     slug: repo,
@@ -42,16 +41,112 @@ export function mapRepositorySummary(
     archived: repository.archived,
     stars: safeNullableCount(repository.stargazers_count),
     forks: safeNullableCount(repository.forks_count),
-    openIssues: openIssues.length,
-    openPulls: pullRequests.length,
+    openIssues: openIssues.total,
+    openPulls: pullRequests.total,
     pushedAt: repository.pushed_at,
     updatedAt: repository.updated_at,
-    issues: openIssues,
-    pullRequests,
+    issues: openIssues.items,
+    pullRequests: pullRequests.items,
     starGrowth,
     latestRuns: mapLatestRuns(workflowRuns),
     status: 'ok'
   };
+}
+
+type BoundedWorkItems<T extends IssueSummary | PullRequestSummary> = {
+  items: T[];
+  total: number;
+};
+
+function mapIssueSummaries(repo: RepoSlug, issues: GitHubIssueResponse[]): BoundedWorkItems<IssueSummary> {
+  return collectBoundedWorkItems(issues, (issue) => {
+    if (issue.pull_request) {
+      return null;
+    }
+
+    return mapIssue(repo, issue);
+  });
+}
+
+function mapPullRequestSummaries(repo: RepoSlug, pulls: GitHubPullResponse[]): BoundedWorkItems<PullRequestSummary> {
+  return collectBoundedWorkItems(pulls, (pull) => mapPullRequest(repo, pull));
+}
+
+function collectBoundedWorkItems<Input, Output extends IssueSummary | PullRequestSummary>(
+  values: Input[],
+  mapper: (value: Input) => Output | null,
+  maxItems = MAX_REPOSITORY_WORK_ITEMS
+): BoundedWorkItems<Output> {
+  if (!Number.isSafeInteger(maxItems) || maxItems <= 0) {
+    return { items: [], total: 0 };
+  }
+
+  const items: RankedWorkItem<Output>[] = [];
+  let total = 0;
+
+  for (const value of values) {
+    const item = mapper(value);
+    if (item === null) {
+      continue;
+    }
+
+    insertRecentWorkItem(
+      items,
+      {
+        item,
+        timestamp: updatedAtTimestamp(item.updatedAt),
+        ordinal: total
+      },
+      maxItems
+    );
+    total = saturatingSafeIntegerAdd(total, 1);
+  }
+
+  return {
+    items: items.map(({ item }) => item),
+    total
+  };
+}
+
+type RankedWorkItem<T extends IssueSummary | PullRequestSummary> = {
+  item: T;
+  timestamp: number;
+  ordinal: number;
+};
+
+function insertRecentWorkItem<T extends IssueSummary | PullRequestSummary>(
+  items: RankedWorkItem<T>[],
+  item: RankedWorkItem<T>,
+  maxItems: number
+): void {
+  if (items.length >= maxItems && compareRecentWorkItems(item, items[items.length - 1]) >= 0) {
+    return;
+  }
+
+  let lower = 0;
+  let upper = items.length;
+
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    if (compareRecentWorkItems(item, items[middle]) < 0) {
+      upper = middle;
+    } else {
+      lower = middle + 1;
+    }
+  }
+
+  items.splice(lower, 0, item);
+  if (items.length > maxItems) {
+    items.length = maxItems;
+  }
+}
+
+function compareRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
+  left: RankedWorkItem<T>,
+  right: RankedWorkItem<T>
+): number {
+  const timestampOrder = right.timestamp - left.timestamp;
+  return timestampOrder === 0 ? left.ordinal - right.ordinal : timestampOrder;
 }
 
 export function mapLatestRuns(runs: GitHubWorkflowRunResponse[]): RepositoryLatestRuns {
@@ -134,6 +229,20 @@ function safeNullableCount(value: number | null | undefined): number | null {
 
 function safeWorkItemNumber(value: number): number | null {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function updatedAtTimestamp(value: string): number {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function saturatingSafeIntegerAdd(left: number, right: number): number {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || right < 0) {
+    return left;
+  }
+
+  const sum = left + right;
+  return Number.isSafeInteger(sum) ? sum : Number.MAX_SAFE_INTEGER;
 }
 
 function findRun(

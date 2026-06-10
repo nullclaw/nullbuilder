@@ -7,6 +7,7 @@ import {
   makeErrorRepository,
   mapRepositorySummary,
   MAX_DASHBOARD_WORK_LIST_ITEMS,
+  MAX_REPOSITORY_WORK_ITEMS,
   type GitHubIssueResponse,
   type GitHubPullResponse,
   type GitHubRepositoryResponse,
@@ -136,6 +137,40 @@ test('mapRepositorySummary skips invalid issue and pull request numbers', () => 
   );
 });
 
+test('mapRepositorySummary caps per-repository work rows without changing counts', () => {
+  const issues = Array.from({ length: MAX_REPOSITORY_WORK_ITEMS + 2 }, (_, index) =>
+    issue({
+      number: index + 1,
+      updated_at: new Date(Date.UTC(2026, 5, 9, 0, index)).toISOString()
+    })
+  );
+  const pulls = Array.from({ length: MAX_REPOSITORY_WORK_ITEMS + 2 }, (_, index) =>
+    pull({
+      number: index + 1,
+      updated_at: new Date(Date.UTC(2026, 5, 9, 0, index)).toISOString()
+    })
+  );
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    issues,
+    pulls,
+    [],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.openIssues, MAX_REPOSITORY_WORK_ITEMS + 2);
+  assert.equal(summary.openPulls, MAX_REPOSITORY_WORK_ITEMS + 2);
+  assert.equal(summary.issues.length, MAX_REPOSITORY_WORK_ITEMS);
+  assert.equal(summary.pullRequests.length, MAX_REPOSITORY_WORK_ITEMS);
+  assert.deepEqual(summary.issues.slice(0, 3).map((item) => item.number), [
+    MAX_REPOSITORY_WORK_ITEMS + 2,
+    MAX_REPOSITORY_WORK_ITEMS + 1,
+    MAX_REPOSITORY_WORK_ITEMS
+  ]);
+  assert.equal(summary.issues.at(-1)?.number, 3);
+});
+
 test('buildDashboard summarizes loaded error and failing repositories', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder,broken',
@@ -153,6 +188,8 @@ test('buildDashboard summarizes loaded error and failing repositories', () => {
     [
       repositorySummary({
         stars: 12,
+        openIssues: 2,
+        openPulls: 1,
         issues: [
           workItem(1, '2026-06-08T00:00:00Z'),
           workItem(2, '2026-06-09T00:00:00Z')
@@ -215,6 +252,8 @@ test('buildDashboard caps aggregated work lists without changing totals', () => 
   );
   const dashboard = buildDashboard(config, config.repos, [
     repositorySummary({
+      openIssues: MAX_DASHBOARD_WORK_LIST_ITEMS + 2,
+      openPulls: MAX_DASHBOARD_WORK_LIST_ITEMS + 2,
       issues,
       pullRequests
     })
