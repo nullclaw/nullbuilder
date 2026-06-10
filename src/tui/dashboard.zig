@@ -21,6 +21,7 @@ const work_number_width: usize = 5;
 const work_title_width: usize = 74;
 const error_message_width: usize = 90;
 const max_recent_work_items = 8;
+const max_rendered_load_errors = 8;
 
 pub const max_json_bytes = 16 * 1024 * 1024;
 const max_json_value_bytes = 64 * 1024;
@@ -131,13 +132,20 @@ fn printWorkItems(
 
 fn printLoadErrors(arena: std.mem.Allocator, out: *std.Io.Writer, dashboard: Dashboard) !void {
     var errors = dashboard_model.LoadErrorIterator.init(dashboard);
-    const first_error = errors.next() orelse return;
+    var printed: usize = 0;
 
-    try out.writeAll("\nLoad errors\n");
-    try out.writeAll("-----------\n");
-    try printLoadError(arena, out, first_error);
-    while (errors.next()) |load_error| {
+    while (printed < max_rendered_load_errors) {
+        const load_error = errors.next() orelse break;
+        if (printed == 0) {
+            try out.writeAll("\nLoad errors\n");
+            try out.writeAll("-----------\n");
+        }
         try printLoadError(arena, out, load_error);
+        printed += 1;
+    }
+
+    if (printed > 0 and errors.next() != null) {
+        try out.writeAll("  ... more load errors omitted\n");
     }
 }
 
@@ -336,6 +344,35 @@ test "render treats malformed dashboard collections as empty" {
     try expectContains(output, "no open issues");
     try expectContains(output, "no open pull requests");
     try std.testing.expect(std.mem.indexOf(u8, output, "Load errors") == null);
+}
+
+test "render bounds load error rows from external dashboard json" {
+    var json: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer json.deinit();
+
+    try json.writer.writeAll("{\"errors\":[");
+    for (0..max_rendered_load_errors + 2) |index| {
+        if (index > 0) try json.writer.writeByte(',');
+        try json.writer.print("{{\"repo\":\"repo-{d}\",\"error\":\"error-{d}\"}}", .{ index, index });
+    }
+    try json.writer.writeAll("]}");
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try render(std.testing.allocator, &out.writer, json.writer.buffered(), true);
+    const output = out.writer.buffered();
+
+    try expectContains(output, "Load errors");
+    try expectContains(output, "repo-0");
+    try expectContains(output, "error-0");
+    try expectContains(output, "repo-7");
+    try expectContains(output, "error-7");
+    try expectContains(output, "more load errors omitted");
+    try std.testing.expect(std.mem.indexOf(u8, output, "repo-8") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "error-8") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "repo-9") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "error-9") == null);
 }
 
 test "render does not echo terminal control characters from external text" {
