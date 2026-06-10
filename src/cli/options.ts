@@ -74,7 +74,7 @@ export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
   }
 
   if (!isCommand(rawCommand)) {
-    throw new Error(`Unknown command: ${rawCommand}`);
+    throw new Error('Unknown command.');
   }
 
   return {
@@ -128,7 +128,7 @@ export function parseOptions(args: readonly string[]): CliOptions {
     } else if (arg === '--allow-non-default-base') {
       options.allowNonDefaultBase = true;
     } else {
-      throw new Error(`Unknown option: ${arg}`);
+      throw new Error('Unknown option.');
     }
   }
 

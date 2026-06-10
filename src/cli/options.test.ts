@@ -27,7 +27,23 @@ test('parseCommandLine parses known commands through the command guard', () => {
 });
 
 test('parseCommandLine rejects unknown commands', () => {
-  assert.throws(() => parseCommandLine(['unknown']), /Unknown command/);
+  assert.throws(() => parseCommandLine(['unknown']), /^Error: Unknown command\.$/);
+  assert.throws(() => parseCommandLine(['bad\x1b[31m\ncommand']), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Unknown command.');
+    assert.doesNotMatch(error.message, /\x1b|\n|bad/);
+    return true;
+  });
+});
+
+test('parseOptions rejects unknown options without echoing raw input', () => {
+  assert.throws(() => parseOptions(['--unknown']), /^Error: Unknown option\.$/);
+  assert.throws(() => parseOptions(['--bad\x1b[31m\noption']), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Unknown option.');
+    assert.doesNotMatch(error.message, /\x1b|\n|bad/);
+    return true;
+  });
 });
 
 test('parseOptions parses build tag flags', () => {
