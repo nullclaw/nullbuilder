@@ -4,6 +4,8 @@ import type { RepoSlug } from '../repositories';
 import type { AuditFinding, AuditSeverity } from './audit-types';
 import type { AuditContext, AuditFindingBuilder, WorkflowFile } from './audit-rule-kit';
 import {
+  dangerousWorkflowTriggerFindings,
+  MAX_WORKFLOW_POLICY_FILES,
   mutableNullbuilderWorkflowRefFindings,
   nullbuilderWorkflowFindings,
   workflowPermissionFindings,
@@ -125,6 +127,36 @@ ${content}
       (_, index) =>
         `.github/workflows/ci.yml references zig-ci-${index}.yml@main; use a release tag for predictable cross-repository behavior.`
     )
+  );
+});
+
+test('workflow policy helpers cap workflow file scanning', () => {
+  const workflowFiles = Array.from({ length: MAX_WORKFLOW_POLICY_FILES + 1 }, (_, index) =>
+    workflowFile(`
+permissions: read-all
+jobs:
+  test_${index}:
+    runs-on: ubuntu-latest
+`)
+  );
+  Object.defineProperty(workflowFiles, MAX_WORKFLOW_POLICY_FILES, {
+    get() {
+      throw new Error('read past workflow policy file cap');
+    }
+  });
+  const context = auditContext({ workflowFiles });
+
+  assert.equal(workflowPermissionFindings(context, testFinding).length, 0);
+  assert.equal(dangerousWorkflowTriggerFindings(context, testFinding).length, 0);
+  assert.equal(workflowPinningFindings(context, testFinding).length, 0);
+  assert.equal(mutableNullbuilderWorkflowRefFindings(context, testFinding).length, 0);
+  assert.deepEqual(
+    nullbuilderWorkflowFindings(context, testFinding).map((finding) => finding.title),
+    [
+      'Missing nullbuilder ci workflow',
+      'Missing nullbuilder nightly workflow',
+      'Missing nullbuilder release workflow'
+    ]
   );
 });
 

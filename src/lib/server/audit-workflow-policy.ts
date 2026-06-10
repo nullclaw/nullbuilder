@@ -1,5 +1,5 @@
 import type { AuditFinding } from './audit-types';
-import type { AuditContext, AuditFindingBuilder } from './audit-rule-kit';
+import type { AuditContext, AuditFindingBuilder, WorkflowFile } from './audit-rule-kit';
 import {
   findActionUses,
   findNullbuilderWorkflowRefs,
@@ -13,6 +13,7 @@ const NULLBUILDER_WORKFLOWS = [
   { id: 'release', file: 'zig-release.yml', severity: 'info' as const }
 ];
 const MAX_WORKFLOW_FINDINGS_PER_FILE = 5;
+export const MAX_WORKFLOW_POLICY_FILES = 50;
 
 export function nullbuilderWorkflowFindings(
   context: AuditContext,
@@ -28,35 +29,41 @@ export function nullbuilderWorkflowFindings(
     ];
   }
 
-  return NULLBUILDER_WORKFLOWS.flatMap((workflow) => {
-    const hasWorkflow = context.workflowFiles.some((file) =>
-      file.content.includes(`nullclaw/nullbuilder/.github/workflows/${workflow.file}@`)
-    );
+  const findings: AuditFinding[] = [];
 
+  for (const workflow of NULLBUILDER_WORKFLOWS) {
+    const hasWorkflow = hasWorkflowFileContent(
+      context,
+      `nullclaw/nullbuilder/.github/workflows/${workflow.file}@`
+    );
     if (hasWorkflow) {
-      return [];
+      continue;
     }
 
-    return [
+    findings.push(
       finding(
         workflow.severity,
         `Missing nullbuilder ${workflow.id} workflow`,
         `Add a reusable workflow caller for ${workflow.file} when this repository should share nullbuilder automation.`
       )
-    ];
-  });
+    );
+  }
+
+  return findings;
 }
 
 export function dangerousWorkflowTriggerFindings(
   context: AuditContext,
   finding: AuditFindingBuilder
 ): AuditFinding[] {
-  return context.workflowFiles.flatMap((file) => {
+  const findings: AuditFinding[] = [];
+
+  forEachAuditedWorkflowFile(context, (file) => {
     if (!/\bpull_request_target\b/.test(file.content)) {
-      return [];
+      return;
     }
 
-    return [
+    findings.push(
       finding(
         'critical',
         'Workflow uses pull_request_target',
@@ -64,14 +71,16 @@ export function dangerousWorkflowTriggerFindings(
         file.url,
         file.path
       )
-    ];
+    );
   });
+
+  return findings;
 }
 
 export function workflowPermissionFindings(context: AuditContext, finding: AuditFindingBuilder): AuditFinding[] {
-  return context.workflowFiles.flatMap((file) => {
-    const findings: AuditFinding[] = [];
+  const findings: AuditFinding[] = [];
 
+  forEachAuditedWorkflowFile(context, (file) => {
     if (/^\s*permissions:\s*write-all\s*$/m.test(file.content)) {
       findings.push(
         finding(
@@ -105,14 +114,16 @@ export function workflowPermissionFindings(context: AuditContext, finding: Audit
         )
       );
     }
-
-    return findings;
   });
+
+  return findings;
 }
 
 export function workflowPinningFindings(context: AuditContext, finding: AuditFindingBuilder): AuditFinding[] {
-  return context.workflowFiles.flatMap((file) => {
-    const findings: AuditFinding[] = [];
+  const findings: AuditFinding[] = [];
+
+  forEachAuditedWorkflowFile(context, (file) => {
+    let fileFindings = 0;
     const usesLines = findActionUses(file.content);
 
     for (const action of usesLines) {
@@ -130,21 +141,24 @@ export function workflowPinningFindings(context: AuditContext, finding: AuditFin
         )
       );
 
-      if (findings.length >= MAX_WORKFLOW_FINDINGS_PER_FILE) {
+      fileFindings += 1;
+      if (fileFindings >= MAX_WORKFLOW_FINDINGS_PER_FILE) {
         break;
       }
     }
-
-    return findings;
   });
+
+  return findings;
 }
 
 export function mutableNullbuilderWorkflowRefFindings(
   context: AuditContext,
   finding: AuditFindingBuilder
 ): AuditFinding[] {
-  return context.workflowFiles.flatMap((file) => {
-    const findings: AuditFinding[] = [];
+  const findings: AuditFinding[] = [];
+
+  forEachAuditedWorkflowFile(context, (file) => {
+    let fileFindings = 0;
     const references = findNullbuilderWorkflowRefs(file.content);
 
     for (const reference of references) {
@@ -162,11 +176,37 @@ export function mutableNullbuilderWorkflowRefFindings(
         )
       );
 
-      if (findings.length >= MAX_WORKFLOW_FINDINGS_PER_FILE) {
+      fileFindings += 1;
+      if (fileFindings >= MAX_WORKFLOW_FINDINGS_PER_FILE) {
         break;
       }
     }
-
-    return findings;
   });
+
+  return findings;
+}
+
+function hasWorkflowFileContent(context: AuditContext, needle: string): boolean {
+  let found = false;
+  forEachAuditedWorkflowFile(context, (file) => {
+    if (file.content.includes(needle)) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+function forEachAuditedWorkflowFile(
+  context: AuditContext,
+  visit: (file: WorkflowFile) => boolean | void
+): void {
+  const fileLimit = Math.min(context.workflowFiles.length, MAX_WORKFLOW_POLICY_FILES);
+
+  for (let index = 0; index < fileLimit; index += 1) {
+    if (visit(context.workflowFiles[index]) === false) {
+      return;
+    }
+  }
 }
