@@ -96,6 +96,22 @@ test('dashboard page state exposes mutations only for authenticated web sessions
   assert.equal(typeof state.csrfToken, 'string');
 });
 
+test('dashboard page state keeps mutation csrf tied to authenticated access', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret',
+    NULLBUILDER_ENABLE_MUTATIONS: 'true'
+  });
+  const cookies = cookiesWith(createSessionToken('web-secret'));
+  const access = resolveDashboardAccess(config, cookies);
+  const state = buildDashboardPageState(config, cookies, access);
+
+  assert.equal(state.dashboard, null);
+  assert.equal(state.audit, null);
+  assert.equal(state.webMutationsAvailable, true);
+  assert.equal(typeof state.csrfToken, 'string');
+});
+
 function pagePayload(): { dashboard: DashboardData; audit: AuditReport } {
   return {
     dashboard: { generatedAt: '2026-06-09T00:00:00Z' } as DashboardData,

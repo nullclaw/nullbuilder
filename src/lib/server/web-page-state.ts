@@ -49,6 +49,7 @@ export function buildDashboardPageState(
   payload?: DashboardPagePayload
 ): DashboardPageState {
   const visiblePayload = access.canReadData ? payload : undefined;
+  const webMutationsAvailable = config.enableWebMutations && access.authConfigured && access.authenticated;
 
   return {
     dashboard: visiblePayload?.dashboard ?? null,
@@ -57,9 +58,9 @@ export function buildDashboardPageState(
     authConfigured: access.authConfigured,
     authenticated: access.authenticated,
     webMutationsEnabled: config.enableWebMutations,
-    webMutationsAvailable: config.enableWebMutations && access.authConfigured && access.authenticated,
+    webMutationsAvailable,
     hasGitHubToken: Boolean(config.token),
     ownerUrl: githubOwnerWebUrl(config.webBaseUrl, config.owner),
-    csrfToken: visiblePayload ? createCsrfToken(cookies, config) : null
+    csrfToken: webMutationsAvailable ? createCsrfToken(cookies, config) : null
   };
 }
