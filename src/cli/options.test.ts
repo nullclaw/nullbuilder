@@ -96,3 +96,26 @@ test('parseOptions stops option parsing after delimiter', () => {
   assert.equal(options.repo, 'nullbuilder');
   assert.deepEqual(options.positionals, ['--literal']);
 });
+
+test('parseOptions validates positional arguments without echoing raw input', () => {
+  assert.throws(() => parseOptions(['bad\x1b[31m\nrepo']), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid positional argument.');
+    assert.doesNotMatch(error.message, /\x1b|\n|bad/);
+    return true;
+  });
+
+  assert.throws(() => parseOptions(['--', 'x'.repeat(10_000)]), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid positional argument.');
+    assert.doesNotMatch(error.message, /xxxxx/);
+    return true;
+  });
+
+  assert.throws(() => parseOptions(Array.from({ length: 17 }, (_, index) => `repo-${index}`)), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Too many positional arguments.');
+    assert.doesNotMatch(error.message, /repo-16/);
+    return true;
+  });
+});

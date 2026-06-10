@@ -2,6 +2,7 @@ import { parsePositiveIntegerText, readSafeTextInput } from '../lib/text-safety'
 
 const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
+const MAX_POSITIONAL_ARGS = 16;
 
 export type Command = (typeof COMMANDS)[number];
 
@@ -100,12 +101,12 @@ export function parseOptions(args: readonly string[]): CliOptions {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--') {
-      options.positionals.push(...args.slice(index + 1));
+      appendPositionals(options, args.slice(index + 1));
       break;
     }
 
     if (!arg.startsWith('-')) {
-      options.positionals.push(arg);
+      pushPositional(options, arg);
     } else if (arg === '--json') {
       options.json = true;
     } else if (arg === '--discover') {
@@ -134,6 +135,25 @@ export function parseOptions(args: readonly string[]): CliOptions {
   }
 
   return options;
+}
+
+function appendPositionals(options: CliOptions, values: readonly string[]): void {
+  for (const value of values) {
+    pushPositional(options, value);
+  }
+}
+
+function pushPositional(options: CliOptions, value: string): void {
+  if (options.positionals.length >= MAX_POSITIONAL_ARGS) {
+    throw new Error('Too many positional arguments.');
+  }
+
+  const safe = readSafeTextInput(value);
+  if (safe === null) {
+    throw new Error('Invalid positional argument.');
+  }
+
+  options.positionals.push(safe);
 }
 
 function readValue(args: readonly string[], index: number, option: string): string {
