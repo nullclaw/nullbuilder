@@ -73,18 +73,31 @@ fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
 }
 
 fn formatSha256Path(allocator: std.mem.Allocator, binary_path: []const u8) ![]u8 {
-    return try std.fmt.allocPrint(allocator, "{s}.sha256", .{binary_path});
+    const path = try std.fmt.allocPrint(allocator, "{s}.sha256", .{binary_path});
+    errdefer allocator.free(path);
+    try validateGeneratedPath(path);
+    return path;
 }
 
 fn formatManifestPath(allocator: std.mem.Allocator, binary_path: []const u8, target: []const u8) ![]u8 {
     if (std.Io.Dir.path.dirname(binary_path)) |artifact_dir| {
-        return try std.fmt.allocPrint(allocator, "{s}/manifest-{s}.json", .{
+        const path = try std.fmt.allocPrint(allocator, "{s}/manifest-{s}.json", .{
             artifact_dir,
             target,
         });
+        errdefer allocator.free(path);
+        try validateGeneratedPath(path);
+        return path;
     }
 
-    return try std.fmt.allocPrint(allocator, "manifest-{s}.json", .{target});
+    const path = try std.fmt.allocPrint(allocator, "manifest-{s}.json", .{target});
+    errdefer allocator.free(path);
+    try validateGeneratedPath(path);
+    return path;
+}
+
+fn validateGeneratedPath(path: []const u8) error{InvalidGeneratedPath}!void {
+    if (!action_paths.isSafeRelativePath(path)) return error.InvalidGeneratedPath;
 }
 
 fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
@@ -211,10 +224,22 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
     const sha_text = try formatSha256Line(allocator, binary_bytes, binary_name);
     defer allocator.free(sha_text);
 
-    const sha_path = try formatSha256Path(allocator, options.binary_path);
+    const sha_path = formatSha256Path(allocator, options.binary_path) catch |err| switch (err) {
+        error.InvalidGeneratedPath => {
+            action_args.printDiagnostic("invalid generated artifact path for: {s}\n", options.binary_path);
+            return error.InvalidArguments;
+        },
+        else => return err,
+    };
     defer allocator.free(sha_path);
 
-    const manifest_path = try formatManifestPath(allocator, options.binary_path, options.target);
+    const manifest_path = formatManifestPath(allocator, options.binary_path, options.target) catch |err| switch (err) {
+        error.InvalidGeneratedPath => {
+            action_args.printDiagnostic("invalid generated artifact path for: {s}\n", options.binary_path);
+            return error.InvalidArguments;
+        },
+        else => return err,
+    };
     defer allocator.free(manifest_path);
 
     const manifest = try buildManifest(allocator, options);
@@ -284,6 +309,22 @@ test "package artifact formats safe generated paths" {
     defer std.testing.allocator.free(root_manifest_path);
     try std.testing.expectEqualStrings("manifest-linux-x86_64.json", root_manifest_path);
     try std.testing.expect(action_paths.isSafeRelativePath(root_manifest_path));
+
+    const long_safe_binary =
+        ("a" ** 128) ++ "/" ++
+        ("b" ** 128) ++ "/" ++
+        ("c" ** 128) ++ "/" ++
+        ("d" ** 128) ++ "/" ++
+        ("e" ** 128) ++ "/" ++
+        ("f" ** 128) ++ "/" ++
+        ("g" ** 128) ++ "/" ++
+        ("h" ** 115);
+    try std.testing.expect(action_paths.isSafeRelativePath(long_safe_binary));
+    try std.testing.expectError(error.InvalidGeneratedPath, formatSha256Path(std.testing.allocator, long_safe_binary));
+
+    const long_safe_target = "t" ** 128;
+    try std.testing.expect(action_paths.isSafeLabel(long_safe_target));
+    try std.testing.expectError(error.InvalidGeneratedPath, formatManifestPath(std.testing.allocator, long_safe_binary, long_safe_target));
 }
 
 test "package artifact validates package options before filesystem writes" {
