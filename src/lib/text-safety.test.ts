@@ -17,6 +17,8 @@ test('readSafeTextInput rejects oversized and control-bearing input', () => {
   assert.equal(readSafeTextInput('release/v1\x85hidden'), null);
   assert.equal(readSafeTextInput('release/v1\u202ehidden'), null);
   assert.equal(readSafeTextInput('release/v1\u2066hidden'), null);
+  assert.equal(readSafeTextInput('release/v1\uD800hidden'), null);
+  assert.equal(readSafeTextInput('release/v1\uDC00hidden'), null);
   assert.equal(readSafeTextInput('build-pr\x1b[31m\nsecret', { trim: true }), null);
 });
 
@@ -35,6 +37,7 @@ test('sanitizeText strips terminal controls and applies bounded fallback text', 
   assert.equal(sanitizeText('\x1b[31m\n\t', { maxLength: 10, fallback: 'fallback', trim: true }), 'fallback');
   assert.equal(sanitizeText('safe\x1b]0;title\x07 text', { maxLength: 64, trim: true }), 'safe text');
   assert.equal(sanitizeText('safe\u202espoof\u2069 text', { maxLength: 64, trim: true }), 'safe spoof  text');
+  assert.equal(sanitizeText('safe\uD800spoof\uDC00 text', { maxLength: 64, trim: true }), 'safe spoof  text');
 });
 
 test('sanitizeTerminalLine truncates by code point without splitting surrogate pairs', () => {

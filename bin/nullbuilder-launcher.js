@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const MAX_FORWARDED_ARG_COUNT = 128;
 const MAX_FORWARDED_ARG_BYTES = 4096;
 const MAX_FORWARDED_ARGS_TOTAL_BYTES = 128 * 1024;
+const BIDI_FORMAT_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 
 export function resolveLauncherPaths(moduleUrl) {
@@ -75,7 +76,7 @@ function isSafeForwardedArgs(args) {
       return false;
     }
 
-    if (CONTROL_CHARACTER_PATTERN.test(arg)) {
+    if (CONTROL_CHARACTER_PATTERN.test(arg) || BIDI_FORMAT_CONTROL_PATTERN.test(arg) || hasLoneSurrogate(arg)) {
       return false;
     }
 
@@ -83,4 +84,29 @@ function isSafeForwardedArgs(args) {
   }
 
   return true;
+}
+
+function hasLoneSurrogate(value) {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (isHighSurrogate(codeUnit)) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (!isLowSurrogate(nextCodeUnit)) {
+        return true;
+      }
+      index += 1;
+    } else if (isLowSurrogate(codeUnit)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isHighSurrogate(value) {
+  return value >= 0xd800 && value <= 0xdbff;
+}
+
+function isLowSurrogate(value) {
+  return value >= 0xdc00 && value <= 0xdfff;
 }

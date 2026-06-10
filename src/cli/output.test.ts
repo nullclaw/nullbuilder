@@ -73,7 +73,7 @@ test('formatters sanitize terminal control characters from external text', () =>
     issues: [
       {
         ...dashboardFixture().issues[0],
-        title: 'Fix \x1b[31mred\x1b[0m\nnext\titem\u202espoof\u2069'
+        title: 'Fix \x1b[31mred\x1b[0m\nnext\titem\u202espoof\u2069\uD800trail'
       }
     ]
   });
@@ -87,7 +87,8 @@ test('formatters sanitize terminal control characters from external text', () =>
 
   assert.doesNotMatch(issues, /\x1b/);
   assert.doesNotMatch(issues, /[\u202e\u2069]/u);
-  assert.match(issues, /Fix red next item spoof /);
+  assert.doesNotMatch(issues, /\uFFFD/u);
+  assert.match(issues, /Fix red next item spoof  trail/);
   assert.doesNotMatch(buildPr, /\x1b/);
   assert.match(buildPr, /pr: #7 Improve build now/);
   assert.match(buildPr, /head: de0fac2e4500dabe0009e67214ff5f5447ce83dd \(featurebranch\)/);

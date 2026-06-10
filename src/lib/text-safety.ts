@@ -28,7 +28,7 @@ export function readSafeTextInput(value: string, options: SafeTextInputOptions =
     return null;
   }
 
-  if (CONTROL_CHARACTER_TEST_PATTERN.test(value) || BIDI_FORMAT_CONTROL_TEST_PATTERN.test(value)) {
+  if (CONTROL_CHARACTER_TEST_PATTERN.test(value) || BIDI_FORMAT_CONTROL_TEST_PATTERN.test(value) || hasLoneSurrogate(value)) {
     return null;
   }
 
@@ -46,7 +46,9 @@ export function parsePositiveIntegerText(value: string): number | null {
 
 export function sanitizeText(value: string, options: SafeTextOptions): string {
   const sanitized = truncateText(
-    value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' ').replace(BIDI_FORMAT_CONTROL_PATTERN, ' '),
+    replaceLoneSurrogates(
+      value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' ').replace(BIDI_FORMAT_CONTROL_PATTERN, ' ')
+    ),
     options.maxLength,
     options.suffix ?? ''
   );
@@ -102,4 +104,56 @@ function normalizeTextLength(value: number): number {
   }
 
   return Math.min(Math.floor(value), MAX_TEXT_SAFETY_LENGTH);
+}
+
+function hasLoneSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (isHighSurrogate(codeUnit)) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (!isLowSurrogate(nextCodeUnit)) {
+        return true;
+      }
+      index += 1;
+    } else if (isLowSurrogate(codeUnit)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function replaceLoneSurrogates(value: string): string {
+  if (!hasLoneSurrogate(value)) {
+    return value;
+  }
+
+  let output = '';
+
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (isHighSurrogate(codeUnit)) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (isLowSurrogate(nextCodeUnit)) {
+        output += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        output += ' ';
+      }
+    } else if (isLowSurrogate(codeUnit)) {
+      output += ' ';
+    } else {
+      output += value[index];
+    }
+  }
+
+  return output;
+}
+
+function isHighSurrogate(value: number): boolean {
+  return value >= 0xd800 && value <= 0xdbff;
+}
+
+function isLowSurrogate(value: number): boolean {
+  return value >= 0xdc00 && value <= 0xdfff;
 }
