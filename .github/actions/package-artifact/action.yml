@@ -53,6 +53,7 @@ runs:
           --dep action_values \
           -Mroot="$GITHUB_ACTION_PATH/package_artifact.zig" \
           --dep action_values \
+          --dep json_safety \
           -Maction_json="$GITHUB_ACTION_PATH/../action_json.zig" \
           --dep action_text \
           -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
@@ -66,6 +67,8 @@ runs:
           -Maction_text="$GITHUB_ACTION_PATH/../action_text.zig" \
           --dep text_safety \
           -Mrepository_safety="$GITHUB_ACTION_PATH/../../../src/zig/repository_safety.zig" \
+          --dep text_safety \
+          -Mjson_safety="$GITHUB_ACTION_PATH/../../../src/zig/json_safety.zig" \
           -Mtext_safety="$GITHUB_ACTION_PATH/../../../src/zig/text_safety.zig" \
           -- \
           --binary "${PACKAGE_BINARY}" \
