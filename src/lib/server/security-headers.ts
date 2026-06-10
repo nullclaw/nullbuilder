@@ -1,5 +1,5 @@
 const SECURITY_HEADERS = [
-  ['Content-Security-Policy', "base-uri 'none'; frame-ancestors 'none'; object-src 'none'"],
+  ['Content-Security-Policy', "base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"],
   ['Cross-Origin-Opener-Policy', 'same-origin'],
   ['Permissions-Policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()'],
   ['Referrer-Policy', 'no-referrer'],
