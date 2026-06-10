@@ -63,6 +63,10 @@ type GitHubBranchResponse = {
 };
 
 const FULL_SHA_PATTERN = /^[a-f0-9]{40}$/i;
+const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\|$)|[@-Z\\-_])/g;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
+const MAX_PULL_TITLE_LENGTH = 1024;
+const MAX_HEAD_BRANCH_LENGTH = 255;
 const MAX_TARGET_REF_LENGTH = 255;
 const UNSAFE_TARGET_REF_PATTERN = /[\u0000-\u001f\u007f ~^:?*[\]\\]/;
 
@@ -100,9 +104,9 @@ export async function buildPrTag(
   const result: BuildPrResult = {
     repo,
     prNumber,
-    prTitle: pull.title,
+    prTitle: sanitizeResultText(pull.title, MAX_PULL_TITLE_LENGTH, 'Untitled PR'),
     headSha,
-    headBranch: pull.head.ref,
+    headBranch: sanitizeResultText(pull.head.ref, MAX_HEAD_BRANCH_LENGTH, 'unknown'),
     tagName,
     tagUrl,
     workflowUrl,
@@ -322,6 +326,31 @@ function assertPositivePrNumber(value: number): number {
   }
 
   return value;
+}
+
+function sanitizeResultText(value: string, maxLength: number, fallback: string): string {
+  const sanitized = truncateText(
+    value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' '),
+    maxLength
+  ).trim();
+
+  return sanitized || fallback;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  let result = '';
+  let length = 0;
+
+  for (const character of value) {
+    if (length >= maxLength) {
+      break;
+    }
+
+    result += character;
+    length += 1;
+  }
+
+  return result;
 }
 
 function assertFullSha(value: string, label: string): string {

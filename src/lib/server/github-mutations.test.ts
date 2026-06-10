@@ -70,6 +70,38 @@ test('buildPrTag returns dry-run metadata without mutating refs', async () => {
   );
 });
 
+test('buildPrTag bounds and sanitizes API result metadata', async () => {
+  const config = testConfig();
+  const oversizedTitle = ` Improve \x1b[31mbuild\n${'x'.repeat(2000)} `;
+  const oversizedBranch = ` feature\x1b[2K/${'b'.repeat(400)} `;
+  mockGitHub((path, method) => {
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder') {
+      return repositoryResponse();
+    }
+
+    if (method === 'GET' && path === '/repos/nullclaw/nullbuilder/pulls/7') {
+      return pullResponse({
+        title: oversizedTitle,
+        headRef: oversizedBranch
+      });
+    }
+
+    throw new Error(`Unexpected ${method} ${path}`);
+  });
+
+  const result = await buildPrTag(config, {
+    repo: 'nullbuilder',
+    prNumber: 7
+  });
+
+  assert.equal(result.prTitle.includes('\x1b'), false);
+  assert.equal(result.prTitle.includes('\n'), false);
+  assert.equal(result.prTitle.startsWith('Improve build '), true);
+  assert.equal(result.prTitle.length <= 1024, true);
+  assert.equal(result.headBranch.includes('\x1b'), false);
+  assert.equal(result.headBranch.length <= 255, true);
+});
+
 test('buildPrTag rejects unsafe API head SHAs before creating tag refs', async () => {
   const config = testConfig();
   const requests = mockGitHub((path, method) => {
@@ -382,17 +414,21 @@ function repositoryResponse({ defaultBranch = 'main' }: { defaultBranch?: string
 function pullResponse({
   draft = false,
   baseRef = 'main',
+  headRef = 'feature',
   headRepo = 'nullclaw/nullbuilder',
-  headSha: pullHeadSha = headSha
+  headSha: pullHeadSha = headSha,
+  title = 'Improve build'
 }: {
   draft?: boolean;
   baseRef?: string;
+  headRef?: string;
   headRepo?: string;
   headSha?: string;
+  title?: string;
 } = {}) {
   return {
     number: 7,
-    title: 'Improve build',
+    title,
     html_url: 'https://github.example.test/nullclaw/nullbuilder/pull/7',
     draft,
     user: {
@@ -409,7 +445,7 @@ function pullResponse({
       }
     },
     head: {
-      ref: 'feature',
+      ref: headRef,
       sha: pullHeadSha,
       repo: {
         full_name: headRepo
