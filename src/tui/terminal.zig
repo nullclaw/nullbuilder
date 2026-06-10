@@ -167,16 +167,24 @@ fn skipAnsiEscape(value: []const u8, start: usize) usize {
     }
 
     if (introducer == ']') {
-        index += 1;
-        while (index < value.len) {
-            if (value[index] == 0x07) return index + 1;
-            if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
-            index += 1;
-        }
-        return index;
+        return skipAnsiStringControl(value, index + 1);
+    }
+
+    if (introducer == 'P' or introducer == 'X' or introducer == '^' or introducer == '_') {
+        return skipAnsiStringControl(value, index + 1);
     }
 
     return index + 1;
+}
+
+fn skipAnsiStringControl(value: []const u8, start: usize) usize {
+    var index = start;
+    while (index < value.len) {
+        if (value[index] == 0x07) return index + 1;
+        if (value[index] == ascii_escape and index + 1 < value.len and value[index + 1] == '\\') return index + 2;
+        index += 1;
+    }
+    return index;
 }
 
 fn isUnsafeTerminalControlByte(byte: u8, options: SanitizeOptions) bool {
@@ -249,6 +257,19 @@ test "terminal sanitizer replaces bidi controls" {
     defer std.testing.allocator.free(safe);
 
     try std.testing.expectEqualStrings("bad spoof done", safe);
+}
+
+test "terminal sanitizer strips ANSI string control payloads" {
+    const safe = try sanitizeAlloc(
+        std.testing.allocator,
+        "start\x1bPprivate-dcs\x1b\\mid\x1bXprivate-sos\x1b\\pm\x1b^private-pm\x07apc\x1b_private-apc\x1b\\end",
+        .{},
+    );
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("startmidpmapcend", safe);
+    try std.testing.expect(std.mem.indexOf(u8, safe, "private") == null);
+    try std.testing.expect(std.mem.indexOfScalar(u8, safe, ascii_escape) == null);
 }
 
 test "terminal sanitizer can preserve newlines for child output" {
