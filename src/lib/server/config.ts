@@ -35,6 +35,7 @@ const MAX_CONFIG_SECRET_LENGTH = 512;
 const MAX_CONFIG_URL_LENGTH = 2048;
 const MAX_CONFIG_BOOLEAN_LENGTH = 16;
 const MAX_CONFIG_INTEGER_LENGTH = 32;
+const ENCODED_CONTROL_CHARACTER_PATTERN = /%(?:0[0-9a-f]|1[0-9a-f]|7f)|%c2%(?:8[0-9a-f]|9[0-9a-f])/i;
 
 export function readConfig(env: Record<string, string | undefined> = process.env): NullbuilderConfig {
   const owner = normalizeOwner(env.NULLBUILDER_OWNER ?? DEFAULT_OWNER);
@@ -108,9 +109,17 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
     throw new Error(`Invalid URL credentials for ${name}.`);
   }
 
+  if (hasEncodedControlCharacter(url.pathname)) {
+    throw new Error(`Invalid URL for ${name}.`);
+  }
+
   url.hash = '';
   url.search = '';
   return url.toString().replace(/\/$/, '');
+}
+
+function hasEncodedControlCharacter(value: string): boolean {
+  return ENCODED_CONTROL_CHARACTER_PATTERN.test(value);
 }
 
 function isLoopbackHost(hostname: string): boolean {
