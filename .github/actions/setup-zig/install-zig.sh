@@ -69,7 +69,9 @@ if [ ! -x "${install_dir}/${zig_bin}" ]; then
   zig_metadata="$(
     "$python_bin" - "$version" "$host_key" <<'PY'
 import json
+import re
 import sys
+import urllib.parse
 import urllib.request
 
 version = sys.argv[1]
@@ -87,8 +89,25 @@ checksum = host.get("shasum") or ""
 if not archive_url:
     raise SystemExit(f"missing archive URL for version={version!r} host={host_key!r}")
 
+if not isinstance(archive_url, str):
+    raise SystemExit("invalid Zig archive URL in download metadata")
+
+parsed_url = urllib.parse.urlparse(archive_url)
+if (
+    parsed_url.scheme != "https"
+    or parsed_url.netloc != "ziglang.org"
+    or parsed_url.query
+    or parsed_url.fragment
+    or not (parsed_url.path.startswith("/download/") or parsed_url.path.startswith("/builds/"))
+    or not (parsed_url.path.endswith(".tar.xz") or parsed_url.path.endswith(".zip"))
+):
+    raise SystemExit("invalid Zig archive URL in download metadata")
+
+if not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", checksum):
+    raise SystemExit("invalid Zig archive checksum in download metadata")
+
 print(archive_url)
-print(checksum)
+print(checksum.lower())
 PY
   )"
 
