@@ -27,6 +27,18 @@ test('selectDashboardJson returns command-specific rows and load errors', () => 
   });
 });
 
+test('selectDashboardJson does not compute error rows for full dashboard JSON', () => {
+  const repositories = Array.from({ length: 1 }, () => dashboardFixture().repositories[0]);
+  Object.defineProperty(repositories, 0, {
+    get() {
+      throw new Error('repositories should not be read');
+    }
+  });
+  const dashboard = dashboardFixture({ repositories, issues: [], pullRequests: [] });
+
+  assert.equal(selectDashboardJson('audit', dashboard), dashboard);
+});
+
 test('formatDashboard keeps read-error empty states explicit', () => {
   const dashboard = dashboardFixture({
     issues: [],

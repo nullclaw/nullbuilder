@@ -16,26 +16,22 @@ const MAX_TERMINAL_TABLE_ROWS = 1000;
 const RUN_KINDS = ['ci', 'nightly', 'release'] as const;
 
 export function selectDashboardJson(command: Command, dashboard: DashboardData) {
-  const errors = dashboard.repositories
-    .filter((repo) => repo.status === 'error')
-    .map((repo) => ({ repo: repo.slug, error: repo.error }));
-
   if (command === 'issues') {
     return {
       items: dashboard.issues,
-      errors
+      errors: repositoryErrorRows(dashboard)
     };
   }
   if (command === 'prs') {
     return {
       items: dashboard.pullRequests,
-      errors
+      errors: repositoryErrorRows(dashboard)
     };
   }
   if (command === 'runs' || command === 'stars' || command === 'repos') {
     return {
       items: dashboard.repositories,
-      errors
+      errors: repositoryErrorRows(dashboard)
     };
   }
 
@@ -117,18 +113,8 @@ export function formatAuditReport(report: AuditReport): string {
 }
 
 export function formatRepositoryErrors(dashboard: DashboardData): string {
-  const lines: string[] = [];
-
-  for (let index = 0; index < dashboard.repositories.length; index += 1) {
-    if (lines.length >= MAX_TERMINAL_TABLE_ROWS) {
-      break;
-    }
-
-    const repo = dashboard.repositories[index];
-    if (repo.status === 'error') {
-      lines.push(terminalLine(`${repo.slug}: ${repo.error}`));
-    }
-  }
+  const errorRows = repositoryErrorRows(dashboard, MAX_TERMINAL_TABLE_ROWS);
+  const lines = errorRows.map((repo) => terminalLine(`${repo.repo}: ${repo.error}`));
 
   const omittedRows = Math.max(0, dashboard.totals.erroredRepositories - lines.length);
   if (omittedRows > 0) {
@@ -136,6 +122,25 @@ export function formatRepositoryErrors(dashboard: DashboardData): string {
   }
 
   return lines.join('\n');
+}
+
+function repositoryErrorRows(
+  dashboard: DashboardData,
+  maxRows = dashboard.repositories.length
+): Array<{ repo: string; error: string }> {
+  const errors: Array<{ repo: string; error: string }> = [];
+
+  for (let index = 0; index < dashboard.repositories.length && errors.length < maxRows; index += 1) {
+    const repo = dashboard.repositories[index];
+    if (repo.status === 'error') {
+      errors.push({
+        repo: repo.slug,
+        error: repo.error ?? 'Unknown repository error.'
+      });
+    }
+  }
+
+  return errors;
 }
 
 export function readErrorExitCode(dashboard: DashboardData): number | null {
