@@ -67,6 +67,7 @@ fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
 }
 
 fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(JsonValue) {
+    if (json_bytes.len > MAX_RUNS_JSON_BYTES) return error.RunsJsonTooLarge;
     return try std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{});
 }
 
@@ -662,6 +663,14 @@ test "nightly treats malformed workflow run collections as empty history" {
         try std.testing.expectEqualStrings("new-sha", decision.reason);
         try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
     }
+}
+
+test "nightly rejects oversized runs payloads at the parser boundary" {
+    const json = try std.testing.allocator.alloc(u8, MAX_RUNS_JSON_BYTES + 1);
+    defer std.testing.allocator.free(json);
+    @memset(json, ' ');
+
+    try std.testing.expectError(error.RunsJsonTooLarge, parseRunsPayload(std.testing.allocator, json));
 }
 
 test "nightly omits unsafe matched run URLs from API payload" {
