@@ -95,7 +95,13 @@ export function visibleAuditFindings<T>(findings: readonly T[], limit = 18): rea
     return [];
   }
 
-  return findings.slice(0, Math.min(limit, MAX_VISIBLE_AUDIT_FINDINGS));
+  const count = Math.min(findings.length, limit, MAX_VISIBLE_AUDIT_FINDINGS);
+  const visible: T[] = [];
+  for (let index = 0; index < count; index += 1) {
+    visible.push(findings[index]);
+  }
+
+  return visible;
 }
 
 export function buildAuditRepositoryUrls(

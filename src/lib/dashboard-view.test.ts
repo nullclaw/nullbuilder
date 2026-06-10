@@ -64,6 +64,17 @@ test('visibleAuditFindings caps oversized limits before slicing', () => {
   assert.deepEqual(visible, Array.from({ length: MAX_VISIBLE_AUDIT_FINDINGS }, (_, index) => index));
 });
 
+test('visibleAuditFindings avoids user-controlled array slice methods', () => {
+  class UnsafeSliceArray<T> extends Array<T> {
+    override slice(): T[] {
+      throw new Error('slice should not be called');
+    }
+  }
+  const findings = new UnsafeSliceArray(1, 2, 3);
+
+  assert.deepEqual(visibleAuditFindings(findings, 2), [1, 2]);
+});
+
 test('audit href helpers prefer safe finding URLs before repository fallbacks', () => {
   const repositoryUrls = buildAuditRepositoryUrls([
     { repo: 'nullclaw/nullbuilder', url: 'https://github.example.test/nullclaw/nullbuilder' },
