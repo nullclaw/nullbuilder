@@ -253,6 +253,24 @@ test('runLoginWebAction rejects duplicate web token fields', () => {
   });
 });
 
+test('runLoginWebAction rejects unknown form fields before creating a session', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret'
+  });
+  const limiter = testLoginRateLimiter(2);
+  const formData = new FormData();
+  formData.set('webToken', 'web-secret');
+  formData.set('unexpected', 'private-login-value');
+
+  assert.deepEqual(runLoginWebAction(config, limiter, 'client', formData), {
+    ok: false,
+    status: 403,
+    message: 'Invalid web token.'
+  });
+  assert.equal(limiter.size, 1);
+});
+
 test('runLoginWebAction rejects missing web token configuration', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder'
@@ -291,6 +309,16 @@ test('runLogoutWebAction enforces CSRF only for authenticated web sessions', () 
     ok: true
   });
   assert.deepEqual(runLogoutWebAction(config, cookies, duplicateCsrfForm), {
+    ok: false,
+    status: 403,
+    message: 'Invalid request token.'
+  });
+
+  const unknownFieldForm = new FormData();
+  unknownFieldForm.set('csrfToken', csrfToken);
+  unknownFieldForm.set('unexpected', 'private-logout-value');
+
+  assert.deepEqual(runLogoutWebAction(config, cookies, unknownFieldForm), {
     ok: false,
     status: 403,
     message: 'Invalid request token.'

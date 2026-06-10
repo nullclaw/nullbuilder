@@ -70,6 +70,8 @@ export type WebMutationResult<T, Field extends string> = WebMutationSuccess<T> |
 
 const DUPLICATE_FORM_FIELD_MESSAGE = 'Duplicate form field.';
 const UNKNOWN_FORM_FIELD_MESSAGE = 'Unknown form field.';
+const LOGIN_FORM_FIELDS = ['webToken'] as const;
+const LOGOUT_FORM_FIELDS = ['csrfToken'] as const;
 const BUILD_PR_FORM_FIELDS = ['repo', 'prNumber', 'tagName', 'confirm', 'force'] as const;
 const RELEASE_TAG_FORM_FIELDS = ['repo', 'tagName', 'targetRef', 'confirm', 'force'] as const;
 const BUILD_PR_ALLOWED_FORM_FIELDS = ['csrfToken', ...BUILD_PR_FORM_FIELDS] as const;
@@ -81,8 +83,6 @@ export function runLoginWebAction(
   rateLimitKey: string,
   formData: FormData
 ): WebLoginResult {
-  const token = formString(singleFormValue(formData, 'webToken'));
-
   if (!config.webToken) {
     return authFailure(403, 'Set NULLBUILDER_WEB_TOKEN before exposing token-backed dashboard data.');
   }
@@ -91,6 +91,13 @@ export function runLoginWebAction(
     return authFailure(429, 'Too many failed login attempts. Try again later.');
   }
 
+  const form = parseAuthForm(formData, LOGIN_FORM_FIELDS, 'Invalid web token.');
+  if (!form.ok) {
+    rateLimiter.recordFailure(rateLimitKey);
+    return form;
+  }
+
+  const token = formString(singleFormValue(formData, 'webToken'));
   if (!isTokenMatch(token, config.webToken)) {
     rateLimiter.recordFailure(rateLimitKey);
     return authFailure(403, 'Invalid web token.');
@@ -104,6 +111,11 @@ export function runLoginWebAction(
 }
 
 export function runLogoutWebAction(config: NullbuilderConfig, cookies: Cookies, formData: FormData): WebLogoutResult {
+  const form = parseAuthForm(formData, LOGOUT_FORM_FIELDS, 'Invalid request token.');
+  if (!form.ok) {
+    return form;
+  }
+
   const csrfToken = singleFormValue(formData, 'csrfToken');
 
   if (config.webToken && isAuthenticated(cookies, config) && !isCsrfTokenMatch(csrfToken, cookies, config)) {
@@ -134,6 +146,19 @@ export function mutationAccessError(
   }
 
   return null;
+}
+
+function parseAuthForm(formData: FormData, allowedFields: readonly string[], message: string): WebAuthFailure | { ok: true } {
+  try {
+    assertFormShape(formData, allowedFields);
+    return { ok: true };
+  } catch (error) {
+    if (isInvalidFormShapeError(error)) {
+      return authFailure(403, message);
+    }
+
+    throw error;
+  }
 }
 
 export async function runBuildPrWebMutation<T>(
