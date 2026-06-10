@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const text_safety = @import("text_safety.zig");
+
 pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
 pub const max_safe_json_integer: u64 = 9_007_199_254_740_991;
@@ -43,6 +45,20 @@ pub fn boundedStringField(
     const value = object.get(field_name) orelse return fallback;
     return switch (value) {
         .string => |string| if (string.len <= max_len) string else fallback,
+        .null => fallback,
+        else => fallback,
+    };
+}
+
+pub fn safeTextField(
+    object: JsonObject,
+    field_name: []const u8,
+    fallback: []const u8,
+    max_len: usize,
+) []const u8 {
+    const value = object.get(field_name) orelse return fallback;
+    return switch (value) {
+        .string => |string| if (string.len <= max_len and !text_safety.hasControl(string)) string else fallback,
         .null => fallback,
         else => fallback,
     };
@@ -112,6 +128,28 @@ test "boundedStringField rejects oversized strings" {
     try std.testing.expectEqualStrings("fallback", boundedStringField(object, "long", "fallback", 4));
     try std.testing.expectEqualStrings("fallback", boundedStringField(object, "empty", "fallback", 4));
     try std.testing.expectEqualStrings("fallback", boundedStringField(object, "missing", "fallback", 4));
+}
+
+test "safeTextField rejects oversized and control-bearing strings" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": "repo-\u043f\u0440\u0438\u0432\u0435\u0442",
+        \\  "newline": "repo\nname",
+        \\  "escape": "repo\u001b[31m",
+        \\  "c1": "repo\u0085name",
+        \\  "empty": null
+        \\}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try std.testing.expectEqualStrings("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", safeTextField(object, "safe", "fallback", 64));
+    try std.testing.expectEqualStrings("fallback", safeTextField(object, "safe", "fallback", 4));
+    try std.testing.expectEqualStrings("fallback", safeTextField(object, "newline", "fallback", 64));
+    try std.testing.expectEqualStrings("fallback", safeTextField(object, "escape", "fallback", 64));
+    try std.testing.expectEqualStrings("fallback", safeTextField(object, "c1", "fallback", 64));
+    try std.testing.expectEqualStrings("fallback", safeTextField(object, "empty", "fallback", 64));
+    try std.testing.expectEqualStrings("fallback", safeTextField(object, "missing", "fallback", 64));
 }
 
 test "intField accepts only safe positive integers" {

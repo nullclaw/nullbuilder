@@ -283,7 +283,7 @@ test "render caps numeric columns from external dashboard json" {
     try expectContains(output, "#9999+");
 }
 
-test "render sanitizes terminal control characters from external text" {
+test "render does not echo terminal control characters from external text" {
     const json =
         \\{
         \\  "items": [
@@ -309,10 +309,12 @@ test "render sanitizes terminal control characters from external text" {
     const output = out.writer.buffered();
 
     try std.testing.expect(std.mem.indexOfScalar(u8, output, terminal.ascii_escape) == null);
-    try expectContains(output, "alphared");
-    try expectContains(output, "success");
-    try expectContains(output, "Fix red next item");
-    try expectContains(output, "rate limited now");
+    try std.testing.expect(std.mem.indexOf(u8, output, "alphared") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "success") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "Fix red next item") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "rate limited now") == null);
+    try expectContains(output, "unknown");
+    try expectContains(output, "completed");
 }
 
 test "render rejects oversized dashboard json before parsing" {

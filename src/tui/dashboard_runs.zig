@@ -42,16 +42,16 @@ fn repeatedStatus(label: []const u8) RunStatuses {
 
 fn isFailedRun(latest: JsonObject, field_name: []const u8) bool {
     const run = dashboard_json.objectField(latest, field_name) orelse return false;
-    const status = dashboard_json.boundedStringField(run, "status", missing_status, max_run_label_len);
+    const status = dashboard_json.safeTextField(run, "status", missing_status, max_run_label_len);
     if (!std.mem.eql(u8, status, completed_status)) return false;
-    return !std.mem.eql(u8, dashboard_json.boundedStringField(run, "conclusion", "", max_run_label_len), success_conclusion);
+    return !std.mem.eql(u8, dashboard_json.safeTextField(run, "conclusion", "", max_run_label_len), success_conclusion);
 }
 
 fn runLabel(latest: JsonObject, field_name: []const u8) []const u8 {
     const run = dashboard_json.objectField(latest, field_name) orelse return missing_status;
-    const status = dashboard_json.boundedStringField(run, "status", missing_status, max_run_label_len);
+    const status = dashboard_json.safeTextField(run, "status", missing_status, max_run_label_len);
     if (!std.mem.eql(u8, status, completed_status)) return status;
-    return dashboard_json.boundedStringField(run, "conclusion", completed_status, max_run_label_len);
+    return dashboard_json.safeTextField(run, "conclusion", completed_status, max_run_label_len);
 }
 
 test "repositoryRunStatuses maps active completed missing and error runs" {
@@ -96,6 +96,23 @@ test "repositoryRunStatuses rejects oversized run labels" {
     const statuses = repositoryRunStatuses("ok", parsed.value.object);
     try std.testing.expectEqualStrings(missing_status, statuses.ci);
     try std.testing.expectEqualStrings(completed_status, statuses.nightly);
+}
+
+test "repositoryRunStatuses rejects control-bearing run labels" {
+    var parsed = try std.json.parseFromSlice(dashboard_json.JsonValue, std.testing.allocator,
+        \\{
+        \\  "ci": {"status": "queued\n"},
+        \\  "nightly": {"status": "completed", "conclusion": "failure\u001b[31m"},
+        \\  "release": {"status": "completed", "conclusion": "success"}
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const statuses = repositoryRunStatuses("ok", parsed.value.object);
+    try std.testing.expectEqualStrings(missing_status, statuses.ci);
+    try std.testing.expectEqualStrings(completed_status, statuses.nightly);
+    try std.testing.expectEqualStrings(success_conclusion, statuses.release);
+    try std.testing.expect(repositoryHasFailure(parsed.value.object));
 }
 
 test "repositoryHasFailure counts only completed non-success runs" {

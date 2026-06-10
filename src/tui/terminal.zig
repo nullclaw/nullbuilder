@@ -1,6 +1,8 @@
 const std = @import("std");
 
-pub const ascii_escape: u8 = 0x1b;
+const text_safety = @import("text_safety.zig");
+
+pub const ascii_escape: u8 = text_safety.ascii_escape;
 pub const truncated_output_suffix = "\n[output truncated]\n";
 
 pub const SanitizeOptions = struct {
@@ -77,7 +79,7 @@ pub fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
     if (max_len == 0) return "";
 
     var end = max_len;
-    while (end > 0 and isUtf8ContinuationByte(value[end])) {
+    while (end > 0 and text_safety.isUtf8ContinuationByte(value[end])) {
         end -= 1;
     }
 
@@ -88,10 +90,10 @@ pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
     var index: usize = 0;
     while (index < value.len) {
         const byte = value[index];
-        if (byte == ascii_escape or isUtf8C1Control(value, index) or isUnsafeTerminalControlByte(byte, options)) {
+        if (byte == ascii_escape or text_safety.isUtf8C1Control(value, index) or isUnsafeTerminalControlByte(byte, options)) {
             return true;
         }
-        index += utf8SequenceLength(value, index);
+        index += text_safety.utf8SequenceLength(value, index);
     }
 
     return false;
@@ -108,7 +110,7 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
         return null;
     }
 
-    if (isUtf8C1Control(value, index.*)) {
+    if (text_safety.isUtf8C1Control(value, index.*)) {
         index.* += 2;
         buffer[0] = ' ';
         return buffer[0..1];
@@ -121,7 +123,7 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
     }
 
     const start = index.*;
-    const sequence_len = utf8SequenceLength(value, start);
+    const sequence_len = text_safety.utf8SequenceLength(value, start);
     index.* += sequence_len;
     return value[start..index.*];
 }
@@ -156,35 +158,7 @@ fn skipAnsiEscape(value: []const u8, start: usize) usize {
 
 fn isUnsafeTerminalControlByte(byte: u8, options: SanitizeOptions) bool {
     if (options.preserve_newlines and byte == '\n') return false;
-    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
-}
-
-fn isUtf8C1Control(value: []const u8, index: usize) bool {
-    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
-}
-
-fn utf8SequenceLength(value: []const u8, index: usize) usize {
-    const byte = value[index];
-    if (byte < 0x80) return 1;
-
-    const expected_len: usize = if (byte & 0b1110_0000 == 0b1100_0000)
-        2
-    else if (byte & 0b1111_0000 == 0b1110_0000)
-        3
-    else if (byte & 0b1111_1000 == 0b1111_0000)
-        4
-    else
-        return 1;
-
-    if (index + expected_len > value.len) return 1;
-    for (value[index + 1 .. index + expected_len]) |continuation| {
-        if (!isUtf8ContinuationByte(continuation)) return 1;
-    }
-    return expected_len;
-}
-
-fn isUtf8ContinuationByte(byte: u8) bool {
-    return byte & 0b1100_0000 == 0b1000_0000;
+    return text_safety.isControlByte(byte);
 }
 
 test "terminal sanitizer strips escape sequences and controls" {

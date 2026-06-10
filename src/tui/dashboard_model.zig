@@ -149,11 +149,11 @@ pub fn repositoryFromValue(value: JsonValue) ?Repository {
 }
 
 fn repositoryFromObject(repo: JsonObject) Repository {
-    const status = dashboard_json.boundedStringField(repo, "status", "ok", max_repo_text_len);
+    const status = dashboard_json.safeTextField(repo, "status", "ok", max_repo_text_len);
     const latest = dashboard_json.objectField(repo, "latestRuns");
 
     return .{
-        .slug = dashboard_json.boundedStringField(repo, "slug", "unknown", max_repo_text_len),
+        .slug = dashboard_json.safeTextField(repo, "slug", "unknown", max_repo_text_len),
         .open_issues = dashboard_json.safeIntegerField(repo, "openIssues"),
         .open_pulls = dashboard_json.safeIntegerField(repo, "openPulls"),
         .stars = dashboard_json.safeIntegerField(repo, "stars"),
@@ -183,17 +183,17 @@ fn workItemFromObject(work: JsonObject) ?WorkItem {
     if (number == 0) return null;
 
     return .{
-        .repo = dashboard_json.boundedStringField(work, "repo", "", max_repo_text_len),
+        .repo = dashboard_json.safeTextField(work, "repo", "", max_repo_text_len),
         .number = number,
-        .title = dashboard_json.boundedStringField(work, "title", "", max_work_title_len),
+        .title = dashboard_json.safeTextField(work, "title", "", max_work_title_len),
     };
 }
 
 fn loadErrorFromValue(value: JsonValue) ?LoadError {
     return switch (value) {
         .object => |load_error| .{
-            .repo = dashboard_json.boundedStringField(load_error, "repo", "", max_repo_text_len),
-            .message = dashboard_json.boundedStringField(load_error, "error", "", max_error_message_len),
+            .repo = dashboard_json.safeTextField(load_error, "repo", "", max_repo_text_len),
+            .message = dashboard_json.safeTextField(load_error, "error", "", max_error_message_len),
         },
         else => null,
     };
@@ -361,6 +361,47 @@ test "dashboard model rejects oversized external text fields" {
     try std.testing.expectEqualStrings("", issue.repo);
     try std.testing.expectEqual(@as(u64, 7), issue.number);
     try std.testing.expectEqualStrings("", issue.title);
+
+    var errors = LoadErrorIterator.init(dashboard);
+    const load_error = errors.next().?;
+    try std.testing.expectEqualStrings("", load_error.repo);
+    try std.testing.expectEqualStrings("", load_error.message);
+}
+
+test "dashboard model rejects control-bearing external text fields" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    {
+        \\      "slug": "alpha\u001b[31m",
+        \\      "status": "error\n",
+        \\      "latestRuns": {
+        \\        "ci": {"status": "completed", "conclusion": "success\u001b[2K"}
+        \\      },
+        \\      "issues": [{"repo": "alpha\r", "number": 7, "title": "Fix\nbuild"}],
+        \\      "pullRequests": [{"repo": "alpha", "number": 8, "title": "Ship release"}]
+        \\    }
+        \\  ],
+        \\  "errors": [{"repo": "beta\u0085", "error": "rate limited\rnow"}]
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const dashboard = try Dashboard.init(parsed.value.object);
+    const repo = repositoryFromValue(dashboard.items[0]).?;
+    try std.testing.expectEqualStrings("unknown", repo.slug);
+    try std.testing.expectEqualStrings("completed", repo.runs.ci);
+    try std.testing.expect(repo.has_failure);
+
+    var issues = WorkItemIterator.init(dashboard, .issues);
+    const issue = issues.next().?;
+    try std.testing.expectEqualStrings("", issue.repo);
+    try std.testing.expectEqualStrings("", issue.title);
+
+    var pulls = WorkItemIterator.init(dashboard, .pull_requests);
+    const pull = pulls.next().?;
+    try std.testing.expectEqualStrings("alpha", pull.repo);
+    try std.testing.expectEqualStrings("Ship release", pull.title);
 
     var errors = LoadErrorIterator.init(dashboard);
     const load_error = errors.next().?;
