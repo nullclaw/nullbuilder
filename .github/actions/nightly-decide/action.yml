@@ -47,7 +47,15 @@ runs:
         DECIDE_WORKFLOW_NAME: ${{ inputs.workflow_name }}
         FORCE_NIGHTLY: ${{ inputs.force }}
       run: |
-        decision_file="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nightly-decision.XXXXXX")"
+        temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+        case "$temp_root" in
+          "" | -* | *$'\n'* | *$'\r'*)
+            echo "invalid temporary directory" >&2
+            exit 1
+            ;;
+        esac
+
+        decision_file="$(mktemp "${temp_root}/nightly-decision.XXXXXX")"
         trap 'rm -f "${decision_file}"' EXIT
 
         force_args=()

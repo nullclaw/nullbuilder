@@ -86,6 +86,15 @@ test('setup-zig validates archive filenames before local writes', () => {
   assert.ok(source.includes('archive_path="${archive_dir}/${archive_name}"'));
 });
 
+test('nightly decide validates temp root before creating decision output files', () => {
+  const source = readFileSync(join(actionsRoot, 'nightly-decide', 'action.yml'), 'utf8');
+
+  assert.ok(source.includes('temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"'));
+  assert.ok(source.includes('"" | -* | *$\'\\n\'* | *$\'\\r\'*)'));
+  assert.ok(source.includes('decision_file="$(mktemp "${temp_root}/nightly-decision.XXXXXX")"'));
+  assert.ok(!source.includes('mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nightly-decision.XXXXXX"'));
+});
+
 function actionYamlFiles(directory: string): string[] {
   const files: string[] = [];
 
