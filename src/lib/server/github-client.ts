@@ -34,7 +34,7 @@ export async function githubGetPages<T>(
 
   for (let page = 0; next && page < maxPages; page += 1) {
     const result: GitHubFetchResult<T[]> = await githubFetchJson<T[]>(config, next, init);
-    values.push(...result.data);
+    appendPageValues(values, result.data);
     next = result.next;
   }
 
@@ -307,6 +307,12 @@ function resultFromCacheEntry<T>(entry: CacheEntry<T>): GitHubFetchResult<T> {
     data: entry.data,
     next: entry.next
   };
+}
+
+function appendPageValues<T>(values: T[], page: readonly T[]): void {
+  for (const value of page) {
+    values.push(value);
+  }
 }
 
 function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | undefined {

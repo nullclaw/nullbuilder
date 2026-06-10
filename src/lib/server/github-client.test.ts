@@ -40,6 +40,23 @@ test('githubGetPages follows same-origin pagination links', async () => {
   assert.deepEqual(requests, ['https://api.example.test/repos', 'https://api.example.test/repos?page=2']);
 });
 
+test('githubGetPages appends large pages without spreading array arguments', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://large-page.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const page = Array.from({ length: 150_000 }, (_, index) => index);
+
+  globalThis.fetch = (async () => new Response(JSON.stringify(page))) as typeof fetch;
+
+  const values = await githubGetPages<number>(config, '/repos', {}, 1);
+
+  assert.equal(values.length, page.length);
+  assert.equal(values[0], 0);
+  assert.equal(values.at(-1), page.length - 1);
+});
+
 test('githubRequest reuses fresh cached GET responses', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
