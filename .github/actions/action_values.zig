@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const max_decimal_id_digits = "18446744073709551615".len;
+const full_sha_bytes = 40;
 const max_host_bytes = 253;
 const max_host_label_bytes = 63;
 const max_port_digits = "65535".len;
@@ -13,8 +14,8 @@ pub fn isDecimalId(value: []const u8) bool {
     return id > 0;
 }
 
-pub fn isHexSha(value: []const u8) bool {
-    if (value.len < 7 or value.len > 64) return false;
+pub fn isFullHexSha(value: []const u8) bool {
+    if (value.len != full_sha_bytes) return false;
 
     for (value) |byte| {
         if (!std.ascii.isHex(byte)) return false;
@@ -189,7 +190,7 @@ fn isAsciiControlOrSpace(byte: u8) bool {
     return byte <= ' ' or byte == 0x7f;
 }
 
-test "action values validate decimal ids and shas" {
+test "action values validate decimal ids and full shas" {
     try std.testing.expect(isDecimalId("1"));
     try std.testing.expect(isDecimalId("123456789"));
     try std.testing.expect(isDecimalId("18446744073709551615"));
@@ -199,10 +200,11 @@ test "action values validate decimal ids and shas" {
     try std.testing.expect(!isDecimalId("18446744073709551616"));
     try std.testing.expect(!isDecimalId("1" ** 100));
 
-    try std.testing.expect(isHexSha("abcdef0"));
-    try std.testing.expect(isHexSha("abcdef0123456789abcdef0123456789abcdef01"));
-    try std.testing.expect(!isHexSha("abcdef"));
-    try std.testing.expect(!isHexSha("not-a-sha"));
+    try std.testing.expect(isFullHexSha("abcdef0123456789abcdef0123456789abcdef01"));
+    try std.testing.expect(!isFullHexSha("abcdef0"));
+    try std.testing.expect(!isFullHexSha("abcdef"));
+    try std.testing.expect(!isFullHexSha("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"));
+    try std.testing.expect(!isFullHexSha("not-a-sha"));
 }
 
 test "action values validate repository slugs" {

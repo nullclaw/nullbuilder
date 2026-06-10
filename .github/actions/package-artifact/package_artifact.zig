@@ -78,7 +78,7 @@ fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
     if (!action_values.isSafeMetadataValue(options.zig_target, 128)) return error.InvalidZigTarget;
     if (!action_values.isSafeMetadataValue(options.version, 128)) return error.InvalidVersion;
     if (!action_values.isRepositorySlug(options.repository)) return error.InvalidRepository;
-    if (!action_values.isHexSha(options.commit)) return error.InvalidCommitSha;
+    if (!action_values.isFullHexSha(options.commit)) return error.InvalidCommitSha;
     if (!action_values.isDecimalId(options.run_id)) return error.InvalidRunId;
     if (!action_values.isHttpUrlBase(options.server_url)) return error.InvalidServerUrl;
     if (!action_values.isSafeMetadataValue(options.built_at, 64)) return error.InvalidBuiltAt;
@@ -89,7 +89,7 @@ fn printUsage(io: std.Io) !u8 {
     var err = std.Io.File.stderr().writer(io, &err_buf);
     try err.interface.writeAll(
         \\usage:
-        \\  zig run package_artifact.zig -- --binary PATH --target TARGET --zig-target ZIG_TARGET --version VERSION --repository REPO --commit SHA --run-id ID --server-url URL --built-at ISO8601
+        \\  zig run package_artifact.zig -- --binary PATH --target TARGET --zig-target ZIG_TARGET --version VERSION --repository REPO --commit FULL_SHA --run-id ID --server-url URL --built-at ISO8601
         \\
     );
     try err.interface.flush();
@@ -241,7 +241,7 @@ test "package artifact builds parseable manifest" {
         .zig_target = "x86_64-linux-musl",
         .version = "nightly-20260504-abcdef0",
         .repository = "nullclaw/nullclaw",
-        .commit = "abcdef012345",
+        .commit = "abcdef0123456789abcdef0123456789abcdef01",
         .run_id = "123",
         .server_url = "https://github.com",
         .built_at = "2026-05-04T02:23:00Z",
@@ -265,7 +265,7 @@ test "package artifact validates package options before filesystem writes" {
         .zig_target = "x86_64-linux-musl",
         .version = "nightly-20260504-abcdef0",
         .repository = "nullclaw/nullclaw",
-        .commit = "abcdef012345",
+        .commit = "abcdef0123456789abcdef0123456789abcdef01",
         .run_id = "123",
         .server_url = "https://github.com",
         .built_at = "2026-05-04T02:23:00Z",

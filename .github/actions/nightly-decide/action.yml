@@ -9,7 +9,7 @@ inputs:
     description: Current GitHub Actions run id.
     required: true
   head_sha:
-    description: Commit SHA being considered for nightly build.
+    description: Full 40-character commit SHA being considered for nightly build.
     required: true
   force:
     description: Force a rebuild even if an earlier successful nightly exists.

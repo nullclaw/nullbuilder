@@ -18,7 +18,7 @@ inputs:
     description: GitHub repository name.
     required: true
   commit:
-    description: Commit SHA.
+    description: Full 40-character commit SHA.
     required: true
   run_id:
     description: GitHub Actions run id.

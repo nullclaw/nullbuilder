@@ -53,7 +53,7 @@ fn isNightlyEvent(event: []const u8) bool {
 fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
     if (!action_paths.isSafeRelativePath(options.runs_json_path)) return error.InvalidRunsJsonPath;
     if (!action_values.isDecimalId(options.current_run_id)) return error.InvalidCurrentRunId;
-    if (!action_values.isHexSha(options.head_sha)) return error.InvalidHeadSha;
+    if (!action_values.isFullHexSha(options.head_sha)) return error.InvalidHeadSha;
 }
 
 fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(RunsPayload) {
@@ -129,7 +129,7 @@ fn printUsage(io: std.Io) !u8 {
     var err = std.Io.File.stderr().writer(io, &err_buf);
     try err.interface.writeAll(
         \\usage:
-        \\  zig run nightly_decide.zig -- --runs-json FILE --current-run-id ID --head-sha SHA --workflow-name NAME [--force]
+        \\  zig run nightly_decide.zig -- --runs-json FILE --current-run-id ID --head-sha FULL_SHA --workflow-name NAME [--force]
         \\
     );
     try err.interface.flush();
