@@ -50,7 +50,6 @@ pub const Dashboard = struct {
 
 pub const Repository = struct {
     slug: []const u8,
-    valid_slug: bool,
     loaded: bool,
     open_issues: u64,
     open_pulls: u64,
@@ -74,7 +73,7 @@ pub const RepositoryIterator = struct {
             const index = self.index;
             self.index += 1;
             const repo = repositoryFromValue(self.items[index]) orelse continue;
-            if (repo.valid_slug) return repo;
+            return repo;
         }
 
         return null;
@@ -178,14 +177,13 @@ pub fn repositoryFromValue(value: JsonValue) ?Repository {
     return repositoryFromObject(repo);
 }
 
-fn repositoryFromObject(repo: JsonObject) Repository {
+fn repositoryFromObject(repo: JsonObject) ?Repository {
+    const slug = safeRepoSlugField(repo, "slug") orelse return null;
     const status = dashboard_json.safeTextField(repo, "status", "ok", max_text_field_len);
     const latest = dashboard_json.objectField(repo, "latestRuns");
-    const slug = safeRepoSlugField(repo, "slug");
 
     return .{
-        .slug = slug orelse "unknown",
-        .valid_slug = slug != null,
+        .slug = slug,
         .loaded = repositoryIsLoaded(status),
         .open_issues = dashboard_json.safeIntegerField(repo, "openIssues"),
         .open_pulls = dashboard_json.safeIntegerField(repo, "openPulls"),
@@ -542,8 +540,7 @@ test "dashboard model rejects oversized external text fields" {
     defer parsed.deinit();
 
     const dashboard = Dashboard.init(parsed.value.object);
-    const repo = repositoryFromValue(dashboard.items[0]).?;
-    try std.testing.expectEqualStrings("unknown", repo.slug);
+    try std.testing.expect(repositoryFromValue(dashboard.items[0]) == null);
 
     var issues = WorkItemIterator.init(dashboard, .issues);
     try std.testing.expectEqual(null, issues.next());
@@ -572,10 +569,7 @@ test "dashboard model rejects control-bearing external text fields" {
     defer parsed.deinit();
 
     const dashboard = Dashboard.init(parsed.value.object);
-    const repo = repositoryFromValue(dashboard.items[0]).?;
-    try std.testing.expectEqualStrings("unknown", repo.slug);
-    try std.testing.expectEqualStrings("completed", repo.runs.ci);
-    try std.testing.expect(repo.has_failure);
+    try std.testing.expect(repositoryFromValue(dashboard.items[0]) == null);
 
     var issues = WorkItemIterator.init(dashboard, .issues);
     try std.testing.expectEqual(null, issues.next());
