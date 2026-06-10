@@ -70,6 +70,7 @@ export type WebMutationResult<T, Field extends string> = WebMutationSuccess<T> |
 
 const DUPLICATE_FORM_FIELD_MESSAGE = 'Duplicate form field.';
 const UNKNOWN_FORM_FIELD_MESSAGE = 'Unknown form field.';
+const WEB_ACTION_FORM_INVALID_MESSAGE = 'Invalid form body.';
 const WEB_ACTION_FORM_TOO_LARGE_MESSAGE = 'Request body is too large.';
 const MAX_WEB_ACTION_CONTENT_LENGTH_HEADER = 32;
 export const MAX_WEB_ACTION_FORM_BYTES = 16 * 1024;
@@ -119,6 +120,12 @@ export type WebActionBodyLimitFailure = {
   message: string;
 };
 
+export type WebActionBodyParseFailure = {
+  ok: false;
+  status: 400;
+  message: string;
+};
+
 type WebActionFormDataSuccess = {
   ok: true;
   formData: FormData;
@@ -129,7 +136,7 @@ type WebActionRequestBodySuccess = {
   bytes: Uint8Array;
 };
 
-export type WebActionFormDataResult = WebActionFormDataSuccess | WebActionBodyLimitFailure;
+export type WebActionFormDataResult = WebActionFormDataSuccess | WebActionBodyLimitFailure | WebActionBodyParseFailure;
 
 export function webActionContentLengthFailure(headers: Headers): WebActionBodyLimitFailure | null {
   const contentLength = headers.get('content-length');
@@ -159,10 +166,14 @@ export async function readWebActionFormData(request: Request): Promise<WebAction
     body: new Blob([arrayBufferFromBytes(body.bytes)])
   });
 
-  return {
-    ok: true,
-    formData: await boundedRequest.formData()
-  };
+  try {
+    return {
+      ok: true,
+      formData: await boundedRequest.formData()
+    };
+  } catch {
+    return webActionBodyParseFailure();
+  }
 }
 
 export function runLogoutWebAction(config: NullbuilderConfig, cookies: Cookies, formData: FormData): WebLogoutResult {
@@ -581,6 +592,14 @@ function webActionBodyTooLargeFailure(): WebActionBodyLimitFailure {
     ok: false,
     status: 413,
     message: WEB_ACTION_FORM_TOO_LARGE_MESSAGE
+  };
+}
+
+function webActionBodyParseFailure(): WebActionBodyParseFailure {
+  return {
+    ok: false,
+    status: 400,
+    message: WEB_ACTION_FORM_INVALID_MESSAGE
   };
 }
 

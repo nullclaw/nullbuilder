@@ -281,6 +281,42 @@ test('readWebActionFormData rejects bodies larger than the declared content leng
   });
 });
 
+test('readWebActionFormData rejects malformed form bodies without throwing parser details', async () => {
+  const textResult = await readWebActionFormData(
+    new Request('https://nullbuilder.example.test/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain'
+      },
+      body: 'private=secret'
+    })
+  );
+
+  assert.deepEqual(textResult, {
+    ok: false,
+    status: 400,
+    message: 'Invalid form body.'
+  });
+  assert.equal(textResult.message.includes('secret'), false);
+
+  const multipartResult = await readWebActionFormData(
+    new Request('https://nullbuilder.example.test/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'multipart/form-data; boundary=nullbuilder'
+      },
+      body: '--nullbuilder\r\nContent-Disposition: form-data; name="webToken"\r\n\r\nprivate-secret'
+    })
+  );
+
+  assert.deepEqual(multipartResult, {
+    ok: false,
+    status: 400,
+    message: 'Invalid form body.'
+  });
+  assert.equal(multipartResult.message.includes('private-secret'), false);
+});
+
 test('runLoginWebAction creates a session token and clears prior failures', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
