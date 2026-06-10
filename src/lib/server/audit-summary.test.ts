@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import type { RepoSlug } from '../repositories';
 import type { AuditFinding, AuditRepositoryResult, AuditSeverity } from './audit-types';
 import {
@@ -13,6 +13,41 @@ import {
   scoreFindings,
   sortFindings
 } from './audit-summary';
+
+const originalArraySplice = Array.prototype.splice;
+
+afterEach(() => {
+  restoreArraySplice();
+});
+
+function restoreArraySplice(): void {
+  Object.defineProperty(Array.prototype, 'splice', {
+    configurable: true,
+    writable: true,
+    value: originalArraySplice
+  });
+}
+
+function withGuardedArraySplice<T>(callback: () => T): { result: T; spliceCalls: number } {
+  let spliceCalls = 0;
+  Object.defineProperty(Array.prototype, 'splice', {
+    configurable: true,
+    writable: true,
+    value() {
+      spliceCalls += 1;
+      throw new Error('Array.prototype.splice should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      spliceCalls
+    };
+  } finally {
+    restoreArraySplice();
+  }
+}
 
 test('checkStatus returns the highest severity present', () => {
   assert.equal(checkStatus([]), 'ok');
@@ -163,6 +198,46 @@ test('audit summary helpers avoid user-controlled array iterators', () => {
     ['Zeta']
   );
   assert.equal(buildAuditTotals(repositories).warning, 1);
+});
+
+test('audit summary collectors avoid global array splice hooks', () => {
+  const criticalZeta = finding('critical', 'nullclaw/zeta', 'Zeta');
+  const criticalAlpha = finding('critical', 'nullclaw/alpha', 'Alpha');
+  const warningAlpha = finding('warning', 'nullclaw/alpha', 'Warning');
+
+  const { result, spliceCalls } = withGuardedArraySplice(() => ({
+    checkFindings: collectCheckFindings([
+      {
+        id: 'guarded-check',
+        title: 'Guarded check',
+        area: 'workflow',
+        status: 'critical',
+        findings: [warningAlpha, criticalZeta, criticalAlpha]
+      }
+    ]),
+    auditFindings: collectAuditFindings([
+      repository('ok', 100, [warningAlpha, criticalZeta]),
+      repository('ok', 100, [criticalAlpha])
+    ])
+  }));
+
+  assert.equal(spliceCalls, 0);
+  assert.deepEqual(
+    result.checkFindings.map((item) => `${item.severity}:${item.repo}:${item.title}`),
+    [
+      'critical:nullclaw/alpha:Alpha',
+      'critical:nullclaw/zeta:Zeta',
+      'warning:nullclaw/alpha:Warning'
+    ]
+  );
+  assert.deepEqual(
+    result.auditFindings.map((item) => `${item.severity}:${item.repo}:${item.title}`),
+    [
+      'critical:nullclaw/alpha:Alpha',
+      'critical:nullclaw/zeta:Zeta',
+      'warning:nullclaw/alpha:Warning'
+    ]
+  );
 });
 
 test('collectAuditFindings returns a bounded sorted report list', () => {

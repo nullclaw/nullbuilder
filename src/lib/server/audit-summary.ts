@@ -128,7 +128,16 @@ function insertSortedFinding(findings: AuditFinding[], finding: AuditFinding, ma
     }
   }
 
-  findings.splice(lower, 0, copyAuditFinding(finding));
+  insertFindingAt(findings, lower, copyAuditFinding(finding), maxFindings);
+}
+
+function insertFindingAt(findings: AuditFinding[], index: number, finding: AuditFinding, maxFindings: number): void {
+  const nextLength = Math.min(findings.length + 1, maxFindings);
+  for (let shiftIndex = nextLength - 1; shiftIndex > index; shiftIndex -= 1) {
+    findings[shiftIndex] = findings[shiftIndex - 1];
+  }
+
+  findings[index] = finding;
   if (findings.length > maxFindings) {
     findings.length = maxFindings;
   }
