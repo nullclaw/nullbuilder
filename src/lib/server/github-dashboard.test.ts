@@ -26,6 +26,7 @@ import {
 import { GitHubApiError } from './github-client';
 
 const REPO = 'nullclaw/nullbuilder' as RepoSlug;
+const originalArrayPush = Array.prototype.push;
 
 test('mapRepositorySummary maps GitHub payloads and filters PR-backed issues', () => {
   const summary = mapRepositorySummary(
@@ -220,6 +221,34 @@ test('mapRepositorySummary bounds and sanitizes labels from GitHub payloads', ()
     { name: 'x'.repeat(MAX_LABEL_NAME_LENGTH), color: 'd0d7de' }
   ]);
   assert.equal(summary.issues[0].labels.at(-1)?.name, `label-${MAX_LABELS_PER_WORK_ITEM - 5}`);
+});
+
+test('mapRepositorySummary collects labels without global array push hooks', () => {
+  const { result: summary, pushCalls } = withGuardedArrayPush(() =>
+    mapRepositorySummary(
+      REPO,
+      githubRepository(),
+      [
+        issue({
+          labels: [' bug ', { name: 'security', color: 'B60205' }]
+        })
+      ],
+      [
+        pull({
+          labels: [{ name: 'review', color: '0E8A16' }]
+        })
+      ],
+      [],
+      { current: null, last7Days: null, last30Days: null }
+    )
+  );
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(summary.issues[0].labels, [
+    { name: 'bug', color: 'd0d7de' },
+    { name: 'security', color: 'b60205' }
+  ]);
+  assert.deepEqual(summary.pullRequests[0].labels, [{ name: 'review', color: '0e8a16' }]);
 });
 
 test('mapRepositorySummary caps label scanning before reading oversized payloads', () => {
@@ -861,6 +890,31 @@ test('buildDashboard saturates unsafe star totals', () => {
 
   assert.equal(dashboard.totals.stars, Number.MAX_SAFE_INTEGER);
 });
+
+function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      pushCalls
+    };
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalArrayPush
+    });
+  }
+}
 
 function githubRepository(overrides: Partial<GitHubRepositoryResponse> = {}): GitHubRepositoryResponse {
   return {

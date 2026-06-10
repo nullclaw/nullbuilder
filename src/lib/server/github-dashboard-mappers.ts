@@ -233,10 +233,10 @@ function mapLabels(labels: unknown): GitHubLabel[] {
     }
     const label = boundedLabels[index];
     if (typeof label === 'string') {
-      mapped.push({
+      mapped[mapped.length] = {
         name: safeLabelName(label),
         color: DEFAULT_LABEL_COLOR
-      });
+      };
       continue;
     }
 
@@ -245,10 +245,10 @@ function mapLabels(labels: unknown): GitHubLabel[] {
       continue;
     }
 
-    mapped.push({
+    mapped[mapped.length] = {
       name: safeLabelName(labelObject.name),
       color: normalizeLabelColor(labelObject.color)
-    });
+    };
   }
 
   return mapped;
