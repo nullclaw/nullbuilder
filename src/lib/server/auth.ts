@@ -12,6 +12,12 @@ export const AUTH_COOKIE_DELETE_OPTIONS = {
 const ALLOWED_CLOCK_SKEW_MS = 60_000;
 const SESSION_SIGNATURE_LENGTH = 64;
 const MAX_ISSUED_AT_LENGTH = Number.MAX_SAFE_INTEGER.toString(36).length;
+const DEFAULT_LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const DEFAULT_LOGIN_RATE_LIMIT_MAX_FAILURES = 5;
+const DEFAULT_LOGIN_RATE_LIMIT_MAX_KEYS = 1000;
+const MAX_LOGIN_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MAX_LOGIN_RATE_LIMIT_FAILURES = 1000;
+const MAX_LOGIN_RATE_LIMIT_KEYS = 100_000;
 
 export type LoginRateLimiterOptions = {
   windowMs: number;
@@ -39,30 +45,38 @@ type SessionTokenParts = {
   timestamp: number;
 };
 
+type NormalizedLoginRateLimiterOptions = {
+  windowMs: number;
+  maxFailures: number;
+  maxKeys: number;
+};
+
 export class LoginRateLimiter {
   #attempts = new Map<string, LoginAttempt>();
+  #options: NormalizedLoginRateLimiterOptions;
   #now: () => number;
 
-  constructor(private readonly options: LoginRateLimiterOptions) {
+  constructor(options: LoginRateLimiterOptions) {
+    this.#options = normalizeLoginRateLimiterOptions(options);
     this.#now = options.now ?? Date.now;
   }
 
   isAllowed(key: string): boolean {
-    const now = this.#now();
+    const now = this.#nowMs();
     this.#prune(now);
     const attempt = this.#attempts.get(key);
-    return !attempt || attempt.failures < this.options.maxFailures;
+    return !attempt || attempt.failures < this.#options.maxFailures;
   }
 
   recordFailure(key: string): void {
-    const now = this.#now();
+    const now = this.#nowMs();
     this.#prune(now);
     const current = this.#attempts.get(key);
 
     if (!current || current.resetAt <= now) {
       this.#attempts.set(key, {
         failures: 1,
-        resetAt: now + this.options.windowMs
+        resetAt: now + this.#options.windowMs
       });
       this.#prune(now);
       return;
@@ -79,6 +93,11 @@ export class LoginRateLimiter {
     return this.#attempts.size;
   }
 
+  #nowMs(): number {
+    const now = this.#now();
+    return Number.isFinite(now) && now >= 0 ? Math.floor(now) : Date.now();
+  }
+
   #prune(now: number): void {
     for (const [key, attempt] of this.#attempts) {
       if (attempt.resetAt <= now) {
@@ -86,7 +105,7 @@ export class LoginRateLimiter {
       }
     }
 
-    while (this.#attempts.size > this.options.maxKeys) {
+    while (this.#attempts.size > this.#options.maxKeys) {
       const oldestKey = this.#attempts.keys().next().value;
       if (oldestKey === undefined) {
         return;
@@ -94,6 +113,34 @@ export class LoginRateLimiter {
       this.#attempts.delete(oldestKey);
     }
   }
+}
+
+function normalizeLoginRateLimiterOptions(options: LoginRateLimiterOptions): NormalizedLoginRateLimiterOptions {
+  return {
+    windowMs: normalizeBoundedPositiveInteger(
+      options.windowMs,
+      DEFAULT_LOGIN_RATE_LIMIT_WINDOW_MS,
+      MAX_LOGIN_RATE_LIMIT_WINDOW_MS
+    ),
+    maxFailures: normalizeBoundedPositiveInteger(
+      options.maxFailures,
+      DEFAULT_LOGIN_RATE_LIMIT_MAX_FAILURES,
+      MAX_LOGIN_RATE_LIMIT_FAILURES
+    ),
+    maxKeys: normalizeBoundedPositiveInteger(
+      options.maxKeys,
+      DEFAULT_LOGIN_RATE_LIMIT_MAX_KEYS,
+      MAX_LOGIN_RATE_LIMIT_KEYS
+    )
+  };
+}
+
+function normalizeBoundedPositiveInteger(value: number, fallback: number, max: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.min(value, max);
 }
 
 export function isAuthenticated(cookies: Cookies, config: NullbuilderConfig): boolean {
