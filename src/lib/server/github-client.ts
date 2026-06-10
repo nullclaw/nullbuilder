@@ -419,7 +419,11 @@ function normalizeGitHubApiUrl(config: NullbuilderConfig, url: URL, errorMessage
   const base = new URL(config.apiBaseUrl);
   const basePath = base.pathname.replace(/\/+$/, '');
 
-  if (url.origin !== base.origin || (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`))) {
+  if (
+    url.origin !== base.origin ||
+    (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) ||
+    hasUnsafeApiPathControl(`${url.pathname}${url.search}`)
+  ) {
     throw new Error(errorMessage);
   }
 
@@ -428,7 +432,11 @@ function normalizeGitHubApiUrl(config: NullbuilderConfig, url: URL, errorMessage
 }
 
 function hasUnsafeApiPathControl(value: string): boolean {
-  return /[\u0000-\u001f\u007f-\u009f]/.test(value);
+  return (
+    /[\u0000-\u001f\u007f-\u009f]/.test(value) ||
+    /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value) ||
+    /%c2%(?:8[0-9a-f]|9[0-9a-f])/i.test(value)
+  );
 }
 
 export function publicErrorMessage(error: unknown): string {

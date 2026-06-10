@@ -33,7 +33,15 @@ test('resolveGitHubApiUrl validates relative paths before URL normalization', ()
     'https://github.example.test/api/v3/repos/nullclaw/nullbuilder'
   );
 
-  for (const path of ['/../meta', '/%2e%2e/meta', '//evil.example.test/repos', '/repos\nsecret']) {
+  for (const path of [
+    '/../meta',
+    '/%2e%2e/meta',
+    '//evil.example.test/repos',
+    '/repos\nsecret',
+    '/repos/%0asecret',
+    '/repos/%7Fsecret',
+    '/repos/%C2%85secret'
+  ]) {
     assert.throws(
       () => resolveGitHubApiUrl(config, path),
       (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub API path.'
@@ -56,6 +64,16 @@ test('resolveGitHubApiUrl rejects cross-origin absolute next URLs', () => {
     () => resolveGitHubApiUrl(config, 'https://evil.example.test/repos/nullclaw/nullbuilder'),
     (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub API URL.'
   );
+
+  for (const url of [
+    'https://api.github.com/repos/nullclaw/nullbuilder/%0asecret',
+    'https://api.github.com/repos/nullclaw/nullbuilder/%C2%85secret'
+  ]) {
+    assert.throws(
+      () => resolveGitHubApiUrl(config, url),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub API URL.'
+    );
+  }
 });
 
 test('publicErrorMessage keeps GitHub authorization details generic', () => {
