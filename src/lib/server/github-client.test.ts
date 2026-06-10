@@ -40,6 +40,29 @@ test('githubGetPages follows same-origin pagination links', async () => {
   assert.deepEqual(requests, ['https://api.example.test/repos', 'https://api.example.test/repos?page=2']);
 });
 
+test('githubGetPages follows only explicit next link relations', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://strict-link.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify([{ id: 1 }]), {
+      headers: {
+        Link: '<https://strict-link.example.test/repos?page=2&rel="next">; rel="prev", <https://strict-link.example.test/repos?page=3>; rel="last"'
+      }
+    });
+  }) as typeof fetch;
+
+  const pages = await githubGetPages<{ id: number }>(config, '/repos', {}, 5);
+
+  assert.deepEqual(pages, [{ id: 1 }]);
+  assert.deepEqual(requests, ['https://strict-link.example.test/repos']);
+});
+
 test('githubGetPages appends large pages without spreading array arguments', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

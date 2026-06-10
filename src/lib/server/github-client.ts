@@ -220,9 +220,26 @@ function parseNextLink(link: string | null): string | null {
     return null;
   }
 
-  const next = link.split(',').find((part) => part.includes('rel="next"'));
-  const match = next?.match(/<([^>]+)>/);
-  return match?.[1] ?? null;
+  for (const part of link.split(',')) {
+    const match = part.trim().match(/^<([^>]+)>\s*(?:;(.*))?$/);
+    if (match && linkParametersIncludeRelation(match[2] ?? '', 'next')) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
+function linkParametersIncludeRelation(parameters: string, relation: string): boolean {
+  for (const parameter of parameters.split(';')) {
+    const match = parameter.trim().match(/^rel\s*=\s*(?:"([^"]*)"|([^;]*))$/i);
+    const value = match?.[1] ?? match?.[2]?.trim();
+    if (value?.split(/\s+/).includes(relation)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): string {
