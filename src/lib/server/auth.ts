@@ -22,6 +22,7 @@ const MAX_LOGIN_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_LOGIN_RATE_LIMIT_FAILURES = 1000;
 const MAX_LOGIN_RATE_LIMIT_KEYS = 100_000;
 const MAX_LOGIN_RATE_LIMIT_KEY_LENGTH = 128;
+const MAX_TOKEN_COMPARE_BYTES = 4096;
 const FALLBACK_LOGIN_RATE_LIMIT_KEY = 'unknown-client';
 
 export type LoginRateLimiterOptions = {
@@ -231,7 +232,9 @@ export function isCsrfTokenMatch(value: FormDataEntryValue | null, cookies: Cook
 }
 
 export function isTokenMatch(value: string, expected: string): boolean {
-  if (value.length !== expected.length) {
+  const valueBytes = Buffer.byteLength(value);
+  const expectedBytes = Buffer.byteLength(expected);
+  if (valueBytes !== expectedBytes || valueBytes > MAX_TOKEN_COMPARE_BYTES) {
     return false;
   }
 

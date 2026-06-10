@@ -141,8 +141,10 @@ test('csrf token is tied to a valid session cookie', () => {
 test('token comparison rejects malformed values before constant-time comparison', () => {
   const expected = 'a'.repeat(64);
 
+  assert.equal(isTokenMatch('\u043a\u043b\u044e\u0447', '\u043a\u043b\u044e\u0447'), true);
   assert.equal(isTokenMatch('a'.repeat(65), expected), false);
   assert.equal(isTokenMatch(`${'a'.repeat(63)}é`, expected), false);
+  assert.equal(isTokenMatch('a'.repeat(4097), 'a'.repeat(4097)), false);
   assert.equal(isTokenMatch('b'.repeat(64), expected), false);
 });
 
