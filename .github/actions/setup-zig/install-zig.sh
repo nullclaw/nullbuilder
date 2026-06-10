@@ -128,6 +128,8 @@ PY
 
   "$python_bin" - "$archive_path" "$extract_dir" <<'PY'
 import pathlib
+import inspect
+import stat
 import sys
 import tarfile
 import zipfile
@@ -141,16 +143,33 @@ def ensure_within_destination(relative_name: str) -> None:
     if destination.resolve() not in target.parents and target != destination.resolve():
         raise SystemExit(f"archive entry escapes destination: {relative_name}")
 
+def ensure_safe_zip_member(member: zipfile.ZipInfo) -> None:
+    ensure_within_destination(member.filename)
+    mode = member.external_attr >> 16
+    file_type = stat.S_IFMT(mode)
+    if file_type in {stat.S_IFLNK, stat.S_IFBLK, stat.S_IFCHR, stat.S_IFIFO, stat.S_IFSOCK}:
+        raise SystemExit(f"unsafe zip entry type: {member.filename}")
+
+def ensure_safe_tar_member(member: tarfile.TarInfo) -> None:
+    ensure_within_destination(member.name)
+    if not (member.isdir() or member.isfile()):
+        raise SystemExit(f"unsafe tar entry type: {member.name}")
+
+def tar_extract_kwargs() -> dict:
+    if "filter" in inspect.signature(tarfile.TarFile.extractall).parameters:
+        return {"filter": "data"}
+    return {}
+
 if archive.suffix == ".zip":
     with zipfile.ZipFile(archive) as handle:
-        for member in handle.namelist():
-            ensure_within_destination(member)
+        for member in handle.infolist():
+            ensure_safe_zip_member(member)
         handle.extractall(destination)
 else:
     with tarfile.open(archive, "r:*") as handle:
-        for member in handle.getnames():
-            ensure_within_destination(member)
-        handle.extractall(destination)
+        for member in handle.getmembers():
+            ensure_safe_tar_member(member)
+        handle.extractall(destination, **tar_extract_kwargs())
 PY
 
   extracted_dir="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
