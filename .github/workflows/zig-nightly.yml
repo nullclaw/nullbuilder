@@ -104,6 +104,7 @@ jobs:
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: read
@@ -117,6 +118,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Install Zig
         uses: nullclaw/nullbuilder/.github/actions/setup-zig@v1
@@ -188,6 +191,7 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.should_build == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
     defaults:
       run:
         shell: bash
@@ -198,6 +202,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Install Zig
         uses: nullclaw/nullbuilder/.github/actions/setup-zig@v1
@@ -364,6 +370,7 @@ jobs:
     needs: [preflight, build]
     if: inputs.publish_release && needs.preflight.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: write

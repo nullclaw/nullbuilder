@@ -100,6 +100,53 @@ test('nightly decide validates temp root before creating decision output files',
   assert.ok(!source.includes('mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nightly-decision.XXXXXX"'));
 });
 
+test('workflow runner jobs bound execution time', () => {
+  const missingTimeouts: string[] = [];
+
+  for (const workflowFile of workflowYamlFiles(workflowsRoot)) {
+    const source = readFileSync(workflowFile, 'utf8');
+
+    for (const job of workflowJobs(source)) {
+      const runsOn = job.lines.some((line) => /^\s{4}runs-on:\s+/.test(line));
+      if (!runsOn) {
+        continue;
+      }
+
+      const timeout = job.lines.some((line) => /^\s{4}timeout-minutes:\s+[1-9][0-9]*\s*$/.test(line));
+      if (!timeout) {
+        missingTimeouts.push(`${relative(projectRoot, workflowFile)}:${job.name}`);
+      }
+    }
+  }
+
+  assert.deepEqual(missingTimeouts, []);
+});
+
+test('workflow checkouts do not persist GitHub token credentials', () => {
+  const persistentCredentials: string[] = [];
+
+  for (const workflowFile of workflowYamlFiles(workflowsRoot)) {
+    const lines = readFileSync(workflowFile, 'utf8').split('\n');
+
+    for (const [index, line] of lines.entries()) {
+      if (!line.includes('uses: actions/checkout@')) {
+        continue;
+      }
+
+      const step = workflowStepBlock(lines, index);
+      const disablesCredentialPersistence = step.some((stepLine) =>
+        /^\s+persist-credentials:\s+false\s*$/.test(stepLine)
+      );
+
+      if (!disablesCredentialPersistence) {
+        persistentCredentials.push(`${relative(projectRoot, workflowFile)}:${index + 1}`);
+      }
+    }
+  }
+
+  assert.deepEqual(persistentCredentials, []);
+});
+
 function actionYamlFiles(directory: string): string[] {
   const files: string[] = [];
 
@@ -114,6 +161,71 @@ function actionYamlFiles(directory: string): string[] {
   }
 
   return files;
+}
+
+function workflowYamlFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
+    .map((entry) => join(directory, entry.name))
+    .sort();
+}
+
+function workflowJobs(source: string): { name: string; lines: string[] }[] {
+  const lines = source.split('\n');
+  const jobsStart = lines.findIndex((line) => line === 'jobs:');
+  if (jobsStart === -1) {
+    return [];
+  }
+
+  const jobs: { name: string; lines: string[] }[] = [];
+  let current: { name: string; lines: string[] } | undefined;
+
+  for (const line of lines.slice(jobsStart + 1)) {
+    const jobMatch = /^  ([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (jobMatch) {
+      if (current) {
+        jobs.push(current);
+      }
+      current = { name: jobMatch[1], lines: [line] };
+      continue;
+    }
+
+    current?.lines.push(line);
+  }
+
+  if (current) {
+    jobs.push(current);
+  }
+
+  return jobs;
+}
+
+function workflowStepBlock(lines: string[], startIndex: number): string[] {
+  const block = [lines[startIndex]];
+  const stepIndent = leadingWhitespaceLength(lines[startIndex]);
+
+  for (const line of lines.slice(startIndex + 1)) {
+    if (line.trim() === '') {
+      block.push(line);
+      continue;
+    }
+
+    const lineIndent = leadingWhitespaceLength(line);
+    if (lineIndent === stepIndent && /^\s*-\s+/.test(line)) {
+      break;
+    }
+    if (lineIndent < stepIndent) {
+      break;
+    }
+
+    block.push(line);
+  }
+
+  return block;
+}
+
+function leadingWhitespaceLength(value: string): number {
+  return value.length - value.trimStart().length;
 }
 
 function zigRunModules(source: string): Map<string, string[]> {
