@@ -20,6 +20,41 @@ test('readConfig normalizes URLs and clamps numeric settings', () => {
   assert.equal(config.requestTimeoutMs, 5_000);
 });
 
+test('readConfig allows plaintext URLs only for loopback development origins', () => {
+  const localhostConfig = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'http://localhost:8080/api/',
+    NULLBUILDER_GITHUB_WEB_URL: 'http://127.0.0.1:3000/'
+  });
+
+  assert.equal(localhostConfig.apiBaseUrl, 'http://localhost:8080/api');
+  assert.equal(localhostConfig.webBaseUrl, 'http://127.0.0.1:3000');
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_REPOS: 'nullbuilder',
+        NULLBUILDER_GITHUB_API_URL: 'http://api.example.test'
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL protocol for NULLBUILDER_GITHUB_API_URL.' &&
+      !error.message.includes('api.example.test')
+  );
+
+  assert.throws(
+    () =>
+      readConfig({
+        NULLBUILDER_REPOS: 'nullbuilder',
+        NULLBUILDER_GITHUB_WEB_URL: 'http://github.example.test'
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Invalid URL protocol for NULLBUILDER_GITHUB_WEB_URL.' &&
+      !error.message.includes('github.example.test')
+  );
+});
+
 test('readConfig parses booleans and integers from bounded explicit env values only', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

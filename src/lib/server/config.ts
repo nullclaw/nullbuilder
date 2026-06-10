@@ -100,7 +100,7 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
     throw new Error(`Invalid URL for ${name}.`);
   }
 
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+  if (url.protocol !== 'https:' && (url.protocol !== 'http:' || !isLoopbackHost(url.hostname))) {
     throw new Error(`Invalid URL protocol for ${name}.`);
   }
 
@@ -111,6 +111,26 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
   url.hash = '';
   url.search = '';
   return url.toString().replace(/\/$/, '');
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === 'localhost' || normalized === '[::1]' || normalized === '::1' || isLoopbackIpv4(normalized);
+}
+
+function isLoopbackIpv4(hostname: string): boolean {
+  const octets = hostname.split('.');
+  if (octets.length !== 4 || octets[0] !== '127') {
+    return false;
+  }
+
+  return octets.every((octet) => {
+    if (!/^(?:0|[1-9]\d{0,2})$/.test(octet)) {
+      return false;
+    }
+    const parsed = Number.parseInt(octet, 10);
+    return parsed >= 0 && parsed <= 255;
+  });
 }
 
 function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
