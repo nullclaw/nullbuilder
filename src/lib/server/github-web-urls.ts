@@ -64,12 +64,12 @@ export function githubActionsBranchQueryUrl(context: GitHubWebUrlContext, branch
     : '';
 }
 
-export function safeGitHubWebUrl(value: string, fallback: string, allowedOrigin = '', allowedPathPrefix = ''): string {
+export function safeGitHubWebUrl(value: unknown, fallback: string, allowedOrigin = '', allowedPathPrefix = ''): string {
   return isSafeGitHubWebUrl(value, allowedOrigin, allowedPathPrefix) ? value : fallback;
 }
 
 function safeGitHubRepositoryRootUrl(
-  value: string,
+  value: unknown,
   fallback: string,
   allowedOrigin: string,
   allowedPathPrefix: string
@@ -87,7 +87,11 @@ function safeGitHubRepositoryRootUrl(
   return url.toString().replace(/\/$/, '');
 }
 
-function isSafeGitHubWebUrl(value: string, allowedOrigin: string, allowedPathPrefix: string): boolean {
+function isSafeGitHubWebUrl(value: unknown, allowedOrigin: string, allowedPathPrefix: string): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
   if (
     value.length === 0 ||
     value.length > MAX_GITHUB_WEB_URL_LENGTH ||

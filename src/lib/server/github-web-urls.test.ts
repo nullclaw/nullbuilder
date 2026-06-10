@@ -85,6 +85,14 @@ test('safeGitHubWebUrl rejects unsafe URLs before they become hrefs', () => {
   );
 });
 
+test('safeGitHubWebUrl rejects malformed runtime values without throwing type errors', () => {
+  const fallback = 'https://github.example.test/nullclaw/nullbuilder';
+
+  for (const value of [null, undefined, 17, true, { url: fallback }]) {
+    assert.equal(safeGitHubWebUrl(value, fallback, 'https://github.example.test'), fallback);
+  }
+});
+
 test('githubRepositoryUrlContext falls back to configured repository URLs', () => {
   const trailingSlashContext = githubRepositoryUrlContext(
     'https://github.example.test',
