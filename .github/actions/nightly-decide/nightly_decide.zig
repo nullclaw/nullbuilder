@@ -86,11 +86,15 @@ fn decideShouldBuild(
             .should_build = false,
             .reason = "successful-nightly-exists",
             .matched_run_id = run.id,
-            .matched_run_url = run.html_url,
+            .matched_run_url = safeMatchedRunUrl(run.html_url),
         };
     }
 
     return .{ .should_build = true, .reason = "new-sha" };
+}
+
+fn safeMatchedRunUrl(value: []const u8) []const u8 {
+    return if (action_values.isHttpUrl(value, MAX_OUTPUT_VALUE_BYTES)) value else "";
 }
 
 fn boundedWorkflowRuns(runs: []const Run) []const Run {
@@ -432,6 +436,29 @@ test "nightly parses workflow run API payload with unknown fields" {
     const decision = decideShouldBuild(parsed.value.workflow_runs, "43", "abc", "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
+}
+
+test "nightly omits unsafe matched run URLs from API payload" {
+    const json =
+        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42%zz"}]}
+    ;
+    var parsed = try parseRunsPayload(std.testing.allocator, json);
+    defer parsed.deinit();
+
+    const decision = decideShouldBuild(parsed.value.workflow_runs, "43", "abc", "Nightly", false);
+    try std.testing.expect(!decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
+    try std.testing.expectEqualStrings("", decision.matched_run_url);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try writeDecision(&out.writer, decision);
+    try std.testing.expectEqualStrings(
+        \\should_build=false
+        \\reason=successful-nightly-exists
+        \\matched_run_id=42
+        \\
+    , out.writer.buffered());
 }
 
 test "nightly validates action options before reading runs json" {
