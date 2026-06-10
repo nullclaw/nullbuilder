@@ -7,6 +7,12 @@ if [ "$#" -ne 1 ]; then
 fi
 
 version="$1"
+case "$version" in
+  "" | .* | -* | *..* | */* | *\\* | *[!A-Za-z0-9._+-]*)
+    echo "invalid Zig version" >&2
+    exit 1
+    ;;
+esac
 
 python_bin="${PYTHON:-python3}"
 if ! command -v "$python_bin" >/dev/null 2>&1; then
@@ -164,4 +170,3 @@ else
 fi
 
 "${install_dir}/${zig_bin}" version
-
