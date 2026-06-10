@@ -165,14 +165,14 @@ pub fn isUtcTimestamp(value: []const u8) bool {
     if (value[13] != ':' or value[16] != ':' or value[19] != 'Z') return false;
 
     if (!isAsciiDigitSlice(value[0..4])) return false;
+    const year = fourDigitValue(value, 0) orelse return false;
     const month = twoDigitValue(value, 5) orelse return false;
     const day = twoDigitValue(value, 8) orelse return false;
     const hour = twoDigitValue(value, 11) orelse return false;
     const minute = twoDigitValue(value, 14) orelse return false;
     const second = twoDigitValue(value, 17) orelse return false;
 
-    return month >= 1 and month <= 12 and
-        day >= 1 and day <= 31 and
+    return isValidCalendarDay(year, month, day) and
         hour <= 23 and
         minute <= 59 and
         second <= 59;
@@ -198,6 +198,37 @@ fn twoDigitValue(value: []const u8, index: usize) ?u8 {
     const high = decimalValue(value[index]) orelse return null;
     const low = decimalValue(value[index + 1]) orelse return null;
     return high * 10 + low;
+}
+
+fn fourDigitValue(value: []const u8, index: usize) ?u16 {
+    const thousands = decimalValue(value[index]) orelse return null;
+    const hundreds = decimalValue(value[index + 1]) orelse return null;
+    const tens = decimalValue(value[index + 2]) orelse return null;
+    const ones = decimalValue(value[index + 3]) orelse return null;
+
+    return @as(u16, thousands) * 1000 +
+        @as(u16, hundreds) * 100 +
+        @as(u16, tens) * 10 +
+        @as(u16, ones);
+}
+
+fn isValidCalendarDay(year: u16, month: u8, day: u8) bool {
+    if (month < 1 or month > 12) return false;
+    if (day < 1) return false;
+    return day <= daysInMonth(year, month);
+}
+
+fn daysInMonth(year: u16, month: u8) u8 {
+    return switch (month) {
+        1, 3, 5, 7, 8, 10, 12 => 31,
+        4, 6, 9, 11 => 30,
+        2 => if (isLeapYear(year)) 29 else 28,
+        else => 0,
+    };
+}
+
+fn isLeapYear(year: u16) bool {
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0);
 }
 
 fn decimalValue(byte: u8) ?u8 {
@@ -332,6 +363,8 @@ test "action values validate metadata tokens" {
 test "action values validate UTC timestamps" {
     try std.testing.expect(isUtcTimestamp("2026-05-04T02:23:00Z"));
     try std.testing.expect(isUtcTimestamp("0000-01-01T00:00:00Z"));
+    try std.testing.expect(isUtcTimestamp("2024-02-29T00:00:00Z"));
+    try std.testing.expect(isUtcTimestamp("2000-02-29T00:00:00Z"));
 
     try std.testing.expect(!isUtcTimestamp(""));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:00"));
@@ -339,6 +372,10 @@ test "action values validate UTC timestamps" {
     try std.testing.expect(!isUtcTimestamp("2026-13-04T02:23:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-00-04T02:23:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-00T02:23:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-02-29T00:00:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2100-02-29T00:00:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-02-30T00:00:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-04-31T00:00:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T24:23:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:60:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:60Z"));
