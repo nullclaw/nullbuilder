@@ -71,6 +71,9 @@ fn hashArtifactFileSha256(io: std.Io, dir: std.Io.Dir, binary_path: []const u8) 
 }
 
 fn hashArtifactFileSha256Limited(io: std.Io, dir: std.Io.Dir, binary_path: []const u8, max_bytes: u64) !Sha256Digest {
+    const stat = try dir.statFile(io, binary_path, .{});
+    try validateArtifactFileSize(stat.size, max_bytes);
+
     var file = try dir.openFile(io, binary_path, .{ .allow_directory = false });
     defer file.close(io);
 
@@ -93,6 +96,10 @@ fn hashArtifactFileSha256Limited(io: std.Io, dir: std.Io.Dir, binary_path: []con
     var digest: Sha256Digest = undefined;
     hasher.final(&digest);
     return digest;
+}
+
+fn validateArtifactFileSize(file_size: u64, max_bytes: u64) !void {
+    if (file_size >= max_bytes) return error.StreamTooLong;
 }
 
 fn formatSha256Line(allocator: std.mem.Allocator, digest: Sha256Digest, binary_path: []const u8) ![]u8 {
@@ -392,6 +399,13 @@ test "package artifact hashes binary files with bounded stack memory" {
     const expected = hashBytesSha256("streamed bytes");
     const actual = try hashArtifactFileSha256(std.testing.io, tmp.dir, "artifact.bin");
     try std.testing.expectEqualSlices(u8, expected[0..], actual[0..]);
+}
+
+test "package artifact preflights binary file size before hashing" {
+    try validateArtifactFileSize(3, 4);
+    try std.testing.expectError(error.StreamTooLong, validateArtifactFileSize(4, 4));
+    try std.testing.expectError(error.StreamTooLong, validateArtifactFileSize(5, 4));
+    try std.testing.expectError(error.StreamTooLong, validateArtifactFileSize(0, 0));
 }
 
 test "package artifact rejects binary files that reach the hash byte limit" {
