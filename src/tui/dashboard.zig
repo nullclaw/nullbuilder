@@ -72,7 +72,7 @@ pub fn render(
         defer repo_slug.deinit(arena);
 
         try out.print("{s:<[3]} {d:>[4]} {d:>[4]} ", .{
-            clipUtf8(repo_slug.value, repo_column_width),
+            terminal.clipUtf8(repo_slug.value, repo_column_width),
             repo.open_issues,
             repo.open_pulls,
             repo_column_width,
@@ -102,8 +102,8 @@ pub fn render(
             defer message.deinit(arena);
 
             try out.print("  {s:<[2]} {s}\n", .{
-                clipUtf8(error_repo.value, repo_column_width),
-                clipUtf8(message.value, error_message_width),
+                terminal.clipUtf8(error_repo.value, repo_column_width),
+                terminal.clipUtf8(message.value, error_message_width),
                 repo_column_width,
             });
         }
@@ -128,9 +128,9 @@ fn printWorkItems(
         defer title.deinit(arena);
 
         try out.print("  {s:<[3]} #{d:<[4]} {s}\n", .{
-            clipUtf8(work_repo.value, repo_column_width),
+            terminal.clipUtf8(work_repo.value, repo_column_width),
             work.number,
-            clipUtf8(title.value, work_title_width),
+            terminal.clipUtf8(title.value, work_title_width),
             repo_column_width,
             work_number_width,
         });
@@ -147,7 +147,7 @@ fn printStatus(arena: std.mem.Allocator, out: *std.Io.Writer, no_color: bool, st
     defer safe_status.deinit(arena);
 
     try out.writeAll(statusColor(no_color, safe_status.value));
-    try out.print("{s:<[1]}", .{ clipUtf8(safe_status.value, width), width });
+    try out.print("{s:<[1]}", .{ terminal.clipUtf8(safe_status.value, width), width });
     try out.writeAll(color(no_color, reset));
 }
 
@@ -164,32 +164,8 @@ fn color(no_color: bool, code: []const u8) []const u8 {
     return if (no_color) "" else code;
 }
 
-fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
-    if (value.len <= max_len) return value;
-    if (max_len == 0) return "";
-
-    var end = max_len;
-    while (end > 0 and isUtf8ContinuationByte(value[end])) {
-        end -= 1;
-    }
-
-    return value[0..end];
-}
-
-fn isUtf8ContinuationByte(byte: u8) bool {
-    return byte & 0b1100_0000 == 0b1000_0000;
-}
-
 fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) !terminal.SanitizedText {
     return terminal.sanitizeMaybeAlloc(arena, value, .{});
-}
-
-test "clipUtf8 does not split multibyte sequences" {
-    const text = "repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82";
-
-    try std.testing.expectEqualStrings("repo-", clipUtf8(text, 6));
-    try std.testing.expectEqualStrings("repo-\xd0\xbf", clipUtf8(text, 7));
-    try std.testing.expectEqualStrings("", clipUtf8(text, 0));
 }
 
 test "sanitizeTerminalText replaces UTF-8 encoded C1 controls" {
