@@ -1,6 +1,7 @@
 import type { RepoSlug } from '../repositories';
 import { checkStatus } from './audit-summary';
 import type { AuditArea, AuditCheckResult, AuditFinding, AuditSeverity } from './audit-types';
+import { safeGitHubWebUrl } from './github-web-urls';
 
 export type GitHubRepositoryResponse = {
   full_name: string;
@@ -107,7 +108,32 @@ function buildFinding(
     area: rule.area,
     title,
     detail,
-    url: url ?? context.repository.html_url,
+    url: findingUrl(context, url),
     path
   };
+}
+
+function findingUrl(context: AuditContext, url: string | undefined): string {
+  if (!url) {
+    return context.repository.html_url;
+  }
+
+  const repositoryUrl = repositoryUrlParts(context.repository.html_url);
+  if (!repositoryUrl) {
+    return context.repository.html_url;
+  }
+
+  return safeGitHubWebUrl(url, context.repository.html_url, repositoryUrl.origin, repositoryUrl.pathPrefix);
+}
+
+function repositoryUrlParts(value: string): { origin: string; pathPrefix: string } | null {
+  try {
+    const url = new URL(value);
+    return {
+      origin: url.origin,
+      pathPrefix: url.pathname
+    };
+  } catch {
+    return null;
+  }
 }

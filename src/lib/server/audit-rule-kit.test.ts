@@ -19,7 +19,7 @@ test('evaluateAuditRule binds findings to rule metadata', () => {
         'critical',
         'Mutable release workflow',
         'Pin reusable release workflows to immutable tags.',
-        'https://example.test/workflow',
+        'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/release.yml',
         '.github/workflows/release.yml'
       )
     ]
@@ -38,7 +38,7 @@ test('evaluateAuditRule binds findings to rule metadata', () => {
     finding.id,
     'nullclaw/nullbuilder:release-guard:critical:Mutable release workflow:.github/workflows/release.yml'
   );
-  assert.equal(finding.url, 'https://example.test/workflow');
+  assert.equal(finding.url, 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/release.yml');
 });
 
 test('evaluateAuditRule falls back to repository URLs for findings', () => {
@@ -54,6 +54,35 @@ test('evaluateAuditRule falls back to repository URLs for findings', () => {
   const result = evaluateAuditRule(rule, auditContext());
 
   assert.equal(result.findings[0].url, 'https://github.example.test/nullclaw/nullbuilder');
+});
+
+test('evaluateAuditRule constrains custom finding URLs to the repository', () => {
+  const rule: AuditRule = {
+    id: 'workflow-url',
+    title: 'Workflow URL is safe',
+    area: 'workflow',
+    evaluate: (_context, finding) => [
+      finding('warning', 'Cross-origin URL', 'Do not link outside the repository.', 'https://evil.example.test/steal'),
+      finding(
+        'warning',
+        'Control-bearing URL',
+        'Do not link unsafe URLs.',
+        'https://github.example.test/nullclaw/nullbuilder/actions\x1b[31m'
+      ),
+      finding(
+        'warning',
+        'Same-repository URL',
+        'Keep safe repository links.',
+        'https://github.example.test/nullclaw/nullbuilder/actions/runs/1'
+      )
+    ]
+  };
+
+  const result = evaluateAuditRule(rule, auditContext());
+
+  assert.equal(result.findings[0].url, 'https://github.example.test/nullclaw/nullbuilder');
+  assert.equal(result.findings[1].url, 'https://github.example.test/nullclaw/nullbuilder');
+  assert.equal(result.findings[2].url, 'https://github.example.test/nullclaw/nullbuilder/actions/runs/1');
 });
 
 test('isPresent narrows probe data', () => {
