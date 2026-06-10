@@ -15,15 +15,11 @@ export async function getStarGrowth(
   config: NullbuilderConfig,
   repo: RepoSlug,
   currentStars: number,
-  now = Date.now()
+  now: unknown = Date.now()
 ): Promise<StarGrowthSummary> {
   const current = safeCurrentStars(currentStars);
   if (current === null) {
-    return {
-      current: null,
-      last7Days: null,
-      last30Days: null
-    };
+    return unknownStarGrowth(null);
   }
 
   if (current === 0) {
@@ -34,14 +30,15 @@ export async function getStarGrowth(
     };
   }
 
+  const nowMs = safeClockMillis(now);
+  if (nowMs === null) {
+    return unknownStarGrowth(current);
+  }
+
   try {
-    return await fetchStarGrowth(config, repo, current, now);
+    return await fetchStarGrowth(config, repo, current, nowMs);
   } catch {
-    return {
-      current,
-      last7Days: null,
-      last30Days: null
-    };
+    return unknownStarGrowth(current);
   }
 }
 
@@ -117,4 +114,21 @@ function safeStargazerPage(value: unknown): unknown[] {
 
 function safeCurrentStars(value: number): number | null {
   return safeNonNegativeInteger(value);
+}
+
+function safeClockMillis(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  const timestamp = Math.floor(value);
+  return safeNonNegativeInteger(timestamp);
+}
+
+function unknownStarGrowth(current: number | null): StarGrowthSummary {
+  return {
+    current,
+    last7Days: null,
+    last30Days: null
+  };
 }

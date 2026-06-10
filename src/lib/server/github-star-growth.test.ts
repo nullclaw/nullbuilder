@@ -5,10 +5,12 @@ import { readConfig } from './config';
 import { getStarGrowth, STAR_PAGE_SIZE } from './github-star-growth';
 
 const originalFetch = globalThis.fetch;
+const originalDateNow = Date.now;
 const REPO = 'nullclaw/nullbuilder' as RepoSlug;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  Date.now = originalDateNow;
 });
 
 test('getStarGrowth scans recent stargazer pages and stops at old pages', async () => {
@@ -91,6 +93,38 @@ test('getStarGrowth treats unsafe current stars as unknown without fetching', as
   });
   assert.deepEqual(await getStarGrowth(config, REPO, -1), {
     current: null,
+    last7Days: null,
+    last30Days: null
+  });
+  assert.equal(requests, 0);
+});
+
+test('getStarGrowth treats unsafe clocks as unknown deltas without fetching', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://unsafe-star-clock.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  let requests = 0;
+  Date.now = () => Number.POSITIVE_INFINITY;
+
+  globalThis.fetch = (async () => {
+    requests += 1;
+    return jsonResponse([{ starred_at: '2026-06-08T00:00:00Z' }]);
+  }) as typeof fetch;
+
+  assert.deepEqual(await getStarGrowth(config, REPO, 12), {
+    current: 12,
+    last7Days: null,
+    last30Days: null
+  });
+  assert.deepEqual(await getStarGrowth(config, REPO, 12, Number.MAX_SAFE_INTEGER + 1), {
+    current: 12,
+    last7Days: null,
+    last30Days: null
+  });
+  assert.deepEqual(await getStarGrowth(config, REPO, 12, Number.NaN), {
+    current: 12,
     last7Days: null,
     last30Days: null
   });
