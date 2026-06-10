@@ -69,8 +69,11 @@ export type WebMutationSuccess<T> = {
 export type WebMutationResult<T, Field extends string> = WebMutationSuccess<T> | WebMutationFailure<Field>;
 
 const DUPLICATE_FORM_FIELD_MESSAGE = 'Duplicate form field.';
+const UNKNOWN_FORM_FIELD_MESSAGE = 'Unknown form field.';
 const BUILD_PR_FORM_FIELDS = ['repo', 'prNumber', 'tagName', 'confirm', 'force'] as const;
 const RELEASE_TAG_FORM_FIELDS = ['repo', 'tagName', 'targetRef', 'confirm', 'force'] as const;
+const BUILD_PR_ALLOWED_FORM_FIELDS = ['csrfToken', ...BUILD_PR_FORM_FIELDS] as const;
+const RELEASE_TAG_ALLOWED_FORM_FIELDS = ['csrfToken', ...RELEASE_TAG_FORM_FIELDS] as const;
 
 export function runLoginWebAction(
   config: NullbuilderConfig,
@@ -198,7 +201,7 @@ export async function runReleaseTagWebMutation<T>(
 }
 
 export function parseBuildPrMutationForm(formData: FormData): BuildPrMutationForm {
-  assertSingleFormFields(formData, BUILD_PR_FORM_FIELDS);
+  assertFormShape(formData, BUILD_PR_ALLOWED_FORM_FIELDS);
   const tagName = trimmedFormString(singleFormValue(formData, 'tagName'));
 
   return {
@@ -211,7 +214,7 @@ export function parseBuildPrMutationForm(formData: FormData): BuildPrMutationFor
 }
 
 export function parseReleaseTagMutationForm(formData: FormData): ReleaseTagMutationForm {
-  assertSingleFormFields(formData, RELEASE_TAG_FORM_FIELDS);
+  assertFormShape(formData, RELEASE_TAG_ALLOWED_FORM_FIELDS);
   const targetRef = trimmedFormString(singleFormValue(formData, 'targetRef'));
 
   return {
@@ -247,7 +250,7 @@ function parseBuildPrMutationFormResult(
       ...parseBuildPrMutationForm(formData)
     };
   } catch (error) {
-    if (isDuplicateFormFieldError(error)) {
+    if (isInvalidFormShapeError(error)) {
       return mutationFailure(400, 'buildError', 'Invalid form data.');
     }
 
@@ -264,7 +267,7 @@ function parseReleaseTagMutationFormResult(
       ...parseReleaseTagMutationForm(formData)
     };
   } catch (error) {
-    if (isDuplicateFormFieldError(error)) {
+    if (isInvalidFormShapeError(error)) {
       return mutationFailure(400, 'releaseError', 'Invalid form data.');
     }
 
@@ -381,8 +384,15 @@ function optionalTargetRef(value: string | undefined): string | undefined | null
   }
 }
 
-function assertSingleFormFields(formData: FormData, fields: readonly string[]): void {
-  for (const field of fields) {
+function assertFormShape(formData: FormData, allowedFields: readonly string[]): void {
+  const allowed = new Set(allowedFields);
+  for (const field of formData.keys()) {
+    if (!allowed.has(field)) {
+      throw new Error(UNKNOWN_FORM_FIELD_MESSAGE);
+    }
+  }
+
+  for (const field of allowedFields) {
     if (formData.getAll(field).length > 1) {
       throw new Error(DUPLICATE_FORM_FIELD_MESSAGE);
     }
@@ -394,8 +404,11 @@ function singleFormValue(formData: FormData, field: string): FormDataEntryValue 
   return values.length === 1 ? values[0] : null;
 }
 
-function isDuplicateFormFieldError(error: unknown): boolean {
-  return error instanceof Error && error.message === DUPLICATE_FORM_FIELD_MESSAGE;
+function isInvalidFormShapeError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message === DUPLICATE_FORM_FIELD_MESSAGE || error.message === UNKNOWN_FORM_FIELD_MESSAGE)
+  );
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {

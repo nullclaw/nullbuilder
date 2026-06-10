@@ -146,6 +146,32 @@ test('mutation form parsers reject duplicate fields without echoing values', () 
   });
 });
 
+test('mutation form parsers reject unknown fields without echoing values', () => {
+  const buildFormData = new FormData();
+  buildFormData.set('repo', 'nullbuilder');
+  buildFormData.set('prNumber', '17');
+  buildFormData.set('private-note', 'secret-build-value');
+
+  assert.throws(() => parseBuildPrMutationForm(buildFormData), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Unknown form field.');
+    assert.doesNotMatch(error.message, /private-note|secret-build-value/);
+    return true;
+  });
+
+  const releaseFormData = new FormData();
+  releaseFormData.set('repo', 'nullbuilder');
+  releaseFormData.set('tagName', 'v1.2.3');
+  releaseFormData.set('unexpected', 'secret-release-value');
+
+  assert.throws(() => parseReleaseTagMutationForm(releaseFormData), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Unknown form field.');
+    assert.doesNotMatch(error.message, /unexpected|secret-release-value/);
+    return true;
+  });
+});
+
 test('mutationAccessError enforces enablement authentication and CSRF order', () => {
   const disabled = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
@@ -387,6 +413,35 @@ test('runBuildPrWebMutation rejects duplicate csrf token fields before executor'
     status: 403,
     field: 'buildError',
     message: 'Invalid request token.'
+  });
+});
+
+test('runBuildPrWebMutation rejects unknown form fields before executor', async () => {
+  const { config, cookies, csrfToken } = authorizedMutationContext();
+  const formData = new FormData();
+  formData.set('csrfToken', csrfToken);
+  formData.set('repo', 'nullbuilder');
+  formData.set('prNumber', '17');
+  formData.set('unexpected', 'secret');
+  let executed = false;
+
+  const result = await runBuildPrWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    field: 'buildError',
+    message: 'Invalid form data.'
   });
 });
 
