@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "npm run test:ts && npm run typecheck && zig build test",
-    "test:ts": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:ts": "node --import tsx --test \"src/**/*.test.ts\" \"bin/**/*.test.mjs\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "nb": "tsx src/cli/nullbuilder.ts"
   },
