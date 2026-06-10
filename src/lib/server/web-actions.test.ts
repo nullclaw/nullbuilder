@@ -248,6 +248,26 @@ test('web action content length guard rejects oversized and malformed bodies bef
   }
 });
 
+test('readWebActionFormData rejects non-POST requests before body validation', async () => {
+  const result = await readWebActionFormData(
+    new Request('https://nullbuilder.example.test/', {
+      method: 'PUT',
+      headers: {
+        'Content-Length': 'not-a-number',
+        'Content-Type': 'text/plain'
+      },
+      body: 'private=secret'
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 405,
+    message: 'Invalid request method.'
+  });
+  assert.equal(result.message.includes('secret'), false);
+});
+
 test('readWebActionFormData parses bounded form bodies without content length', async () => {
   const result = await readWebActionFormData(
     webFormRequest('webToken=web-secret', {
