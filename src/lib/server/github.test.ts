@@ -11,11 +11,28 @@ import {
 } from './github';
 
 const originalFetch = globalThis.fetch;
+const originalArraySort = Array.prototype.sort;
+const originalMapForEach = Map.prototype.forEach;
 const SUMMARY_REPO = 'nullclaw/nullbuilder' as RepoSlug;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  restoreCollectionTraversalMethods();
 });
+
+function rejectCollectionTraversalMethods(): void {
+  Array.prototype.sort = function arraySortShouldNotBeCalled(): never {
+    throw new Error('Array.prototype.sort should not be called');
+  } as typeof originalArraySort;
+  Map.prototype.forEach = function mapForEachShouldNotBeCalled(): void {
+    throw new Error('Map.prototype.forEach should not be called');
+  } as typeof originalMapForEach;
+}
+
+function restoreCollectionTraversalMethods(): void {
+  Array.prototype.sort = originalArraySort;
+  Map.prototype.forEach = originalMapForEach;
+}
 
 test('resolveGitHubApiUrl appends relative paths to configured API base', () => {
   const config = readConfig({
@@ -407,7 +424,12 @@ test('discoverRepositories avoids user-controlled configured repository iterator
       ])
     )) as typeof fetch;
 
-  assert.deepEqual(await discoverRepositories(config), ['nullclaw/nullbuilder', 'nullclaw/nullthing']);
+  rejectCollectionTraversalMethods();
+  try {
+    assert.deepEqual(await discoverRepositories(config), ['nullclaw/nullbuilder', 'nullclaw/nullthing']);
+  } finally {
+    restoreCollectionTraversalMethods();
+  }
 });
 
 test('discoverRepositories caps discovered repositories before dashboard fan-out', async () => {

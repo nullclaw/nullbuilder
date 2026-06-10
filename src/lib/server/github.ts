@@ -36,6 +36,11 @@ export type {
   WorkflowRunSummary
 } from './github-dashboard';
 
+type RepositorySlugCollection = {
+  keys: Set<string>;
+  values: RepoSlug[];
+};
+
 export async function getDashboard(config: NullbuilderConfig): Promise<DashboardData> {
   const repoList = config.discoverRepos ? await discoverRepositories(config) : config.repos;
   const repositories = await mapWithConcurrency(repoList, config.concurrency, (repo) =>
@@ -52,7 +57,7 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
     archived: boolean;
   };
 
-  const configured = repositorySlugMap(config.repos);
+  const configured = repositorySlugCollection(config.repos);
   const ignored = repositoryKeySet(config.ignoredRepos);
 
   try {
@@ -83,18 +88,19 @@ export async function discoverRepositories(config: NullbuilderConfig): Promise<R
       const name = repoName(slug);
       const isNullRepo = name.startsWith('null') || name === 'nllclw';
       const isZigRepo = discoveredRepo.language === 'Zig';
-      if (!discoveredRepo.archived && (isNullRepo || isZigRepo) && !configured.has(key)) {
-        if (configured.size >= MAX_REPOSITORY_LIST_ENTRIES) {
+      if (!discoveredRepo.archived && (isNullRepo || isZigRepo) && !configured.keys.has(key)) {
+        if (configured.values.length >= MAX_REPOSITORY_LIST_ENTRIES) {
           break;
         }
-        configured.set(key, slug);
+        configured.keys.add(key);
+        configured.values.push(slug);
       }
     }
   } catch {
     return copyRepositorySlugs(config.repos);
   }
 
-  return sortedRepositoryValues(configured);
+  return sortedRepositoryValues(configured.values);
 }
 
 function safeDiscoveredRepository(value: unknown): {
@@ -128,18 +134,22 @@ function normalizeDiscoveredRepoSlug(fullName: string, defaultOwner: string): Re
   }
 }
 
-function repositorySlugMap(repos: readonly RepoSlug[]): Map<string, RepoSlug> {
-  const slugs = new Map<string, RepoSlug>();
+function repositorySlugCollection(repos: readonly RepoSlug[]): RepositorySlugCollection {
+  const collection: RepositorySlugCollection = {
+    keys: new Set<string>(),
+    values: []
+  };
 
   for (let index = 0; index < repos.length; index += 1) {
     const repo = repos[index];
     const key = repoKey(repo);
-    if (!slugs.has(key)) {
-      slugs.set(key, repo);
+    if (!collection.keys.has(key)) {
+      collection.keys.add(key);
+      collection.values.push(repo);
     }
   }
 
-  return slugs;
+  return collection;
 }
 
 function repositoryKeySet(repos: readonly RepoSlug[]): Set<string> {
@@ -152,13 +162,22 @@ function repositoryKeySet(repos: readonly RepoSlug[]): Set<string> {
   return keys;
 }
 
-function sortedRepositoryValues(repositories: ReadonlyMap<string, RepoSlug>): RepoSlug[] {
-  const values: RepoSlug[] = [];
-  repositories.forEach((repo) => {
-    values.push(repo);
-  });
-  values.sort((left, right) => left.localeCompare(right));
+function sortedRepositoryValues(repositories: readonly RepoSlug[]): RepoSlug[] {
+  const values = copyRepositorySlugs(repositories);
+  sortRepositorySlugs(values);
   return values;
+}
+
+function sortRepositorySlugs(values: RepoSlug[]): void {
+  for (let index = 1; index < values.length; index += 1) {
+    const value = values[index];
+    let insertionIndex = index;
+    while (insertionIndex > 0 && values[insertionIndex - 1].localeCompare(value) > 0) {
+      values[insertionIndex] = values[insertionIndex - 1];
+      insertionIndex -= 1;
+    }
+    values[insertionIndex] = value;
+  }
 }
 
 function copyRepositorySlugs(repos: readonly RepoSlug[]): RepoSlug[] {
