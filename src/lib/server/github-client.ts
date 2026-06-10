@@ -343,7 +343,7 @@ export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): st
   }
 
   if (!/^https?:\/\//i.test(path)) {
-    throw new Error(`Invalid GitHub API path: ${path}`);
+    throw new Error('Invalid GitHub API path.');
   }
 
   const base = new URL(config.apiBaseUrl);
@@ -351,7 +351,7 @@ export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): st
   const basePath = base.pathname.replace(/\/+$/, '');
 
   if (url.origin !== base.origin || (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`))) {
-    throw new Error(`Invalid GitHub API URL: ${path}`);
+    throw new Error('Invalid GitHub API URL.');
   }
 
   url.hash = '';
@@ -382,6 +382,14 @@ export function publicErrorMessage(error: unknown): string {
 
   if (error instanceof Error && error.message.startsWith('Release tag')) {
     return error.message;
+  }
+
+  if (error instanceof Error && error.message.startsWith('Invalid GitHub API path')) {
+    return 'Invalid GitHub API path.';
+  }
+
+  if (error instanceof Error && error.message.startsWith('Invalid GitHub API URL')) {
+    return 'Invalid GitHub API URL.';
   }
 
   if (error instanceof Error && error.message.startsWith('Invalid')) {

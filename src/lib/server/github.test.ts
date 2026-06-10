@@ -28,8 +28,13 @@ test('resolveGitHubApiUrl rejects cross-origin absolute next URLs', () => {
   });
 
   assert.throws(
+    () => resolveGitHubApiUrl(config, 'not-a-url\nsecret'),
+    (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub API path.'
+  );
+
+  assert.throws(
     () => resolveGitHubApiUrl(config, 'https://evil.example.test/repos/nullclaw/nullbuilder'),
-    /Invalid GitHub API URL/
+    (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub API URL.'
   );
 });
 
@@ -37,6 +42,10 @@ test('publicErrorMessage keeps GitHub authorization details generic', () => {
   assert.equal(
     publicErrorMessage(new GitHubApiError('GitHub 403 Forbidden: secret detail', 403)),
     'GitHub API authorization or rate-limit error (403).'
+  );
+  assert.equal(
+    publicErrorMessage(new Error('Invalid GitHub API URL: https://evil.example.test/repos?token=secret')),
+    'Invalid GitHub API URL.'
   );
 });
 
