@@ -8,6 +8,8 @@ import {
   repoSlugParts
 } from './repositories';
 
+const originalArrayIterator = Array.prototype[Symbol.iterator];
+
 test('normalizeOwner rejects invalid owners', () => {
   assert.equal(normalizeOwner('NullClaw'), 'NullClaw');
   assert.throws(() => normalizeOwner('-bad'), /^Error: Invalid repository owner\.$/);
@@ -61,6 +63,41 @@ test('parseRepositoryList deduplicates case-insensitively', () => {
     'nullclaw/nullbuilder',
     'nullclaw/nullhub'
   ]);
+});
+
+test('repository list helpers avoid runtime iterators', () => {
+  const generatorIteratorOwner = iteratorOwner(
+    (function* generatorFixture() {
+      yield 'value';
+    })()
+  );
+  const originalGeneratorIteratorDescriptor = Object.getOwnPropertyDescriptor(generatorIteratorOwner, Symbol.iterator);
+  const repos = parseRepositoryList('NullClaw/NullBuilder nullclaw/nullhub', 'nullclaw');
+
+  Array.prototype[Symbol.iterator] = function arrayIteratorShouldNotBeCalled(): ArrayIterator<unknown> {
+    throw new Error('Array.prototype iterator should not be called.');
+  };
+  Object.defineProperty(generatorIteratorOwner, Symbol.iterator, {
+    configurable: true,
+    value() {
+      throw new Error('Generator iterator should not be called.');
+    }
+  });
+
+  let parsed: ReturnType<typeof parseRepositoryList> = [];
+  let configured: ReturnType<typeof findConfiguredRepoSlug> = null;
+  try {
+    parsed = parseRepositoryList('nullbuilder, nullhub nullbuilder', 'nullclaw');
+    configured = findConfiguredRepoSlug(repos, 'NULLCLAW/NULLHUB', 'nullclaw');
+  } finally {
+    Array.prototype[Symbol.iterator] = originalArrayIterator;
+    if (originalGeneratorIteratorDescriptor) {
+      Object.defineProperty(generatorIteratorOwner, Symbol.iterator, originalGeneratorIteratorDescriptor);
+    }
+  }
+
+  assert.deepEqual(parsed, ['nullclaw/nullbuilder', 'nullclaw/nullhub']);
+  assert.equal(configured, 'nullclaw/nullhub');
 });
 
 test('findConfiguredRepoSlug normalizes candidates against configured repositories', () => {
@@ -148,3 +185,16 @@ test('repository validators do not echo unsafe input in errors', () => {
     (error: unknown) => error instanceof Error && error.message === 'Invalid repository slug.'
   );
 });
+
+function iteratorOwner(value: object): { [Symbol.iterator]: () => Iterator<unknown> } {
+  let prototype = Object.getPrototypeOf(value) as object | null;
+  while (prototype) {
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, Symbol.iterator);
+    if (descriptor?.value) {
+      return prototype as { [Symbol.iterator]: () => Iterator<unknown> };
+    }
+    prototype = Object.getPrototypeOf(prototype) as object | null;
+  }
+
+  throw new Error('Iterator prototype not found.');
+}

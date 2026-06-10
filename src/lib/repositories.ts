@@ -102,17 +102,22 @@ export function parseRepositoryList(
 
   const seen = new Set<string>();
   const repos: RepoSlug[] = [];
+  let entryStart: number | null = null;
 
-  for (const entry of repositoryListEntries(source)) {
-    const slug = normalizeRepoSlug(entry, defaultOwner);
-    const key = slug.toLowerCase();
-    if (!seen.has(key)) {
-      if (repos.length >= MAX_REPOSITORY_LIST_ENTRIES) {
-        throw new Error('Too many repositories configured.');
+  for (let index = 0; index < source.length; index += 1) {
+    if (isRepositoryListSeparator(source[index])) {
+      if (entryStart !== null) {
+        addRepositoryListEntry(source.slice(entryStart, index), defaultOwner, seen, repos);
+        entryStart = null;
       }
-      seen.add(key);
-      repos.push(slug);
+      continue;
     }
+
+    entryStart ??= index;
+  }
+
+  if (entryStart !== null) {
+    addRepositoryListEntry(source.slice(entryStart), defaultOwner, seen, repos);
   }
 
   return repos;
@@ -131,7 +136,8 @@ export function findConfiguredRepoSlug(
   }
 
   const key = repositoryKey(repo);
-  for (const configuredRepo of configuredRepos) {
+  for (let index = 0; index < configuredRepos.length; index += 1) {
+    const configuredRepo = configuredRepos[index];
     if (repositoryKey(configuredRepo) === key) {
       return configuredRepo;
     }
@@ -170,24 +176,18 @@ function repositoryListSource(value: unknown, fallback: readonly string[]): stri
   return fallback.join(',');
 }
 
-function* repositoryListEntries(source: string): Iterable<string> {
-  let entryStart: number | null = null;
-
-  for (let index = 0; index < source.length; index += 1) {
-    if (isRepositoryListSeparator(source[index])) {
-      if (entryStart !== null) {
-        yield source.slice(entryStart, index);
-        entryStart = null;
-      }
-      continue;
-    }
-
-    entryStart ??= index;
+function addRepositoryListEntry(entry: string, defaultOwner: string, seen: Set<string>, repos: RepoSlug[]): void {
+  const slug = normalizeRepoSlug(entry, defaultOwner);
+  const key = slug.toLowerCase();
+  if (seen.has(key)) {
+    return;
   }
 
-  if (entryStart !== null) {
-    yield source.slice(entryStart);
+  if (repos.length >= MAX_REPOSITORY_LIST_ENTRIES) {
+    throw new Error('Too many repositories configured.');
   }
+  seen.add(key);
+  repos.push(slug);
 }
 
 function isRepositoryListSeparator(value: string): boolean {
