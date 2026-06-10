@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const text_safety = @import("src/tui/text_safety.zig");
+
 const ZigBuildOptions = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
@@ -112,19 +114,15 @@ fn isSafeTuiRunArgs(args: []const []const u8) bool {
     for (args) |arg| {
         if (arg.len > max_tui_run_arg_bytes) return false;
         if (arg.len > max_tui_run_args_total_bytes - total_bytes) return false;
-        if (hasControlByte(arg)) return false;
+        if (hasUnsafeText(arg)) return false;
         total_bytes += arg.len;
     }
 
     return true;
 }
 
-fn hasControlByte(value: []const u8) bool {
-    for (value) |byte| {
-        if (byte < 0x20 or (byte >= 0x7f and byte <= 0x9f)) return true;
-    }
-
-    return false;
+fn hasUnsafeText(value: []const u8) bool {
+    return text_safety.hasControl(value);
 }
 
 test "tui run args are bounded before build runner forwarding" {
@@ -135,10 +133,13 @@ test "tui run args are bounded before build runner forwarding" {
 
     try std.testing.expect(isSafeTuiRunArgs(&.{ "build-pr", "nullclaw/nullbuilder", "--pr", "7" }));
     try std.testing.expect(isSafeTuiRunArgs(&.{ "release-tag", max_arg[0..] }));
+    try std.testing.expect(isSafeTuiRunArgs(&.{ "release-tag", "nullclaw/nullbuilder", "--ref", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c" }));
 
     try std.testing.expect(!isSafeTuiRunArgs(too_many_args[0..]));
     try std.testing.expect(!isSafeTuiRunArgs(&.{ "build-pr", oversized_arg[0..] }));
     try std.testing.expect(!isSafeTuiRunArgs(&.{ "build-pr", max_arg[0..], total_excess[0..] }));
     try std.testing.expect(!isSafeTuiRunArgs(&.{"bad\narg"}));
     try std.testing.expect(!isSafeTuiRunArgs(&.{"bad\x85arg"}));
+    try std.testing.expect(!isSafeTuiRunArgs(&.{"bad\xe2\x80\xaearg"}));
+    try std.testing.expect(!isSafeTuiRunArgs(&.{"bad\xc0\x85arg"}));
 }
