@@ -46,19 +46,9 @@ pub fn intField(object: JsonObject, field_name: []const u8) u64 {
     const value = object.get(field_name) orelse return 0;
     return switch (value) {
         .integer => |integer| if (integer > 0) std.math.cast(u64, integer) orelse 0 else 0,
-        .float => |float| positiveFloatToU64(float) orelse 0,
         .null => 0,
         else => 0,
     };
-}
-
-fn positiveFloatToU64(value: f64) ?u64 {
-    const max_u64_float: f64 = @floatFromInt(std.math.maxInt(u64));
-    if (!std.math.isFinite(value) or value <= 0 or value >= max_u64_float or @floor(value) != value) {
-        return null;
-    }
-
-    return @intFromFloat(value);
 }
 
 test "field helpers return typed values and fallbacks" {
@@ -103,7 +93,7 @@ test "intField accepts only safe positive integers" {
     const object = parsed.value.object;
 
     try std.testing.expectEqual(@as(u64, 42), intField(object, "positive"));
-    try std.testing.expectEqual(@as(u64, 4), intField(object, "floatInteger"));
+    try std.testing.expectEqual(@as(u64, 0), intField(object, "floatInteger"));
     try std.testing.expectEqual(@as(u64, 0), intField(object, "negative"));
     try std.testing.expectEqual(@as(u64, 0), intField(object, "fractional"));
     try std.testing.expectEqual(@as(u64, 0), intField(object, "unsafe"));
