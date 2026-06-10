@@ -30,6 +30,7 @@ pub const Dashboard = struct {
 
         for (self.items) |item| {
             const repo = repositoryFromValue(item) orelse continue;
+            if (!repo.valid_slug) continue;
             result.repositories += 1;
             result.issues = saturatingAdd(result.issues, repo.open_issues);
             result.pull_requests = saturatingAdd(result.pull_requests, repo.open_pulls);
@@ -287,6 +288,28 @@ test "dashboard totals reject counters outside the safe JSON integer domain" {
     try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.issues);
     try std.testing.expectEqual(@as(u64, 10), totals.pull_requests);
     try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.stars);
+}
+
+test "dashboard totals ignore repositories without safe slugs" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    {"openIssues": 99, "openPulls": 99, "stars": 99},
+        \\    {"slug": "bad\nslug", "openIssues": 99, "openPulls": 99, "stars": 99},
+        \\    {"slug": "valid", "openIssues": 2, "openPulls": 1, "stars": 3, "latestRuns": {"ci": {"status": "completed", "conclusion": "failure"}}}
+        \\  ]
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const dashboard = Dashboard.init(parsed.value.object);
+    const totals = dashboard.totals();
+
+    try std.testing.expectEqual(@as(u64, 1), totals.repositories);
+    try std.testing.expectEqual(@as(u64, 2), totals.issues);
+    try std.testing.expectEqual(@as(u64, 1), totals.pull_requests);
+    try std.testing.expectEqual(@as(u64, 3), totals.stars);
+    try std.testing.expectEqual(@as(u64, 1), totals.failing);
 }
 
 test "dashboard model bounds external collection sizes" {

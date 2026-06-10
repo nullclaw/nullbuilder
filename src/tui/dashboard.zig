@@ -69,6 +69,7 @@ pub fn render(
 
     for (dashboard.items) |item| {
         const repo = dashboard_model.repositoryFromValue(item) orelse continue;
+        if (!repo.valid_slug) continue;
         const repo_slug = try sanitizeTerminalText(arena, repo.slug);
         defer repo_slug.deinit(arena);
         var issues_buffer: [count_column_width]u8 = undefined;
@@ -405,8 +406,8 @@ test "render does not echo terminal control characters from external text" {
     try std.testing.expect(std.mem.indexOf(u8, output, "success") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "Fix red next item") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "rate limited now") == null);
-    try expectContains(output, "unknown");
-    try expectContains(output, "completed");
+    try std.testing.expect(std.mem.indexOf(u8, output, "unknown") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "completed") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "Load errors") == null);
 }
 
