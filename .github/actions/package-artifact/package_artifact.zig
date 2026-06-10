@@ -147,39 +147,39 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions) !void {
     validatePackageOptions(options) catch |err| switch (err) {
         error.InvalidBinaryPath => {
-            std.debug.print("invalid binary path: {s}\n", .{options.binary_path});
+            action_args.printDiagnostic("invalid binary path: {s}\n", options.binary_path);
             return error.InvalidArguments;
         },
         error.InvalidTargetLabel => {
-            std.debug.print("invalid target label: {s}\n", .{options.target});
+            action_args.printDiagnostic("invalid target label: {s}\n", options.target);
             return error.InvalidArguments;
         },
         error.InvalidZigTarget => {
-            std.debug.print("invalid zig target: {s}\n", .{options.zig_target});
+            action_args.printDiagnostic("invalid zig target: {s}\n", options.zig_target);
             return error.InvalidArguments;
         },
         error.InvalidVersion => {
-            std.debug.print("invalid version: {s}\n", .{options.version});
+            action_args.printDiagnostic("invalid version: {s}\n", options.version);
             return error.InvalidArguments;
         },
         error.InvalidRepository => {
-            std.debug.print("invalid repository: {s}\n", .{options.repository});
+            action_args.printDiagnostic("invalid repository: {s}\n", options.repository);
             return error.InvalidArguments;
         },
         error.InvalidCommitSha => {
-            std.debug.print("invalid commit sha: {s}\n", .{options.commit});
+            action_args.printDiagnostic("invalid commit sha: {s}\n", options.commit);
             return error.InvalidArguments;
         },
         error.InvalidRunId => {
-            std.debug.print("invalid run id: {s}\n", .{options.run_id});
+            action_args.printDiagnostic("invalid run id: {s}\n", options.run_id);
             return error.InvalidArguments;
         },
         error.InvalidServerUrl => {
-            std.debug.print("invalid server url: {s}\n", .{options.server_url});
+            action_args.printDiagnostic("invalid server url: {s}\n", options.server_url);
             return error.InvalidArguments;
         },
         error.InvalidBuiltAt => {
-            std.debug.print("invalid build timestamp: {s}\n", .{options.built_at});
+            action_args.printDiagnostic("invalid build timestamp: {s}\n", options.built_at);
             return error.InvalidArguments;
         },
     };

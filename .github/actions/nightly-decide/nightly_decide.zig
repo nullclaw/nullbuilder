@@ -171,15 +171,15 @@ fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator)
 fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !void {
     validateDecideOptions(options) catch |err| switch (err) {
         error.InvalidRunsJsonPath => {
-            std.debug.print("invalid runs json path: {s}\n", .{options.runs_json_path});
+            action_args.printDiagnostic("invalid runs json path: {s}\n", options.runs_json_path);
             return error.InvalidArguments;
         },
         error.InvalidCurrentRunId => {
-            std.debug.print("invalid current run id: {s}\n", .{options.current_run_id});
+            action_args.printDiagnostic("invalid current run id: {s}\n", options.current_run_id);
             return error.InvalidArguments;
         },
         error.InvalidHeadSha => {
-            std.debug.print("invalid head sha: {s}\n", .{options.head_sha});
+            action_args.printDiagnostic("invalid head sha: {s}\n", options.head_sha);
             return error.InvalidArguments;
         },
     };
