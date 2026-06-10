@@ -41,7 +41,12 @@ export class RecentWorkItemCollector<T extends WorkItemWithUpdatedAt> {
   }
 
   items(): T[] {
-    return this.rankedItems.map(({ item }) => item);
+    const items: T[] = [];
+    for (const rankedItem of this.rankedItems) {
+      items.push(rankedItem.item);
+    }
+
+    return items;
   }
 }
 

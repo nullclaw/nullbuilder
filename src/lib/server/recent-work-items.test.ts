@@ -25,6 +25,18 @@ test('RecentWorkItemCollector keeps the newest bounded rows with stable timestam
   assert.deepEqual(collector.items().map(({ id }) => id), [5, 2, 3]);
 });
 
+test('RecentWorkItemCollector returns an isolated items array', () => {
+  const collector = new RecentWorkItemCollector<TestWorkItem>(2);
+
+  collector.add(workItem(1, '2026-06-09T00:00:00Z'));
+  collector.add(workItem(2, '2026-06-10T00:00:00Z'));
+
+  const items = collector.items();
+  items.length = 0;
+
+  assert.deepEqual(collector.items().map(({ id }) => id), [2, 1]);
+});
+
 test('collectRecentWorkItems treats invalid timestamps as older than valid timestamps', () => {
   const items = [
     workItem(1, 'not-a-date'),
