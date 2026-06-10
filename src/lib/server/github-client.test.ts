@@ -593,6 +593,24 @@ test('githubRequest rejects malformed UTF-8 JSON responses before parsing', asyn
   );
 });
 
+test('githubRequest rejects malformed JSON responses with a generic parse error', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://malformed-json.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () => new Response('{"private":"secret",')) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'GitHub response body is not valid JSON.' &&
+      !error.message.includes('secret')
+  );
+});
+
 test('githubRequest rejects malformed content-length before parsing', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

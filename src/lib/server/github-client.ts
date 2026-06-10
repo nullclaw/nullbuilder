@@ -247,7 +247,15 @@ async function readResponseJson<T>(response: Response): Promise<T> {
     return undefined as T;
   }
 
-  return JSON.parse(await readBoundedResponseText(response, GITHUB_JSON_RESPONSE_MAX_BYTES)) as T;
+  return parseGitHubResponseJson<T>(await readBoundedResponseText(response, GITHUB_JSON_RESPONSE_MAX_BYTES));
+}
+
+function parseGitHubResponseJson<T>(body: string): T {
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new Error('GitHub response body is not valid JSON.');
+  }
 }
 
 async function readErrorDetail(response: Response): Promise<string> {
