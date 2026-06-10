@@ -58,10 +58,7 @@ pub fn optionalSafeTextField(object: JsonObject, field_name: []const u8, max_len
 }
 
 fn safeTextValue(value: JsonValue, max_len: usize) ?[]const u8 {
-    return switch (value) {
-        .string => |string| if (action_values.isSafeActionOutputValue(string, max_len)) string else null,
-        else => null,
-    };
+    return json_safety.safeTextValue(value, max_len, action_values.isSafeActionOutputValue);
 }
 
 test "action json exposes typed objects arrays and empty slices" {

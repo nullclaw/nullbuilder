@@ -27,9 +27,10 @@ pub fn build(b: *std.Build) void {
     };
 
     const arg_safety_module = createModule(b, options, "src/zig/arg_safety.zig");
+    const text_safety_module = createModule(b, options, "src/zig/text_safety.zig");
     const json_safety_module = createModule(b, options, "src/zig/json_safety.zig");
     const repository_safety_module = createModule(b, options, "src/zig/repository_safety.zig");
-    const text_safety_module = createModule(b, options, "src/zig/text_safety.zig");
+    json_safety_module.addImport("text_safety", text_safety_module);
     repository_safety_module.addImport("text_safety", text_safety_module);
     const tui_module = createModule(b, options, "src/tui/main.zig");
     tui_module.addImport("arg_safety", arg_safety_module);

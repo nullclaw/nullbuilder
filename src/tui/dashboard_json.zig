@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const json_safety = @import("json_safety");
-const text_safety = @import("text_safety");
 
 pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
@@ -79,10 +78,7 @@ pub fn safeIntegerField(object: JsonObject, field_name: []const u8) u64 {
 }
 
 fn safeTextValue(value: JsonValue, max_len: usize) ?[]const u8 {
-    return switch (value) {
-        .string => |string| if (string.len > 0 and string.len <= max_len and !text_safety.hasControl(string)) string else null,
-        else => null,
-    };
+    return json_safety.safeTextValue(value, max_len, json_safety.isNonEmptyTextWithoutControl);
 }
 
 test "field helpers return typed values and fallbacks" {
