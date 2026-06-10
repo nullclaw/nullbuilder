@@ -2,6 +2,7 @@ const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
 
 export const TERMINAL_TRUNCATION_SUFFIX = '...';
+export const MAX_TEXT_SAFETY_LENGTH = 8192;
 
 export type SafeTextOptions = {
   maxLength: number;
@@ -33,13 +34,19 @@ export function sanitizeTerminalCell(value: string, lineMaxLength: number, cellM
 }
 
 function truncateText(value: string, maxLength: number, suffix: string): string {
-  const suffixLength = maxLength > suffix.length ? suffix.length : 0;
-  const prefixLimit = maxLength - suffixLength;
+  const normalizedMaxLength = normalizeTextLength(maxLength);
+
+  if (normalizedMaxLength === 0) {
+    return '';
+  }
+
+  const suffixLength = normalizedMaxLength > suffix.length ? suffix.length : 0;
+  const prefixLimit = normalizedMaxLength - suffixLength;
   let prefix = '';
   let length = 0;
 
   for (const character of value) {
-    if (length >= maxLength) {
+    if (length >= normalizedMaxLength) {
       return suffixLength > 0 ? `${prefix}${suffix}` : prefix;
     }
 
@@ -50,4 +57,16 @@ function truncateText(value: string, maxLength: number, suffix: string): string 
   }
 
   return value;
+}
+
+function normalizeTextLength(value: number): number {
+  if (Number.isNaN(value) || value <= 0) {
+    return 0;
+  }
+
+  if (!Number.isFinite(value)) {
+    return MAX_TEXT_SAFETY_LENGTH;
+  }
+
+  return Math.min(Math.floor(value), MAX_TEXT_SAFETY_LENGTH);
 }
