@@ -1,3 +1,5 @@
+export const MAX_MAP_CONCURRENCY = 10;
+
 export async function mapWithConcurrency<T, R>(
   values: readonly T[],
   concurrency: number,
@@ -9,8 +11,7 @@ export async function mapWithConcurrency<T, R>(
 
   const results = new Array<R>(values.length);
   let nextIndex = 0;
-  const normalizedConcurrency = Number.isFinite(concurrency) ? Math.max(1, Math.floor(concurrency)) : 1;
-  const workerCount = Math.min(normalizedConcurrency, values.length);
+  const workerCount = normalizeWorkerCount(concurrency, values.length);
 
   await Promise.all(
     Array.from({ length: workerCount }, async () => {
@@ -23,4 +24,10 @@ export async function mapWithConcurrency<T, R>(
   );
 
   return results;
+}
+
+function normalizeWorkerCount(concurrency: number, valueCount: number): number {
+  const normalizedConcurrency = Number.isFinite(concurrency) ? Math.max(1, Math.floor(concurrency)) : 1;
+
+  return Math.min(normalizedConcurrency, MAX_MAP_CONCURRENCY, valueCount);
 }

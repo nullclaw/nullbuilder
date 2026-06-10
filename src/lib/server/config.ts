@@ -5,6 +5,7 @@ import {
   parseRepositoryList,
   type RepoSlug
 } from '../repositories';
+import { MAX_MAP_CONCURRENCY } from './concurrency';
 
 export type NullbuilderConfig = {
   owner: string;
@@ -26,7 +27,6 @@ const DEFAULT_WEB_BASE_URL = 'https://github.com';
 const DEFAULT_CACHE_TTL_MS = 60_000;
 const MAX_CACHE_TTL_MS = 5 * 60_000;
 const DEFAULT_CONCURRENCY = 3;
-const MAX_CONCURRENCY = 10;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const MIN_REQUEST_TIMEOUT_MS = 5_000;
 const MAX_REQUEST_TIMEOUT_MS = 60_000;
@@ -43,7 +43,7 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     webBaseUrl: parseBaseUrl(env.NULLBUILDER_GITHUB_WEB_URL, DEFAULT_WEB_BASE_URL, 'NULLBUILDER_GITHUB_WEB_URL'),
     discoverRepos: parseBoolean(env.NULLBUILDER_DISCOVER_REPOS),
     cacheTtlMs: parseBoundedInteger(env.NULLBUILDER_CACHE_TTL_MS, DEFAULT_CACHE_TTL_MS, 0, MAX_CACHE_TTL_MS),
-    concurrency: parseBoundedInteger(env.NULLBUILDER_CONCURRENCY, DEFAULT_CONCURRENCY, 1, MAX_CONCURRENCY),
+    concurrency: parseBoundedInteger(env.NULLBUILDER_CONCURRENCY, DEFAULT_CONCURRENCY, 1, MAX_MAP_CONCURRENCY),
     requestTimeoutMs: parseBoundedInteger(
       env.NULLBUILDER_REQUEST_TIMEOUT_MS,
       DEFAULT_REQUEST_TIMEOUT_MS,
