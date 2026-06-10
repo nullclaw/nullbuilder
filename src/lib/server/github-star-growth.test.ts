@@ -71,6 +71,32 @@ test('getStarGrowth returns exact zeros without fetching for repositories with n
   assert.equal(requests, 0);
 });
 
+test('getStarGrowth treats unsafe current stars as unknown without fetching', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://unsafe-stars.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  let requests = 0;
+
+  globalThis.fetch = (async () => {
+    requests += 1;
+    return jsonResponse([]);
+  }) as typeof fetch;
+
+  assert.deepEqual(await getStarGrowth(config, REPO, Number.MAX_SAFE_INTEGER + 1), {
+    current: null,
+    last7Days: null,
+    last30Days: null
+  });
+  assert.deepEqual(await getStarGrowth(config, REPO, -1), {
+    current: null,
+    last7Days: null,
+    last30Days: null
+  });
+  assert.equal(requests, 0);
+});
+
 test('getStarGrowth preserves current stars and marks deltas unknown when GitHub fetch fails', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

@@ -17,7 +17,16 @@ export async function getStarGrowth(
   currentStars: number,
   now = Date.now()
 ): Promise<StarGrowthSummary> {
-  if (currentStars === 0) {
+  const current = safeCurrentStars(currentStars);
+  if (current === null) {
+    return {
+      current: null,
+      last7Days: null,
+      last30Days: null
+    };
+  }
+
+  if (current === 0) {
     return {
       current: 0,
       last7Days: 0,
@@ -26,10 +35,10 @@ export async function getStarGrowth(
   }
 
   try {
-    return await fetchStarGrowth(config, repo, currentStars, now);
+    return await fetchStarGrowth(config, repo, current, now);
   } catch {
     return {
-      current: currentStars,
+      current,
       last7Days: null,
       last30Days: null
     };
@@ -99,4 +108,8 @@ function starAgeMs(starredAt: string | undefined, now: number): number | null {
 
   const age = now - timestamp;
   return age >= 0 ? age : null;
+}
+
+function safeCurrentStars(value: number): number | null {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
