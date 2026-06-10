@@ -10,6 +10,7 @@ const JsonObject = action_json.JsonObject;
 
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 const MAX_OUTPUT_VALUE_BYTES = 4096;
+const MAX_RUNS_JSON_VALUE_BYTES = MAX_OUTPUT_VALUE_BYTES;
 const MAX_WORKFLOW_NAME_BYTES = 256;
 const MAX_WORKFLOW_RUNS_TO_SCAN = 100;
 const MAX_RUN_EVENT_BYTES = 64;
@@ -67,7 +68,9 @@ fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
 
 fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(JsonValue) {
     if (json_bytes.len > MAX_RUNS_JSON_BYTES) return error.RunsJsonTooLarge;
-    return try std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{});
+    return try std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{
+        .max_value_len = MAX_RUNS_JSON_VALUE_BYTES,
+    });
 }
 
 fn decideShouldBuild(
@@ -623,6 +626,16 @@ test "nightly rejects oversized runs payloads at the parser boundary" {
     @memset(json, ' ');
 
     try std.testing.expectError(error.RunsJsonTooLarge, parseRunsPayload(std.testing.allocator, json));
+}
+
+test "nightly rejects oversized scalar values during runs payload parsing" {
+    const oversized = [_]u8{'x'} ** (MAX_RUNS_JSON_VALUE_BYTES + 1);
+    const json = try std.fmt.allocPrint(std.testing.allocator,
+        \\{{"workflow_runs":[{{"id":42,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"{s}"}}]}}
+    , .{oversized[0..]});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expectError(error.ValueTooLong, parseRunsPayload(std.testing.allocator, json));
 }
 
 test "nightly omits unsafe matched run URLs from API payload" {
