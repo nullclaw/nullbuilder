@@ -244,6 +244,10 @@ export function isCsrfTokenMatch(value: FormDataEntryValue | null, cookies: Cook
 }
 
 export function isTokenMatch(value: string, expected: string): boolean {
+  if (value.length > MAX_TOKEN_COMPARE_BYTES || expected.length > MAX_TOKEN_COMPARE_BYTES) {
+    return false;
+  }
+
   const valueBytes = Buffer.byteLength(value);
   const expectedBytes = Buffer.byteLength(expected);
   if (valueBytes !== expectedBytes || valueBytes > MAX_TOKEN_COMPARE_BYTES) {

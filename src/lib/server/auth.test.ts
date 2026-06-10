@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { Buffer } from 'node:buffer';
 import { test } from 'node:test';
 import type { Cookies } from '@sveltejs/kit';
 import { readConfig } from './config';
@@ -146,6 +147,21 @@ test('token comparison rejects malformed values before constant-time comparison'
   assert.equal(isTokenMatch(`${'a'.repeat(63)}é`, expected), false);
   assert.equal(isTokenMatch('a'.repeat(4097), 'a'.repeat(4097)), false);
   assert.equal(isTokenMatch('b'.repeat(64), expected), false);
+});
+
+test('token comparison rejects oversized strings before byte-length work', () => {
+  const originalByteLength = Buffer.byteLength;
+
+  try {
+    Buffer.byteLength = (() => {
+      throw new Error('byteLength should not be called for oversized token strings');
+    }) as typeof Buffer.byteLength;
+
+    assert.equal(isTokenMatch('a'.repeat(4097), 'a'.repeat(64)), false);
+    assert.equal(isTokenMatch('a'.repeat(64), 'a'.repeat(4097)), false);
+  } finally {
+    Buffer.byteLength = originalByteLength;
+  }
 });
 
 test('login rate limiter blocks repeated failures and prunes old attempts', () => {
