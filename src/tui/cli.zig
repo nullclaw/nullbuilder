@@ -29,8 +29,7 @@ pub fn freeResult(gpa: std.mem.Allocator, result: std.process.RunResult) void {
 }
 
 pub fn writeCaptured(out: *std.Io.Writer, result: std.process.RunResult) !void {
-    if (result.stdout.len > 0) _ = try terminal.writeSafeBounded(out, result.stdout, max_child_output_display_bytes, .{ .preserve_newlines = true });
-    if (result.stderr.len > 0) _ = try terminal.writeSafeBounded(out, result.stderr, max_child_output_display_bytes, .{ .preserve_newlines = true });
+    try writeCapturedWithOrder(out, result, .stdout_first);
 }
 
 pub fn exitCodeForFailure(
@@ -44,15 +43,39 @@ pub fn exitCodeForFailure(
                 return null;
             }
 
-            if (result.stderr.len > 0) _ = try terminal.writeSafeBounded(out, result.stderr, max_child_output_display_bytes, .{ .preserve_newlines = true });
-            if (result.stdout.len > 0) _ = try terminal.writeSafeBounded(out, result.stdout, max_child_output_display_bytes, .{ .preserve_newlines = true });
+            try writeCapturedWithOrder(out, result, .stderr_first);
             return code;
         },
         else => {
-            if (result.stderr.len > 0) _ = try terminal.writeSafeBounded(out, result.stderr, max_child_output_display_bytes, .{ .preserve_newlines = true });
+            var budget = terminal.OutputBudget{ .remaining = max_child_output_display_bytes };
+            try writeCapturedStream(out, result.stderr, &budget);
             return error.ChildProcessFailed;
         },
     }
+}
+
+const CapturedWriteOrder = enum {
+    stdout_first,
+    stderr_first,
+};
+
+fn writeCapturedWithOrder(out: *std.Io.Writer, result: std.process.RunResult, order: CapturedWriteOrder) !void {
+    var budget = terminal.OutputBudget{ .remaining = max_child_output_display_bytes };
+    switch (order) {
+        .stdout_first => {
+            try writeCapturedStream(out, result.stdout, &budget);
+            try writeCapturedStream(out, result.stderr, &budget);
+        },
+        .stderr_first => {
+            try writeCapturedStream(out, result.stderr, &budget);
+            try writeCapturedStream(out, result.stdout, &budget);
+        },
+    }
+}
+
+fn writeCapturedStream(out: *std.Io.Writer, value: []const u8, budget: *terminal.OutputBudget) !void {
+    if (value.len == 0 or budget.truncated) return;
+    _ = try terminal.writeSafeBudgeted(out, value, budget, .{ .preserve_newlines = true });
 }
 
 fn isAllowedExitCode(code: u8, allowed_exit_codes: []const u8) bool {
@@ -96,4 +119,53 @@ test "exit code allow-list accepts only configured codes" {
     try std.testing.expect(isAllowedExitCode(0, &.{0}));
     try std.testing.expect(isAllowedExitCode(2, &.{ 0, 2 }));
     try std.testing.expect(!isAllowedExitCode(1, &.{ 0, 2 }));
+}
+
+test "captured child output shares one display budget across stdout and stderr" {
+    const stdout = try std.testing.allocator.alloc(u8, max_child_output_display_bytes);
+    defer std.testing.allocator.free(stdout);
+    @memset(stdout, 'o');
+
+    const stderr = try std.testing.allocator.dupe(u8, "stderr");
+    defer std.testing.allocator.free(stderr);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try writeCaptured(&out.writer, .{
+        .term = .{ .exited = 0 },
+        .stdout = stdout,
+        .stderr = stderr,
+    });
+
+    const output = out.writer.buffered();
+    try std.testing.expectEqual(max_child_output_display_bytes + terminal.truncated_output_suffix.len, output.len);
+    try std.testing.expect(std.mem.allEqual(u8, output[0..max_child_output_display_bytes], 'o'));
+    try std.testing.expectEqualStrings(terminal.truncated_output_suffix, output[max_child_output_display_bytes..]);
+    try std.testing.expect(std.mem.indexOf(u8, output, "stderr") == null);
+}
+
+test "failure output keeps stderr first while sharing the display budget" {
+    const stdout = try std.testing.allocator.dupe(u8, "stdout");
+    defer std.testing.allocator.free(stdout);
+
+    const stderr = try std.testing.allocator.alloc(u8, max_child_output_display_bytes);
+    defer std.testing.allocator.free(stderr);
+    @memset(stderr, 'e');
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const exit_code = try exitCodeForFailure(&out.writer, .{
+        .term = .{ .exited = 1 },
+        .stdout = stdout,
+        .stderr = stderr,
+    }, &.{0});
+
+    const output = out.writer.buffered();
+    try std.testing.expectEqual(@as(?u8, 1), exit_code);
+    try std.testing.expectEqual(max_child_output_display_bytes + terminal.truncated_output_suffix.len, output.len);
+    try std.testing.expect(std.mem.allEqual(u8, output[0..max_child_output_display_bytes], 'e'));
+    try std.testing.expectEqualStrings(terminal.truncated_output_suffix, output[max_child_output_display_bytes..]);
+    try std.testing.expect(std.mem.indexOf(u8, output, "stdout") == null);
 }

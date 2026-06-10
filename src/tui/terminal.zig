@@ -9,6 +9,11 @@ pub const SanitizeOptions = struct {
     preserve_newlines: bool = false,
 };
 
+pub const OutputBudget = struct {
+    remaining: usize,
+    truncated: bool = false,
+};
+
 pub const SanitizedText = struct {
     value: []const u8,
     allocated: bool = false,
@@ -55,25 +60,27 @@ pub fn writeSafe(out: *std.Io.Writer, value: []const u8, options: SanitizeOption
 }
 
 pub fn writeSafeBounded(out: *std.Io.Writer, value: []const u8, max_bytes: usize, options: SanitizeOptions) !bool {
+    var budget = OutputBudget{ .remaining = max_bytes };
+    return writeSafeBudgeted(out, value, &budget, options);
+}
+
+pub fn writeSafeBudgeted(out: *std.Io.Writer, value: []const u8, budget: *OutputBudget, options: SanitizeOptions) !bool {
+    if (budget.truncated) return true;
+
     var index: usize = 0;
-    var written: usize = 0;
     var buffer: [4]u8 = undefined;
 
     while (index < value.len) {
         if (nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
-            if (written >= max_bytes) {
+            if (budget.remaining == 0 or slice.len > budget.remaining) {
                 try out.writeAll(truncated_output_suffix);
-                return true;
-            }
-
-            const remaining = max_bytes - written;
-            if (slice.len > remaining) {
-                try out.writeAll(truncated_output_suffix);
+                budget.remaining = 0;
+                budget.truncated = true;
                 return true;
             }
 
             try out.writeAll(slice);
-            written += slice.len;
+            budget.remaining -= slice.len;
         }
     }
 
@@ -309,6 +316,28 @@ test "bounded terminal writer handles zero and exact limits explicitly" {
     const removed_only = try writeSafeBounded(&out.writer, "\x1b[31m\x1b[0m", 0, .{});
     try std.testing.expect(!removed_only);
     try std.testing.expectEqualStrings("", out.writer.buffered());
+}
+
+test "budgeted terminal writer shares limits across calls" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    var budget = OutputBudget{ .remaining = 4 };
+
+    try std.testing.expect(!try writeSafeBudgeted(&out.writer, "ab", &budget, .{}));
+    try std.testing.expectEqual(@as(usize, 2), budget.remaining);
+    try std.testing.expect(!budget.truncated);
+
+    try std.testing.expect(!try writeSafeBudgeted(&out.writer, "cd", &budget, .{}));
+    try std.testing.expectEqual(@as(usize, 0), budget.remaining);
+    try std.testing.expect(!budget.truncated);
+
+    try std.testing.expect(try writeSafeBudgeted(&out.writer, "ef", &budget, .{}));
+    try std.testing.expectEqual(@as(usize, 0), budget.remaining);
+    try std.testing.expect(budget.truncated);
+    try std.testing.expectEqualStrings("abcd" ++ truncated_output_suffix, out.writer.buffered());
+
+    try std.testing.expect(try writeSafeBudgeted(&out.writer, "gh", &budget, .{}));
+    try std.testing.expectEqualStrings("abcd" ++ truncated_output_suffix, out.writer.buffered());
 }
 
 test "bounded terminal writer does not split UTF-8 sequences" {
