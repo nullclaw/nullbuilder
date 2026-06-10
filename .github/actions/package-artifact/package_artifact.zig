@@ -103,13 +103,13 @@ fn validateGeneratedPath(path: []const u8) error{InvalidGeneratedPath}!void {
 fn validatePackageOptions(options: PackageOptions) PackageValidationError!void {
     if (!action_paths.isSafeRelativePath(options.binary_path)) return error.InvalidBinaryPath;
     if (!action_paths.isSafeLabel(options.target)) return error.InvalidTargetLabel;
-    if (!action_values.isSafeMetadataValue(options.zig_target, 128)) return error.InvalidZigTarget;
-    if (!action_values.isSafeMetadataValue(options.version, 128)) return error.InvalidVersion;
+    if (!action_values.isSafeMetadataToken(options.zig_target, 128)) return error.InvalidZigTarget;
+    if (!action_values.isSafeMetadataToken(options.version, 128)) return error.InvalidVersion;
     if (!action_values.isRepositorySlug(options.repository)) return error.InvalidRepository;
     if (!action_values.isFullHexSha(options.commit)) return error.InvalidCommitSha;
     if (!action_values.isDecimalId(options.run_id)) return error.InvalidRunId;
     if (!action_values.isHttpUrlBase(options.server_url)) return error.InvalidServerUrl;
-    if (!action_values.isSafeMetadataValue(options.built_at, 64)) return error.InvalidBuiltAt;
+    if (!action_values.isUtcTimestamp(options.built_at)) return error.InvalidBuiltAt;
 }
 
 fn printUsage(io: std.Io) !u8 {
@@ -350,6 +350,14 @@ test "package artifact validates package options before filesystem writes" {
     unsafe_target_options.target = "../outside";
     try std.testing.expectError(error.InvalidTargetLabel, validatePackageOptions(unsafe_target_options));
 
+    var unsafe_zig_target_options = valid_options;
+    unsafe_zig_target_options.zig_target = "x86_64/linux";
+    try std.testing.expectError(error.InvalidZigTarget, validatePackageOptions(unsafe_zig_target_options));
+
+    var unsafe_version_options = valid_options;
+    unsafe_version_options.version = "nightly\"20260504";
+    try std.testing.expectError(error.InvalidVersion, validatePackageOptions(unsafe_version_options));
+
     var unsafe_repository_options = valid_options;
     unsafe_repository_options.repository = "nullclaw/nullbuilder/extra";
     try std.testing.expectError(error.InvalidRepository, validatePackageOptions(unsafe_repository_options));
@@ -369,4 +377,8 @@ test "package artifact validates package options before filesystem writes" {
     var unsafe_metadata_options = valid_options;
     unsafe_metadata_options.built_at = "2026-05-04T02:23:00Z\ninjected";
     try std.testing.expectError(error.InvalidBuiltAt, validatePackageOptions(unsafe_metadata_options));
+
+    var unsafe_timestamp_options = valid_options;
+    unsafe_timestamp_options.built_at = "2026-05-04 02:23:00Z";
+    try std.testing.expectError(error.InvalidBuiltAt, validatePackageOptions(unsafe_timestamp_options));
 }

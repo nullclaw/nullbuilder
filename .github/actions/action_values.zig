@@ -126,14 +126,42 @@ fn isSafePort(port: []const u8) bool {
     return parsed > 0;
 }
 
-pub fn isSafeMetadataValue(value: []const u8, max_len: usize) bool {
+pub fn isSafeMetadataToken(value: []const u8, max_len: usize) bool {
     if (!isSafeSingleLineText(value, max_len)) return false;
 
-    for (value) |byte| {
-        if (byte == ' ') return false;
+    var previous_dot = false;
+    for (value, 0..) |byte, index| {
+        const is_alpha = std.ascii.isAlphabetic(byte);
+        const is_digit = std.ascii.isDigit(byte);
+        const is_safe_symbol = byte == '.' or byte == '_' or byte == '-' or byte == '+';
+
+        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
+        if (index == 0 and !is_alpha and !is_digit) return false;
+        if (byte == '.' and previous_dot) return false;
+        previous_dot = byte == '.';
     }
 
-    return true;
+    const last = value[value.len - 1];
+    return std.ascii.isAlphabetic(last) or std.ascii.isDigit(last);
+}
+
+pub fn isUtcTimestamp(value: []const u8) bool {
+    if (value.len != "0000-00-00T00:00:00Z".len) return false;
+    if (value[4] != '-' or value[7] != '-' or value[10] != 'T') return false;
+    if (value[13] != ':' or value[16] != ':' or value[19] != 'Z') return false;
+
+    if (!isAsciiDigitSlice(value[0..4])) return false;
+    const month = twoDigitValue(value, 5) orelse return false;
+    const day = twoDigitValue(value, 8) orelse return false;
+    const hour = twoDigitValue(value, 11) orelse return false;
+    const minute = twoDigitValue(value, 14) orelse return false;
+    const second = twoDigitValue(value, 17) orelse return false;
+
+    return month >= 1 and month <= 12 and
+        day >= 1 and day <= 31 and
+        hour <= 23 and
+        minute <= 59 and
+        second <= 59;
 }
 
 pub fn isSafeActionOutputValue(value: []const u8, max_len: usize) bool {
@@ -159,6 +187,24 @@ fn isControlByte(byte: u8) bool {
 
 fn isUtf8C1Control(value: []const u8, index: usize) bool {
     return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+}
+
+fn isAsciiDigitSlice(value: []const u8) bool {
+    for (value) |byte| {
+        if (!std.ascii.isDigit(byte)) return false;
+    }
+    return true;
+}
+
+fn twoDigitValue(value: []const u8, index: usize) ?u8 {
+    const high = decimalValue(value[index]) orelse return null;
+    const low = decimalValue(value[index + 1]) orelse return null;
+    return high * 10 + low;
+}
+
+fn decimalValue(byte: u8) ?u8 {
+    if (!std.ascii.isDigit(byte)) return null;
+    return byte - '0';
 }
 
 fn isSafeOwnerSegment(value: []const u8) bool {
@@ -247,7 +293,7 @@ test "action values validate repository slugs" {
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.GIT"));
 }
 
-test "action values validate URL bases and metadata" {
+test "action values validate URL bases" {
     try std.testing.expect(isHttpUrlBase("https://github.com"));
     try std.testing.expect(isHttpUrlBase("https://github.example.com:8443"));
     try std.testing.expect(isHttpUrlBase("http://github.example.local"));
@@ -270,11 +316,39 @@ test "action values validate URL bases and metadata" {
     try std.testing.expect(!isHttpUrlBase("https://github.com:65536"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:123456"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:" ++ ("1" ** 100)));
+}
 
-    try std.testing.expect(isSafeMetadataValue("nightly-20260609-abcdef0", 64));
-    try std.testing.expect(!isSafeMetadataValue("", 64));
-    try std.testing.expect(!isSafeMetadataValue("line\nbreak", 64));
-    try std.testing.expect(!isSafeMetadataValue("too-long", 3));
+test "action values validate metadata tokens" {
+    try std.testing.expect(isSafeMetadataToken("nightly-20260504-abcdef0", 128));
+    try std.testing.expect(isSafeMetadataToken("x86_64-linux-musl", 128));
+    try std.testing.expect(isSafeMetadataToken("aarch64-linux-android.24", 128));
+    try std.testing.expect(isSafeMetadataToken("baseline+v7a", 128));
+
+    try std.testing.expect(!isSafeMetadataToken("", 128));
+    try std.testing.expect(!isSafeMetadataToken(".hidden", 128));
+    try std.testing.expect(!isSafeMetadataToken("-leading-dash", 128));
+    try std.testing.expect(!isSafeMetadataToken("trailing.", 128));
+    try std.testing.expect(!isSafeMetadataToken("double..dot", 128));
+    try std.testing.expect(!isSafeMetadataToken("bad value", 128));
+    try std.testing.expect(!isSafeMetadataToken("bad\"value", 128));
+    try std.testing.expect(!isSafeMetadataToken("bad/value", 128));
+    try std.testing.expect(!isSafeMetadataToken("too-long", 3));
+}
+
+test "action values validate UTC timestamps" {
+    try std.testing.expect(isUtcTimestamp("2026-05-04T02:23:00Z"));
+    try std.testing.expect(isUtcTimestamp("0000-01-01T00:00:00Z"));
+
+    try std.testing.expect(!isUtcTimestamp(""));
+    try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:00"));
+    try std.testing.expect(!isUtcTimestamp("2026-05-04 02:23:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-13-04T02:23:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-00-04T02:23:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-05-00T02:23:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-05-04T24:23:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-05-04T02:60:00Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:60Z"));
+    try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:00Z\n"));
 }
 
 test "action values validate HTTP URLs with paths" {
