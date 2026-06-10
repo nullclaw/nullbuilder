@@ -8,6 +8,10 @@ export type UtcTimestampParseOptions = {
   maxLength?: number;
 };
 
+export function safeUtcTimestampText(value: unknown, options: UtcTimestampParseOptions = {}): string {
+  return typeof value === 'string' && parseUtcTimestampMillis(value, options) !== null ? value : '';
+}
+
 export function parseUtcTimestampMillis(
   value: string | null | undefined,
   options: UtcTimestampParseOptions = {}

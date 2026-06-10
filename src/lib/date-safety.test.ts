@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { parseUtcTimestampMillis } from './date-safety';
+import { parseUtcTimestampMillis, safeUtcTimestampText } from './date-safety';
 
 test('parseUtcTimestampMillis accepts strict UTC timestamps', () => {
   assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56Z'), Date.UTC(2026, 5, 2, 12, 34, 56));
@@ -44,4 +44,13 @@ test('parseUtcTimestampMillis applies caller max length', () => {
     parseUtcTimestampMillis('2026-06-02T12:34:56Z', { maxLength: 64 }),
     Date.UTC(2026, 5, 2, 12, 34, 56)
   );
+});
+
+test('safeUtcTimestampText returns only strict UTC timestamp text', () => {
+  assert.equal(safeUtcTimestampText('2026-06-02T12:34:56Z'), '2026-06-02T12:34:56Z');
+  assert.equal(safeUtcTimestampText('2026-06-02T12:34:56.789Z'), '2026-06-02T12:34:56.789Z');
+  assert.equal(safeUtcTimestampText('2026-06-02T12:34:56+00:00'), '');
+  assert.equal(safeUtcTimestampText('2026-06-02T12:34:56Z\nhidden'), '');
+  assert.equal(safeUtcTimestampText('2026-06-02T12:34:56Z', { maxLength: 19 }), '');
+  assert.equal(safeUtcTimestampText(42), '');
 });

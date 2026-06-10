@@ -1,5 +1,5 @@
 import type { RepoSlug } from '../repositories';
-import { parseUtcTimestampMillis } from '../date-safety';
+import { safeUtcTimestampText } from '../date-safety';
 import { sanitizeText } from '../text-safety';
 import type {
   GitHubLabel,
@@ -265,11 +265,7 @@ function safeWorkItemTitle(value: unknown, fallback: string): string {
 }
 
 function safeTimestamp(value: unknown): string {
-  if (typeof value !== 'string') {
-    return '';
-  }
-
-  return parseUtcTimestampMillis(value, { maxLength: MAX_TIMESTAMP_TEXT_LENGTH }) === null ? '' : value;
+  return safeUtcTimestampText(value, { maxLength: MAX_TIMESTAMP_TEXT_LENGTH });
 }
 
 function safeOptionalTimestamp(value: unknown): string | null {

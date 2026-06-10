@@ -1,8 +1,10 @@
+import { safeUtcTimestampText } from '../date-safety';
 import type { RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { publicErrorMessage } from './github-client';
 import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary } from './github-dashboard-types';
 import { githubRepositoryWebUrl } from './github-web-urls';
+import { MAX_TIMESTAMP_TEXT_LENGTH } from './github-dashboard-mappers';
 import { saturatingSafeIntegerAdd } from './number-safety';
 import {
   compareByUpdatedAtDesc,
@@ -56,7 +58,7 @@ export function buildDashboard(
   );
 
   return {
-    generatedAt,
+    generatedAt: safeDashboardTimestamp(generatedAt),
     hasToken: Boolean(config.token),
     owner: config.owner,
     repos: repoList,
@@ -127,7 +129,7 @@ export function makeErrorRepository(
     openIssues: null,
     openPulls: null,
     pushedAt: null,
-    updatedAt,
+    updatedAt: safeDashboardTimestamp(updatedAt),
     issues: [],
     pullRequests: [],
     starGrowth: {
@@ -143,6 +145,10 @@ export function makeErrorRepository(
     status: 'error',
     error: publicErrorMessage(error)
   };
+}
+
+function safeDashboardTimestamp(value: string): string {
+  return safeUtcTimestampText(value, { maxLength: MAX_TIMESTAMP_TEXT_LENGTH });
 }
 
 export function sortByUpdatedAt(left: WorkItemWithUpdatedAt, right: WorkItemWithUpdatedAt): number {
