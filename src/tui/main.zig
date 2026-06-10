@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const app = @import("app.zig");
 
@@ -9,10 +10,20 @@ pub fn main(init: std.process.Init.Minimal) !void {
 }
 
 fn runMain(init: std.process.Init.Minimal) !?u8 {
+    return switch (builtin.mode) {
+        .Debug => runMainDebug(init),
+        else => runMainWithAllocator(init, std.heap.smp_allocator),
+    };
+}
+
+fn runMainDebug(init: std.process.Init.Minimal) !?u8 {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
-    const gpa = debug_allocator.allocator();
 
+    return runMainWithAllocator(init, debug_allocator.allocator());
+}
+
+fn runMainWithAllocator(init: std.process.Init.Minimal, gpa: std.mem.Allocator) !?u8 {
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
