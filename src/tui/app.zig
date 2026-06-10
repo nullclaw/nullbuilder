@@ -4,6 +4,9 @@ const cli = @import("cli.zig");
 const dashboard = @import("dashboard.zig");
 
 const max_cli_path_bytes = 4096;
+const max_forwarded_arg_count = 64;
+const max_forwarded_arg_bytes = 4096;
+const max_forwarded_args_total_bytes = 64 * 1024;
 
 pub fn run(
     gpa: std.mem.Allocator,
@@ -44,14 +47,40 @@ fn isSafeCliPath(value: []const u8) bool {
     if (std.mem.startsWith(u8, value, "-")) return false;
 
     for (value) |byte| {
-        if (isPathControlByte(byte)) return false;
+        if (isControlByte(byte)) return false;
     }
 
     return true;
 }
 
-fn isPathControlByte(byte: u8) bool {
+fn isSafeForwardedArgs(args: []const []const u8) bool {
+    if (args.len == 0 or args.len > max_forwarded_arg_count) return false;
+
+    var total_bytes: usize = 0;
+    for (args) |arg| {
+        if (arg.len > max_forwarded_arg_bytes) return false;
+        if (arg.len > max_forwarded_args_total_bytes - total_bytes) return false;
+        if (hasArgumentControl(arg)) return false;
+        total_bytes += arg.len;
+    }
+
+    return true;
+}
+
+fn hasArgumentControl(value: []const u8) bool {
+    for (value, 0..) |byte, index| {
+        if (isControlByte(byte) or isUtf8C1Control(value, index)) return true;
+    }
+
+    return false;
+}
+
+fn isControlByte(byte: u8) bool {
     return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
+}
+
+fn isUtf8C1Control(value: []const u8, index: usize) bool {
+    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
 }
 
 fn printHelp(out: *std.Io.Writer) !void {
@@ -100,6 +129,11 @@ fn forwardTagCommand(
     cli_path: []const u8,
     args: []const []const u8,
 ) !?u8 {
+    if (!isSafeForwardedArgs(args)) {
+        try out.writeAll("invalid command arguments\n");
+        return 2;
+    }
+
     var argv = std.array_list.Managed([]const u8).init(arena);
     try argv.append("node");
     try argv.append(cli_path);
@@ -136,4 +170,20 @@ test "node cli path rejects option injection and controls" {
     try std.testing.expect(!isSafeCliPath("bad\x00path"));
     try std.testing.expect(!isSafeCliPath("bad\xc2\x85path"));
     try std.testing.expect(!isSafeCliPath(oversized[0..]));
+}
+
+test "forwarded tag arguments are bounded before spawning node" {
+    const oversized_arg = [_]u8{'a'} ** (max_forwarded_arg_bytes + 1);
+    const total_excess = [_]u8{'b'} ** (max_forwarded_args_total_bytes - max_forwarded_arg_bytes + 1);
+    const too_many_args = [_][]const u8{"--flag"} ** (max_forwarded_arg_count + 1);
+
+    try std.testing.expect(isSafeForwardedArgs(&.{ "build-pr", "nullclaw/nullbuilder", "--pr", "7", "--tag", "build-pr-7" }));
+    try std.testing.expect(isSafeForwardedArgs(&.{ "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3", "--ref", "release/v1" }));
+
+    try std.testing.expect(!isSafeForwardedArgs(&.{}));
+    try std.testing.expect(!isSafeForwardedArgs(too_many_args[0..]));
+    try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", oversized_arg[0..] }));
+    try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "a", total_excess[0..] }));
+    try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "bad\nrepo" }));
+    try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "bad\xc2\x85repo" }));
 }
