@@ -6,6 +6,7 @@ import {
   findNullbuilderWorkflowRefs,
   isMutableRef,
   MAX_WORKFLOW_REFERENCE_MATCHES,
+  MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH,
   shouldRequireShaPin
 } from './audit-workflows';
 
@@ -59,6 +60,33 @@ test('workflow reference parsers bound noisy workflow files', () => {
     workflow: `zig-ci-${MAX_WORKFLOW_REFERENCE_MATCHES - 1}.yml`,
     ref: 'main'
   });
+});
+
+test('workflow reference parsers sanitize captured tokens before findings', () => {
+  const longTarget = `owner/${'a'.repeat(MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH + 20)}`;
+  const longRef = 'v'.repeat(MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH + 20);
+  const actions = findActionUses(`
+steps:
+  - uses: ${longTarget}@${longRef}
+  - uses: owner/control@main\x1b[31m
+`);
+
+  assert.equal(actions[0].target.length, MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH);
+  assert.equal(actions[0].ref.length, MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH);
+  assert.deepEqual(actions[1], { target: 'owner/control', ref: 'main' });
+
+  const longWorkflow = `${'zig-ci'.repeat(40)}.yml`;
+  const references = findNullbuilderWorkflowRefs(`
+jobs:
+  long:
+    uses: nullclaw/nullbuilder/.github/workflows/${longWorkflow}@${longRef}
+  control:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-release.yml@refs/heads/main\x1b[31m
+`);
+
+  assert.equal(references[0].workflow.length, MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH);
+  assert.equal(references[0].ref.length, MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH);
+  assert.deepEqual(references[1], { workflow: 'zig-release.yml', ref: 'refs/heads/main' });
 });
 
 test('shouldRequireShaPin ignores local docker and nullbuilder workflow references', () => {

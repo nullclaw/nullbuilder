@@ -1,8 +1,10 @@
 import { Buffer } from 'node:buffer';
+import { sanitizeText } from '../text-safety';
 import { isSafePositiveInteger } from './number-safety';
 
 const DEFAULT_MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
 export const MAX_WORKFLOW_REFERENCE_MATCHES = 200;
+export const MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH = 128;
 
 export type WorkflowActionUse = {
   target: string;
@@ -29,9 +31,15 @@ export function findActionUses(
   let match: RegExpExecArray | null;
 
   while (actions.length < matchLimit && (match = regex.exec(content)) !== null) {
+    const target = safeWorkflowReferenceToken(match[1]);
+    const ref = safeWorkflowReferenceToken(match[2]);
+    if (!target || !ref) {
+      continue;
+    }
+
     actions.push({
-      target: match[1],
-      ref: match[2]
+      target,
+      ref
     });
   }
 
@@ -48,9 +56,15 @@ export function findNullbuilderWorkflowRefs(
   let match: RegExpExecArray | null;
 
   while (references.length < matchLimit && (match = regex.exec(content)) !== null) {
+    const workflow = safeWorkflowReferenceToken(match[1]);
+    const ref = safeWorkflowReferenceToken(match[2]);
+    if (!workflow || !ref) {
+      continue;
+    }
+
     references.push({
-      workflow: match[1],
-      ref: match[2]
+      workflow,
+      ref
     });
   }
 
@@ -96,6 +110,13 @@ function normalizeByteLimit(maxBytes: number): number {
 
 function normalizeMatchLimit(maxMatches: number): number {
   return isSafePositiveInteger(maxMatches) ? maxMatches : 0;
+}
+
+function safeWorkflowReferenceToken(value: string): string {
+  return sanitizeText(value, {
+    maxLength: MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH,
+    trim: true
+  });
 }
 
 function boundedBase64Content(content: string, maxBytes: number): string {
