@@ -60,7 +60,7 @@ jobs:
           --dep action_values
           -Mroot=.github/actions/nightly-decide/nightly_decide.zig
           --dep action_values
-          --dep json_safety
+          --dep json_fields
           -Maction_json=.github/actions/action_json.zig
           --dep action_text
           -Maction_args=.github/actions/action_args.zig
@@ -73,6 +73,8 @@ jobs:
           -Maction_text=.github/actions/action_text.zig
           --dep text_safety
           -Mrepository_safety=src/zig/repository_safety.zig
+          --dep json_safety
+          -Mjson_fields=src/zig/json_fields.zig
           --dep text_safety
           -Mjson_safety=src/zig/json_safety.zig
           -Mtext_safety=src/zig/text_safety.zig
@@ -86,7 +88,7 @@ jobs:
           --dep action_values
           -Mroot=.github/actions/package-artifact/package_artifact.zig
           --dep action_values
-          --dep json_safety
+          --dep json_fields
           -Maction_json=.github/actions/action_json.zig
           --dep action_text
           -Maction_args=.github/actions/action_args.zig
@@ -99,6 +101,8 @@ jobs:
           -Maction_text=.github/actions/action_text.zig
           --dep text_safety
           -Mrepository_safety=src/zig/repository_safety.zig
+          --dep json_safety
+          -Mjson_fields=src/zig/json_fields.zig
           --dep text_safety
           -Mjson_safety=src/zig/json_safety.zig
           -Mtext_safety=src/zig/text_safety.zig

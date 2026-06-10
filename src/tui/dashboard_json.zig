@@ -1,47 +1,30 @@
 const std = @import("std");
 
+const json_fields = @import("json_fields");
 const json_safety = @import("json_safety");
 
-pub const JsonValue = std.json.Value;
-pub const JsonObject = std.json.ObjectMap;
-pub const max_safe_json_integer: u64 = json_safety.max_safe_json_integer;
-
-const empty_json_values = [_]JsonValue{};
+pub const JsonValue = json_fields.JsonValue;
+pub const JsonObject = json_fields.JsonObject;
+pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
 
 pub fn emptyValues() []const JsonValue {
-    return empty_json_values[0..];
+    return json_fields.emptyValues();
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {
-    return switch (value) {
-        .object => |object| object,
-        else => null,
-    };
-}
-
-fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue {
-    const value = object.get(field_name) orelse return null;
-    return switch (value) {
-        .array => |array| array.items,
-        else => null,
-    };
+    return json_fields.objectValue(value);
 }
 
 pub fn boundedArrayField(object: JsonObject, field_name: []const u8, max_items: usize) ?[]const JsonValue {
-    const items = arrayField(object, field_name) orelse return null;
-    return items[0..@min(items.len, max_items)];
+    return json_fields.boundedArrayField(object, field_name, max_items);
 }
 
 pub fn boundedArrayFieldOrEmpty(object: JsonObject, field_name: []const u8, max_items: usize) []const JsonValue {
-    return boundedArrayField(object, field_name, max_items) orelse emptyValues();
+    return json_fields.boundedArrayFieldOrEmpty(object, field_name, max_items);
 }
 
 pub fn objectField(object: JsonObject, field_name: []const u8) ?JsonObject {
-    const value = object.get(field_name) orelse return null;
-    return switch (value) {
-        .object => |child| child,
-        else => null,
-    };
+    return json_fields.objectField(object, field_name);
 }
 
 pub fn safeTextField(
@@ -50,8 +33,7 @@ pub fn safeTextField(
     fallback: []const u8,
     max_len: usize,
 ) []const u8 {
-    const value = object.get(field_name) orelse return fallback;
-    return safeTextValue(value, max_len) orelse fallback;
+    return json_fields.safeTextField(object, field_name, fallback, max_len, json_safety.isNonEmptyTextWithoutControl);
 }
 
 pub fn requiredSafeTextField(
@@ -59,26 +41,15 @@ pub fn requiredSafeTextField(
     field_name: []const u8,
     max_len: usize,
 ) ?[]const u8 {
-    const value = object.get(field_name) orelse return null;
-    return safeTextValue(value, max_len);
-}
-
-fn intField(object: JsonObject, field_name: []const u8) u64 {
-    const value = object.get(field_name) orelse return 0;
-    return json_safety.safePositiveIntegerValue(value);
+    return json_fields.optionalSafeTextField(object, field_name, max_len, json_safety.isNonEmptyTextWithoutControl);
 }
 
 pub fn boundedIntField(object: JsonObject, field_name: []const u8, max_value: u64) u64 {
-    const value = intField(object, field_name);
-    return if (value <= max_value) value else 0;
+    return json_fields.boundedPositiveIntegerField(object, field_name, max_value);
 }
 
 pub fn safeIntegerField(object: JsonObject, field_name: []const u8) u64 {
     return boundedIntField(object, field_name, max_safe_json_integer);
-}
-
-fn safeTextValue(value: JsonValue, max_len: usize) ?[]const u8 {
-    return json_safety.safeTextValue(value, max_len, json_safety.isNonEmptyTextWithoutControl);
 }
 
 test "field helpers return typed values and fallbacks" {
@@ -95,10 +66,10 @@ test "field helpers return typed values and fallbacks" {
     try std.testing.expect(objectValue(parsed.value) != null);
     try std.testing.expectEqual(null, objectValue(parsed.value.object.get("items").?));
     try std.testing.expectEqual(@as(usize, 0), emptyValues().len);
-    try std.testing.expectEqual(@as(usize, 2), arrayField(object, "items").?.len);
+    try std.testing.expectEqual(@as(usize, 2), boundedArrayField(object, "items", 99).?.len);
     try std.testing.expect(objectField(object, "owner") != null);
     try std.testing.expectEqualStrings("nullbuilder", safeTextField(object, "name", "fallback", 64));
-    try std.testing.expectEqual(null, arrayField(object, "name"));
+    try std.testing.expectEqual(null, boundedArrayField(object, "name", 2));
     try std.testing.expectEqual(null, objectField(object, "items"));
 }
 
@@ -174,19 +145,19 @@ test "requiredSafeTextField rejects missing empty and unsafe strings" {
     try std.testing.expectEqual(null, requiredSafeTextField(object, "control", 64));
 }
 
-test "intField accepts only safe positive integers" {
+test "safeIntegerField accepts only safe positive integers" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{"positive":42,"floatInteger":4.0,"negative":-42,"fractional":4.8,"unsafe":18446744073709551616.0}
     , .{});
     defer parsed.deinit();
     const object = parsed.value.object;
 
-    try std.testing.expectEqual(@as(u64, 42), intField(object, "positive"));
-    try std.testing.expectEqual(@as(u64, 0), intField(object, "floatInteger"));
-    try std.testing.expectEqual(@as(u64, 0), intField(object, "negative"));
-    try std.testing.expectEqual(@as(u64, 0), intField(object, "fractional"));
-    try std.testing.expectEqual(@as(u64, 0), intField(object, "unsafe"));
-    try std.testing.expectEqual(@as(u64, 0), intField(object, "missing"));
+    try std.testing.expectEqual(@as(u64, 42), safeIntegerField(object, "positive"));
+    try std.testing.expectEqual(@as(u64, 0), safeIntegerField(object, "floatInteger"));
+    try std.testing.expectEqual(@as(u64, 0), safeIntegerField(object, "negative"));
+    try std.testing.expectEqual(@as(u64, 0), safeIntegerField(object, "fractional"));
+    try std.testing.expectEqual(@as(u64, 0), safeIntegerField(object, "unsafe"));
+    try std.testing.expectEqual(@as(u64, 0), safeIntegerField(object, "missing"));
 }
 
 test "boundedIntField rejects positive integers above a domain limit" {

@@ -265,7 +265,8 @@ function assertDependencies(modules: Map<string, string[]>, moduleName: string, 
 function assertActionHelperDependencies(modules: Map<string, string[]>) {
   assertDependencies(modules, 'root', ['action_args', 'action_json', 'action_paths', 'action_values']);
   assertDependencies(modules, 'action_args', ['action_text']);
-  assertDependencies(modules, 'action_json', ['action_values', 'json_safety']);
+  assertDependencies(modules, 'action_json', ['action_values', 'json_fields']);
+  assertDependencies(modules, 'json_fields', ['json_safety']);
   assertDependencies(modules, 'json_safety', ['text_safety']);
   assertDependencies(modules, 'action_paths', ['text_safety']);
   assertDependencies(modules, 'action_values', ['repository_safety', 'text_safety']);

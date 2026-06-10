@@ -1,45 +1,26 @@
 const std = @import("std");
 
 const action_values = @import("action_values");
-const json_safety = @import("json_safety");
+const json_fields = @import("json_fields");
 
-pub const JsonValue = std.json.Value;
-pub const JsonObject = std.json.ObjectMap;
-pub const max_safe_json_integer: u64 = json_safety.max_safe_json_integer;
-
-const empty_json_values = [_]JsonValue{};
+pub const JsonValue = json_fields.JsonValue;
+pub const JsonObject = json_fields.JsonObject;
+pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
 
 pub fn emptyValues() []const JsonValue {
-    return empty_json_values[0..];
+    return json_fields.emptyValues();
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {
-    return switch (value) {
-        .object => |object| object,
-        else => null,
-    };
-}
-
-fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue {
-    const value = object.get(field_name) orelse return null;
-    return switch (value) {
-        .array => |array| array.items,
-        else => null,
-    };
+    return json_fields.objectValue(value);
 }
 
 pub fn boundedArrayField(object: JsonObject, field_name: []const u8, max_items: usize) ?[]const JsonValue {
-    const items = arrayField(object, field_name) orelse return null;
-    return items[0..@min(items.len, max_items)];
+    return json_fields.boundedArrayField(object, field_name, max_items);
 }
 
 pub fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 {
-    const value = object.get(field_name) orelse return 0;
-    return safePositiveIntegerValue(value);
-}
-
-fn safePositiveIntegerValue(value: JsonValue) u64 {
-    return json_safety.safePositiveIntegerValue(value);
+    return json_fields.safePositiveIntegerField(object, field_name);
 }
 
 pub fn safeTextField(
@@ -48,17 +29,11 @@ pub fn safeTextField(
     fallback: []const u8,
     max_len: usize,
 ) []const u8 {
-    const value = object.get(field_name) orelse return fallback;
-    return safeTextValue(value, max_len) orelse fallback;
+    return json_fields.safeTextField(object, field_name, fallback, max_len, action_values.isSafeActionOutputValue);
 }
 
 pub fn optionalSafeTextField(object: JsonObject, field_name: []const u8, max_len: usize) ?[]const u8 {
-    const value = object.get(field_name) orelse return null;
-    return safeTextValue(value, max_len);
-}
-
-fn safeTextValue(value: JsonValue, max_len: usize) ?[]const u8 {
-    return json_safety.safeTextValue(value, max_len, action_values.isSafeActionOutputValue);
+    return json_fields.optionalSafeTextField(object, field_name, max_len, action_values.isSafeActionOutputValue);
 }
 
 test "action json exposes typed objects arrays and empty slices" {

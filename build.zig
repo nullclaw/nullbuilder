@@ -29,11 +29,14 @@ pub fn build(b: *std.Build) void {
     const arg_safety_module = createModule(b, options, "src/zig/arg_safety.zig");
     const text_safety_module = createModule(b, options, "src/zig/text_safety.zig");
     const json_safety_module = createModule(b, options, "src/zig/json_safety.zig");
+    const json_fields_module = createModule(b, options, "src/zig/json_fields.zig");
     const repository_safety_module = createModule(b, options, "src/zig/repository_safety.zig");
     json_safety_module.addImport("text_safety", text_safety_module);
+    json_fields_module.addImport("json_safety", json_safety_module);
     repository_safety_module.addImport("text_safety", text_safety_module);
     const tui_module = createModule(b, options, "src/tui/main.zig");
     tui_module.addImport("arg_safety", arg_safety_module);
+    tui_module.addImport("json_fields", json_fields_module);
     tui_module.addImport("json_safety", json_safety_module);
     tui_module.addImport("repository_safety", repository_safety_module);
     tui_module.addImport("text_safety", text_safety_module);
@@ -60,6 +63,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run Zig tests");
     addModuleTest(b, test_step, createModule(b, options, "build.zig"));
     addModuleTest(b, test_step, arg_safety_module);
+    addModuleTest(b, test_step, json_fields_module);
     addModuleTest(b, test_step, json_safety_module);
     addModuleTest(b, test_step, repository_safety_module);
     addModuleTest(b, test_step, text_safety_module);
@@ -74,7 +78,7 @@ pub fn build(b: *std.Build) void {
     action_paths_module.addImport("text_safety", text_safety_module);
     const action_json_module = createModule(b, options, ".github/actions/action_json.zig");
     action_json_module.addImport("action_values", action_values_module);
-    action_json_module.addImport("json_safety", json_safety_module);
+    action_json_module.addImport("json_fields", json_fields_module);
     const action_modules = SharedActionModules{
         .args = createModule(b, options, ".github/actions/action_args.zig"),
         .json = action_json_module,
