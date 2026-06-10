@@ -95,18 +95,26 @@ function truncateText(value: string, maxLength: unknown, suffix: string): string
   let prefix = '';
   let length = 0;
 
-  for (const character of value) {
+  for (let index = 0; index < value.length; ) {
+    const width = codePointWidth(value, index);
+
     if (length >= normalizedMaxLength) {
       return suffixLength > 0 ? `${prefix}${suffix}` : prefix;
     }
 
     if (length < prefixLimit) {
-      prefix += character;
+      prefix += value.slice(index, index + width);
     }
     length += 1;
+    index += width;
   }
 
   return value;
+}
+
+function codePointWidth(value: string, index: number): 1 | 2 {
+  const codeUnit = value.charCodeAt(index);
+  return isHighSurrogate(codeUnit) && isLowSurrogate(value.charCodeAt(index + 1)) ? 2 : 1;
 }
 
 function normalizeInputLength(value: unknown): number | null {

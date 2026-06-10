@@ -10,6 +10,8 @@ import {
   sanitizeText
 } from './text-safety';
 
+const originalStringIterator = String.prototype[Symbol.iterator];
+
 test('readSafeTextInput rejects oversized and control-bearing input', () => {
   assert.equal(readSafeTextInput(' nullbuilder ', { trim: true }), 'nullbuilder');
   assert.equal(readSafeTextInput('x'.repeat(MAX_TEXT_INPUT_LENGTH)), 'x'.repeat(MAX_TEXT_INPUT_LENGTH));
@@ -85,6 +87,24 @@ test('sanitizeTerminalLine truncates by code point without splitting surrogate p
 
   assert.equal(Array.from(output).length, 2048);
   assert.match(output, /^🙂+\.\.\.$/u);
+  assert.equal(output.includes('\uFFFD'), false);
+});
+
+test('sanitizeTerminalLine truncates without string iterators', () => {
+  String.prototype[Symbol.iterator] = function stringIteratorShouldNotBeCalled(): ReturnType<
+    typeof originalStringIterator
+  > {
+    throw new Error('String.prototype iterator should not be called.');
+  };
+
+  let output = '';
+  try {
+    output = sanitizeTerminalLine(`${'🙂'.repeat(4)}abcd`, 6);
+  } finally {
+    String.prototype[Symbol.iterator] = originalStringIterator;
+  }
+
+  assert.equal(output, '🙂🙂🙂...');
   assert.equal(output.includes('\uFFFD'), false);
 });
 
