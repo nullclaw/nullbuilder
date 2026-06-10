@@ -4,6 +4,8 @@ const terminal = @import("terminal.zig");
 
 const default_stdout_limit = 16 * 1024 * 1024;
 const default_stderr_limit = 4 * 1024 * 1024;
+const max_stdout_limit = default_stdout_limit;
+const max_stderr_limit = default_stderr_limit;
 const max_child_output_display_bytes = 64 * 1024;
 
 pub const OutputLimits = struct {
@@ -12,10 +14,12 @@ pub const OutputLimits = struct {
 };
 
 pub fn run(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8, limits: OutputLimits) !std.process.RunResult {
+    const bounded_limits = normalizeOutputLimits(limits);
+
     return std.process.run(gpa, io, .{
         .argv = argv,
-        .stdout_limit = std.Io.Limit.limited(limits.stdout),
-        .stderr_limit = std.Io.Limit.limited(limits.stderr),
+        .stdout_limit = std.Io.Limit.limited(bounded_limits.stdout),
+        .stderr_limit = std.Io.Limit.limited(bounded_limits.stderr),
     });
 }
 
@@ -57,6 +61,35 @@ fn isAllowedExitCode(code: u8, allowed_exit_codes: []const u8) bool {
     }
 
     return false;
+}
+
+fn normalizeOutputLimits(limits: OutputLimits) OutputLimits {
+    return .{
+        .stdout = normalizeOutputLimit(limits.stdout, default_stdout_limit, max_stdout_limit),
+        .stderr = normalizeOutputLimit(limits.stderr, default_stderr_limit, max_stderr_limit),
+    };
+}
+
+fn normalizeOutputLimit(value: usize, fallback: usize, max_value: usize) usize {
+    if (value == 0) return fallback;
+    return @min(value, max_value);
+}
+
+test "output limits reject zero and cap oversized values" {
+    const defaulted = normalizeOutputLimits(.{ .stdout = 0, .stderr = 0 });
+    try std.testing.expectEqual(default_stdout_limit, defaulted.stdout);
+    try std.testing.expectEqual(default_stderr_limit, defaulted.stderr);
+
+    const custom = normalizeOutputLimits(.{ .stdout = 4096, .stderr = 2048 });
+    try std.testing.expectEqual(@as(usize, 4096), custom.stdout);
+    try std.testing.expectEqual(@as(usize, 2048), custom.stderr);
+
+    const capped = normalizeOutputLimits(.{
+        .stdout = std.math.maxInt(usize),
+        .stderr = max_stderr_limit + 1,
+    });
+    try std.testing.expectEqual(max_stdout_limit, capped.stdout);
+    try std.testing.expectEqual(max_stderr_limit, capped.stderr);
 }
 
 test "exit code allow-list accepts only configured codes" {
