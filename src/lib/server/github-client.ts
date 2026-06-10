@@ -132,7 +132,7 @@ async function githubFetchJson<T>(
 
   rememberPendingRequest(key, request);
   try {
-    return await request;
+    return cloneFetchResult(await request);
   } finally {
     if (inFlightRequests.get(key) === request) {
       inFlightRequests.delete(key);
@@ -230,7 +230,7 @@ async function requestGitHubJson<T>(
       writeCacheEntry(
         key,
         {
-          data: cloneCachedData(data),
+          data: cloneSharedJsonData(data),
           next,
           etag: response.headers.get('ETag') ?? undefined,
           expiresAt: cacheExpiresAt(now, config.cacheTtlMs)
@@ -639,13 +639,17 @@ function readCacheEntry<T>(key: string): CacheEntry<T> | undefined {
 }
 
 function resultFromCacheEntry<T>(entry: CacheEntry<T>): GitHubFetchResult<T> {
+  return cloneFetchResult(entry);
+}
+
+function cloneFetchResult<T>(result: GitHubFetchResult<T>): GitHubFetchResult<T> {
   return {
-    data: cloneCachedData(entry.data),
-    next: entry.next
+    data: cloneSharedJsonData(result.data),
+    next: result.next
   };
 }
 
-function cloneCachedData<T>(data: T): T {
+function cloneSharedJsonData<T>(data: T): T {
   return structuredClone(data);
 }
 
@@ -688,7 +692,8 @@ function normalizeMaxItems(value: unknown): number {
 }
 
 function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | undefined {
-  return inFlightRequests.get(key) as Promise<GitHubFetchResult<T>> | undefined;
+  const request = inFlightRequests.get(key) as Promise<GitHubFetchResult<T>> | undefined;
+  return request?.then(cloneFetchResult);
 }
 
 function rememberPendingRequest<T>(key: string, request: Promise<GitHubFetchResult<T>>): void {

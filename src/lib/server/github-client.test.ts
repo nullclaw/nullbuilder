@@ -615,6 +615,50 @@ test('githubRequest shares in-flight cacheable GET responses', async () => {
   assert.deepEqual(requests, ['https://inflight-cache.example.test/repos/nullclaw/nullbuilder']);
 });
 
+test('githubRequest isolates coalesced in-flight response data between callers', async () => {
+  type CoalescedPayload = {
+    id: number;
+    nested: {
+      topics: string[];
+    };
+  };
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://inflight-isolation.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+  let releaseFetch: (() => void) | undefined;
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    await new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    return new Response(JSON.stringify({ id: 1, nested: { topics: ['zig'] } }));
+  }) as typeof fetch;
+
+  const firstPromise = githubRequest<CoalescedPayload>(config, '/repos/nullclaw/nullbuilder');
+  const secondPromise = githubRequest<CoalescedPayload>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.equal(requests.length, 1);
+  assert.ok(releaseFetch);
+  releaseFetch?.();
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+  first.nested.topics.push('mutated-first');
+  second.nested.topics.push('mutated-second');
+
+  const cached = await githubRequest<CoalescedPayload>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.deepEqual(first, { id: 1, nested: { topics: ['zig', 'mutated-first'] } });
+  assert.deepEqual(second, { id: 1, nested: { topics: ['zig', 'mutated-second'] } });
+  assert.deepEqual(cached, { id: 1, nested: { topics: ['zig'] } });
+  assert.notEqual(first, second);
+  assert.notEqual(second, cached);
+  assert.deepEqual(requests, ['https://inflight-isolation.example.test/repos/nullclaw/nullbuilder']);
+});
+
 test('githubRequest keeps caller-abortable GET requests independent', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
