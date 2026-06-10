@@ -3,6 +3,7 @@ import { encodeGitHubPathSegment } from './github-url-encoding';
 
 const DEFAULT_GITHUB_WEB_BASE_URL = 'https://github.com';
 const UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
+const ENCODED_CONTROL_CHARACTER_PATTERN = /%(?:0[0-9a-f]|1[0-9a-f]|7f)|%c2%(?:8[0-9a-f]|9[0-9a-f])/i;
 
 export const MAX_GITHUB_WEB_URL_LENGTH = 2048;
 
@@ -71,7 +72,8 @@ function isSafeGitHubWebUrl(value: string, allowedOrigin: string, allowedPathPre
   if (
     value.length === 0 ||
     value.length > MAX_GITHUB_WEB_URL_LENGTH ||
-    UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN.test(value)
+    UNSAFE_GITHUB_WEB_URL_CHARACTER_PATTERN.test(value) ||
+    ENCODED_CONTROL_CHARACTER_PATTERN.test(value)
   ) {
     return false;
   }
