@@ -21,8 +21,10 @@ import {
 
 const originalMapKeys = Map.prototype.keys;
 const originalMapIterator = Map.prototype[Symbol.iterator];
+const originalArrayPush = Array.prototype.push;
 
 afterEach(() => {
+  restoreArrayPush();
   restoreMapIteration();
 });
 
@@ -45,6 +47,14 @@ function rejectMapIteration(): void {
 function restoreMapIteration(): void {
   Map.prototype.keys = originalMapKeys;
   Map.prototype[Symbol.iterator] = originalMapIterator;
+}
+
+function restoreArrayPush(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
+  });
 }
 
 test('session tokens validate signature and expiry', () => {
@@ -282,6 +292,38 @@ test('login rate limiter prunes and bounds attempts without Map iteration', () =
   } finally {
     restoreMapIteration();
   }
+});
+
+test('login rate limiter records attempts without global array push hooks', () => {
+  const limiter = new LoginRateLimiter({
+    windowMs: 1000,
+    maxFailures: 1,
+    maxKeys: 2,
+    now: () => 10_000
+  });
+  let pushCalls = 0;
+
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    limiter.recordFailure('client-a');
+    limiter.recordFailure('client-b');
+    limiter.recordFailure('client-c');
+  } finally {
+    restoreArrayPush();
+  }
+
+  assert.equal(pushCalls, 0);
+  assert.equal(limiter.size, 2);
+  assert.equal(limiter.isAllowed('client-a'), true);
+  assert.equal(limiter.isAllowed('client-c'), false);
 });
 
 test('login rate limiter normalizes unsafe client keys before storage', () => {

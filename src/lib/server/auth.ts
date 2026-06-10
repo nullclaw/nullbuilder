@@ -143,7 +143,7 @@ export class LoginRateLimiter {
 
   #rememberAttempt(key: string, attempt: LoginAttempt): void {
     if (!this.#attempts.has(key)) {
-      this.#attemptKeys.push(key);
+      this.#attemptKeys[this.#attemptKeys.length] = key;
     }
     this.#attempts.set(key, attempt);
   }
