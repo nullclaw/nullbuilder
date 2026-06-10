@@ -162,6 +162,76 @@ test('getRepositorySummary treats malformed workflow runs payload as empty', asy
   ].sort());
 });
 
+test('getRepositorySummary waits for started detail reads after a failure', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://summary-settle.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  let pullsStarted = false;
+  let releasePulls: (() => void) | undefined;
+  let summarySettled = false;
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const path = `${url.pathname}${url.search}`;
+
+    switch (path) {
+      case '/repos/nullclaw/nullbuilder':
+        return jsonResponse({
+          name: 'nullbuilder',
+          full_name: 'nullclaw/nullbuilder',
+          html_url: 'https://github.com/nullclaw/nullbuilder',
+          description: 'Command center',
+          default_branch: 'main',
+          language: 'TypeScript',
+          private: false,
+          archived: false,
+          stargazers_count: 0,
+          forks_count: 2,
+          open_issues_count: 0,
+          pushed_at: null,
+          updated_at: '2026-06-09T00:00:00Z',
+          owner: {
+            login: 'nullclaw'
+          }
+        });
+      case '/repos/nullclaw/nullbuilder/issues?state=open&per_page=100':
+        throw new Error('private issue failure');
+      case '/repos/nullclaw/nullbuilder/pulls?state=open&per_page=100':
+        pullsStarted = true;
+        return await new Promise<Response>((resolve) => {
+          releasePulls = () => resolve(jsonResponse([]));
+        });
+      case '/repos/nullclaw/nullbuilder/actions/runs?per_page=100':
+        return jsonResponse({ workflow_runs: [] });
+      default:
+        return jsonResponse({ message: `Unexpected request: ${path}` }, { status: 404 });
+    }
+  }) as typeof fetch;
+
+  const summaryPromise = getRepositorySummary(config, SUMMARY_REPO).then((summary) => {
+    summarySettled = true;
+    return summary;
+  });
+
+  for (let attempts = 0; attempts < 10 && !pullsStarted; attempts += 1) {
+    await waitForEventLoopTurn();
+  }
+  assert.equal(pullsStarted, true);
+
+  await waitForEventLoopTurn();
+  await waitForEventLoopTurn();
+  assert.equal(summarySettled, false);
+
+  releasePulls?.();
+  const summary = await summaryPromise;
+
+  assert.equal(summarySettled, true);
+  assert.equal(summary.status, 'error');
+  assert.equal(summary.error, 'Request failed.');
+});
+
 test('discoverRepositories normalizes API repository slugs before adding them', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
@@ -374,5 +444,11 @@ function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(value), {
     ...init,
     headers
+  });
+}
+
+function waitForEventLoopTurn(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
   });
 }
