@@ -28,4 +28,5 @@ test('format helpers keep null values explicit', () => {
   assert.equal(formatGrowth(null), 'unknown');
   assert.equal(formatGrowth(7), '+7');
   assert.equal(formatDashboardDate(null), 'n/a');
+  assert.equal(formatDashboardDate('not-a-date'), 'n/a');
 });

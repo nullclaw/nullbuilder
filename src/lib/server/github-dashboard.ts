@@ -94,10 +94,15 @@ export function makeErrorRepository(
 }
 
 export function sortByUpdatedAt(left: { updatedAt: string }, right: { updatedAt: string }): number {
-  return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+  return updatedAtTimestamp(right.updatedAt) - updatedAtTimestamp(left.updatedAt);
 }
 
 function repositoryHasFailingRun(repo: RepositorySummary): boolean {
   const runs = Object.values(repo.latestRuns);
   return runs.some((run) => run?.status === 'completed' && run.conclusion !== 'success');
+}
+
+function updatedAtTimestamp(value: string): number {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }

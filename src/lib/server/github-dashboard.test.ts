@@ -126,6 +126,23 @@ test('buildDashboard summarizes loaded error and failing repositories', () => {
   assert.equal(errorRepo.error, 'GitHub API authorization or rate-limit error (403).');
 });
 
+test('buildDashboard sorts invalid updated timestamps after valid rows', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+  const dashboard = buildDashboard(config, config.repos, [
+    repositorySummary({
+      issues: [
+        workItem(1, 'not-a-date'),
+        workItem(2, '2026-06-09T00:00:00Z'),
+        workItem(3, '')
+      ]
+    })
+  ]);
+
+  assert.deepEqual(dashboard.issues.map((item) => item.number), [2, 1, 3]);
+});
+
 function githubRepository(overrides: Partial<GitHubRepositoryResponse> = {}): GitHubRepositoryResponse {
   return {
     name: 'nullbuilder',
