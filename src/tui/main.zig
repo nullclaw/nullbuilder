@@ -43,5 +43,5 @@ test {
     std.testing.refAllDecls(@import("dashboard_model.zig"));
     std.testing.refAllDecls(@import("dashboard_runs.zig"));
     std.testing.refAllDecls(@import("terminal.zig"));
-    std.testing.refAllDecls(@import("text_safety.zig"));
+    std.testing.refAllDecls(@import("text_safety"));
 }

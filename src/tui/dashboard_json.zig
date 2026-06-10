@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const text_safety = @import("text_safety.zig");
+const text_safety = @import("text_safety");
 
 pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const text_safety = @import("text_safety.zig");
+const text_safety = @import("text_safety");
 
 pub const ascii_escape: u8 = text_safety.ascii_escape;
 pub const truncated_output_suffix = "\n[output truncated]\n";

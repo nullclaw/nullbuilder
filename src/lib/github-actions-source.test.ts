@@ -7,20 +7,33 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const actionsRoot = join(projectRoot, '.github', 'actions');
 
-test('composite action Zig commands declare each dependency once', () => {
+test('composite action Zig commands declare module dependencies explicitly', () => {
   const duplicateDependencies: string[] = [];
 
   for (const actionFile of actionYamlFiles(actionsRoot)) {
     const source = readFileSync(actionFile, 'utf8');
-    const seen = new Set<string>();
-
-    for (const dependency of zigRunDependencies(source)) {
-      if (seen.has(dependency)) {
-        duplicateDependencies.push(`${relative(projectRoot, actionFile)}:${dependency}`);
-      }
-
-      seen.add(dependency);
+    if (!source.includes('zig run')) {
+      continue;
     }
+
+    const modules = zigRunModules(source);
+
+    for (const [moduleName, dependencies] of modules) {
+      const seen = new Set<string>();
+
+      for (const dependency of dependencies) {
+        if (seen.has(dependency)) {
+          duplicateDependencies.push(`${relative(projectRoot, actionFile)}:${moduleName}:${dependency}`);
+        }
+
+        seen.add(dependency);
+      }
+    }
+
+    assertDependencies(modules, 'root', ['action_args', 'action_paths', 'action_values']);
+    assertDependencies(modules, 'action_args', ['action_text']);
+    assertDependencies(modules, 'action_values', ['action_text']);
+    assertDependencies(modules, 'action_text', ['text_safety']);
   }
 
   assert.deepEqual(duplicateDependencies, []);
@@ -42,6 +55,27 @@ function actionYamlFiles(directory: string): string[] {
   return files;
 }
 
-function zigRunDependencies(source: string): string[] {
-  return [...source.matchAll(/^\s*--dep\s+([A-Za-z0-9_-]+)\s*\\?\s*$/gm)].map((match) => match[1]);
+function zigRunModules(source: string): Map<string, string[]> {
+  const modules = new Map<string, string[]>();
+  let pendingDependencies: string[] = [];
+
+  for (const line of source.split('\n')) {
+    const dependency = /^\s*--dep\s+([A-Za-z0-9_-]+)\s*\\?\s*$/.exec(line)?.[1];
+    if (dependency) {
+      pendingDependencies.push(dependency);
+      continue;
+    }
+
+    const moduleName = /^\s*-M([A-Za-z0-9_-]+)=/.exec(line)?.[1];
+    if (moduleName) {
+      modules.set(moduleName, pendingDependencies);
+      pendingDependencies = [];
+    }
+  }
+
+  return modules;
+}
+
+function assertDependencies(modules: Map<string, string[]>, moduleName: string, expectedDependencies: string[]) {
+  assert.deepEqual([...(modules.get(moduleName) ?? [])].sort(), [...expectedDependencies].sort());
 }

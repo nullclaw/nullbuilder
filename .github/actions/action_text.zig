@@ -1,6 +1,8 @@
 const std = @import("std");
 
-pub const ascii_escape: u8 = 0x1b;
+const text_safety = @import("text_safety");
+
+pub const ascii_escape: u8 = text_safety.ascii_escape;
 
 pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
     var written: usize = 0;
@@ -12,7 +14,7 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
-        if (isUtf8C1Control(value, index)) {
+        if (text_safety.isUtf8C1Control(value, index)) {
             if (written >= buffer.len) break;
             buffer[written] = ' ';
             index += 2;
@@ -20,7 +22,7 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
-        if (utf8BidiControlSequenceLength(value, index)) |sequence_len| {
+        if (text_safety.utf8BidiControlSequenceLength(value, index)) |sequence_len| {
             if (written >= buffer.len) break;
             buffer[written] = ' ';
             index += sequence_len;
@@ -28,7 +30,7 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
-        if (isControlByte(byte)) {
+        if (text_safety.isControlByte(byte)) {
             if (written >= buffer.len) break;
             buffer[written] = ' ';
             index += 1;
@@ -36,7 +38,7 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
-        if (isInvalidUtf8SequenceStart(value, index)) {
+        if (text_safety.isInvalidUtf8SequenceStart(value, index)) {
             if (written >= buffer.len) break;
             buffer[written] = ' ';
             index += 1;
@@ -44,7 +46,7 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
             continue;
         }
 
-        const sequence_len = utf8SequenceLength(value, index);
+        const sequence_len = text_safety.utf8SequenceLength(value, index);
         if (sequence_len > buffer.len - written) break;
 
         @memcpy(buffer[written..][0..sequence_len], value[index..][0..sequence_len]);
@@ -56,18 +58,7 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
 }
 
 pub fn hasControl(value: []const u8) bool {
-    var index: usize = 0;
-    while (index < value.len) {
-        if (isControlByte(value[index]) or
-            isUtf8C1Control(value, index) or
-            utf8BidiControlSequenceLength(value, index) != null or
-            isInvalidUtf8SequenceStart(value, index))
-        {
-            return true;
-        }
-        index += utf8SequenceLength(value, index);
-    }
-    return false;
+    return text_safety.hasControl(value);
 }
 
 pub fn isAsciiControlOrSpace(byte: u8) bool {
@@ -75,73 +66,7 @@ pub fn isAsciiControlOrSpace(byte: u8) bool {
 }
 
 pub fn isControlByte(byte: u8) bool {
-    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
-}
-
-pub fn isUtf8C1Control(value: []const u8, index: usize) bool {
-    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
-}
-
-fn utf8BidiControlSequenceLength(value: []const u8, index: usize) ?usize {
-    if (index + 1 < value.len and value[index] == 0xd8 and value[index + 1] == 0x9c) return 2;
-    if (index + 2 >= value.len or value[index] != 0xe2) return null;
-
-    if (value[index + 1] == 0x80) {
-        const marker = value[index + 2];
-        if (marker == 0x8e or marker == 0x8f or (marker >= 0xaa and marker <= 0xae)) return 3;
-    }
-    if (value[index + 1] == 0x81) {
-        const marker = value[index + 2];
-        if (marker >= 0xa6 and marker <= 0xa9) return 3;
-    }
-
-    return null;
-}
-
-fn utf8SequenceLength(value: []const u8, index: usize) usize {
-    const byte = value[index];
-    if (byte < 0x80) return 1;
-
-    const expected_len: usize = if (byte >= 0xc2 and byte <= 0xdf)
-        2
-    else if (byte >= 0xe0 and byte <= 0xef)
-        3
-    else if (byte >= 0xf0 and byte <= 0xf4)
-        4
-    else
-        return 1;
-
-    if (index + expected_len > value.len) return 1;
-    for (value[index + 1 .. index + expected_len]) |continuation| {
-        if (!isUtf8ContinuationByte(continuation)) return 1;
-    }
-    if (!hasValidUtf8ScalarRange(value[index..][0..expected_len])) return 1;
-    return expected_len;
-}
-
-fn isUtf8ContinuationByte(byte: u8) bool {
-    return byte & 0b1100_0000 == 0b1000_0000;
-}
-
-fn isInvalidUtf8SequenceStart(value: []const u8, index: usize) bool {
-    return value[index] >= 0x80 and utf8SequenceLength(value, index) == 1;
-}
-
-fn hasValidUtf8ScalarRange(sequence: []const u8) bool {
-    return switch (sequence.len) {
-        2 => true,
-        3 => switch (sequence[0]) {
-            0xe0 => sequence[1] >= 0xa0,
-            0xed => sequence[1] <= 0x9f,
-            else => true,
-        },
-        4 => switch (sequence[0]) {
-            0xf0 => sequence[1] >= 0x90,
-            0xf4 => sequence[1] <= 0x8f,
-            else => true,
-        },
-        else => false,
-    };
+    return text_safety.isControlByte(byte);
 }
 
 fn skipAnsiEscape(value: []const u8, start: usize) usize {
