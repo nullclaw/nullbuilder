@@ -6,6 +6,7 @@ const action_values = @import("action_values");
 
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 const MAX_OUTPUT_VALUE_BYTES = 4096;
+const MAX_WORKFLOW_RUNS_TO_SCAN = 100;
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
 
@@ -73,7 +74,7 @@ fn decideShouldBuild(
 
     const current_id = std.fmt.parseUnsigned(u64, current_run_id, 10) catch null;
 
-    for (runs) |run| {
+    for (boundedWorkflowRuns(runs)) |run| {
         if (current_id) |id| {
             if (run.id == id) continue;
         }
@@ -90,6 +91,10 @@ fn decideShouldBuild(
     }
 
     return .{ .should_build = true, .reason = "new-sha" };
+}
+
+fn boundedWorkflowRuns(runs: []const Run) []const Run {
+    return runs[0..@min(runs.len, MAX_WORKFLOW_RUNS_TO_SCAN)];
 }
 
 fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void {
@@ -287,6 +292,40 @@ test "nightly decide force overrides existing success" {
 
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("forced", decision.reason);
+}
+
+test "nightly decide scans only bounded workflow history" {
+    var runs = [_]Run{.{
+        .id = 1,
+        .name = "Nightly",
+        .event = "schedule",
+        .head_sha = "other",
+        .conclusion = "failure",
+    }} ** (MAX_WORKFLOW_RUNS_TO_SCAN + 1);
+
+    runs[MAX_WORKFLOW_RUNS_TO_SCAN] = .{
+        .id = 200,
+        .name = "Nightly",
+        .event = "schedule",
+        .head_sha = "0123456789abcdef",
+        .conclusion = "success",
+    };
+
+    var decision = decideShouldBuild(&runs, "999", "0123456789abcdef", "Nightly", false);
+    try std.testing.expect(decision.should_build);
+    try std.testing.expectEqualStrings("new-sha", decision.reason);
+
+    runs[MAX_WORKFLOW_RUNS_TO_SCAN - 1] = .{
+        .id = 199,
+        .name = "Nightly",
+        .event = "schedule",
+        .head_sha = "0123456789abcdef",
+        .conclusion = "success",
+    };
+
+    decision = decideShouldBuild(&runs, "999", "0123456789abcdef", "Nightly", false);
+    try std.testing.expect(!decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 199), decision.matched_run_id);
 }
 
 test "nightly decision output formats GitHub output lines" {
