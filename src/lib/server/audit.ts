@@ -29,6 +29,7 @@ import { encodeGitHubPath } from './github-url-encoding';
 
 const MAX_WORKFLOW_FILE_NAME_LENGTH = 255;
 const MAX_WORKFLOW_FILE_PATH_LENGTH = 512;
+export const MAX_WORKFLOW_FILES_PER_REPOSITORY = 50;
 
 export type {
   AuditArea,
@@ -156,10 +157,10 @@ async function loadWorkflowFiles(
     return [];
   }
 
-  const workflowItems = workflowDirectory.data.flatMap((item) => safeWorkflowDirectoryItem(item) ?? []);
+  const workflowItems = collectWorkflowDirectoryItems(workflowDirectory.data);
 
   return (
-    await mapWithConcurrency(workflowItems.slice(0, 50), Math.min(config.concurrency, 4), async (item) => {
+    await mapWithConcurrency(workflowItems, Math.min(config.concurrency, 4), async (item) => {
       const file = await probeGitHub<GitHubContentFile>(
         config,
         `/repos/${repo}/contents/${encodeGitHubPath(item.path)}`
@@ -184,7 +185,27 @@ async function loadWorkflowFiles(
   ).filter((file): file is WorkflowFile => file !== null);
 }
 
-function safeWorkflowDirectoryItem(item: unknown): Pick<GitHubContentItem, 'name' | 'path' | 'html_url'> | null {
+type SafeWorkflowDirectoryItem = Pick<GitHubContentItem, 'name' | 'path' | 'html_url'>;
+
+function collectWorkflowDirectoryItems(items: unknown[]): SafeWorkflowDirectoryItem[] {
+  const workflowItems: SafeWorkflowDirectoryItem[] = [];
+
+  for (const item of items) {
+    const safeItem = safeWorkflowDirectoryItem(item);
+    if (!safeItem) {
+      continue;
+    }
+
+    workflowItems.push(safeItem);
+    if (workflowItems.length >= MAX_WORKFLOW_FILES_PER_REPOSITORY) {
+      break;
+    }
+  }
+
+  return workflowItems;
+}
+
+function safeWorkflowDirectoryItem(item: unknown): SafeWorkflowDirectoryItem | null {
   if (!item || typeof item !== 'object') {
     return null;
   }

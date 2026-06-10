@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
-import { getAuditReport } from './audit';
+import { getAuditReport, MAX_WORKFLOW_FILES_PER_REPOSITORY } from './audit';
 import { readConfig } from './config';
 
 const originalFetch = globalThis.fetch;
@@ -150,6 +150,65 @@ test('getAuditReport rejects unsafe default branch values before probing branch 
   assert.equal(report.repositories[0].defaultBranch, 'unknown');
   assert.equal(requests.some((path) => path.includes('/branches/')), false);
   assert.equal(JSON.stringify(report).includes('injected'), false);
+});
+
+test('getAuditReport caps workflow file fetches before loading file content', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://api.example.test',
+    NULLBUILDER_GITHUB_WEB_URL: 'https://github.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const workflowItems = Array.from({ length: MAX_WORKFLOW_FILES_PER_REPOSITORY + 10 }, (_, index) => ({
+    name: `workflow-${index}.yml`,
+    path: `.github/workflows/workflow-${index}.yml`,
+    type: 'file',
+    html_url: `https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/workflow-${index}.yml`
+  }));
+  const requests = mockGitHub((path) => {
+    if (path === '/repos/nullclaw/nullbuilder') {
+      return {
+        full_name: 'nullclaw/nullbuilder',
+        html_url: 'https://github.example.test/nullclaw/nullbuilder',
+        default_branch: 'main',
+        private: false,
+        archived: false
+      };
+    }
+
+    if (path === '/repos/nullclaw/nullbuilder/contents/.github/workflows') {
+      return workflowItems;
+    }
+
+    if (path.startsWith('/repos/nullclaw/nullbuilder/contents/.github/workflows/workflow-')) {
+      return contentFile('');
+    }
+
+    if (
+      path === '/repos/nullclaw/nullbuilder/branches/main/protection' ||
+      path === '/repos/nullclaw/nullbuilder/contents/.github/dependabot.yml' ||
+      path === '/repos/nullclaw/nullbuilder/contents/SECURITY.md' ||
+      path === '/repos/nullclaw/nullbuilder/contents/.github/SECURITY.md' ||
+      path === '/repos/nullclaw/nullbuilder/contents/CODEOWNERS' ||
+      path === '/repos/nullclaw/nullbuilder/contents/.github/CODEOWNERS'
+    ) {
+      return responseJson({ message: 'Not Found' }, 404);
+    }
+
+    throw new Error(`Unexpected GET ${path}`);
+  });
+
+  const report = await getAuditReport(config);
+  const workflowFetches = requests.filter((path) =>
+    path.startsWith('/repos/nullclaw/nullbuilder/contents/.github/workflows/workflow-')
+  );
+
+  assert.equal(report.repositories[0].status, 'ok');
+  assert.equal(workflowFetches.length, MAX_WORKFLOW_FILES_PER_REPOSITORY);
+  assert.equal(
+    workflowFetches.some((path) => path.includes(`workflow-${MAX_WORKFLOW_FILES_PER_REPOSITORY}.yml`)),
+    false
+  );
 });
 
 function mockGitHub(handler: (path: string) => unknown): string[] {
