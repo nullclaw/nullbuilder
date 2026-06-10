@@ -40,23 +40,27 @@ fn sanitizeAllocFrom(
     options: SanitizeOptions,
     start_index: usize,
 ) ![]u8 {
-    var sanitized = std.array_list.Managed(u8).init(allocator);
-    errdefer sanitized.deinit();
-    try sanitized.ensureTotalCapacity(value.len);
+    const sanitized = try allocator.alloc(u8, value.len);
+    errdefer allocator.free(sanitized);
+
+    var written: usize = 0;
 
     if (start_index > 0) {
-        try sanitized.appendSlice(value[0..start_index]);
+        @memcpy(sanitized[0..start_index], value[0..start_index]);
+        written = start_index;
     }
 
     var index: usize = start_index;
     var buffer: [4]u8 = undefined;
     while (index < value.len) {
         if (text_safety.nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
-            try sanitized.appendSlice(slice);
+            if (slice.len > sanitized.len - written) return error.SanitizedOutputTooLarge;
+            @memcpy(sanitized[written..][0..slice.len], slice);
+            written += slice.len;
         }
     }
 
-    return sanitized.toOwnedSlice();
+    return try allocator.realloc(sanitized, written);
 }
 
 pub fn writeSafe(out: *std.Io.Writer, value: []const u8, options: SanitizeOptions) !void {
@@ -126,6 +130,13 @@ test "terminal sanitizer strips escape sequences and controls" {
 
     try std.testing.expectEqualStrings("ok badred text next rawdone", safe);
     try std.testing.expect(std.mem.indexOfScalar(u8, safe, ascii_escape) == null);
+}
+
+test "terminal sanitizer handles fully stripped allocated output" {
+    const safe = try sanitizeAlloc(std.testing.allocator, "\x1b[31m\x1b[0m", .{});
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("", safe);
 }
 
 test "terminal control detector skips safe UTF-8 sequences" {
