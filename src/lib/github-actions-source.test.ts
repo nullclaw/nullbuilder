@@ -58,6 +58,15 @@ test('setup-zig metadata fetch is bounded and anchored', () => {
   assert.match(source, /json\.loads\(metadata\.decode\("utf-8"\)\)/);
 });
 
+test('setup-zig archive extraction requires the expected executable layout', () => {
+  const source = readFileSync(join(actionsRoot, 'setup-zig', 'install-zig.sh'), 'utf8');
+
+  assert.match(source, /top_level_entries = list\(destination\.iterdir\(\)\)/);
+  assert.match(source, /len\(top_level_entries\) != 1 or not top_level_entries\[0\]\.is_dir\(\)/);
+  assert.match(source, /find "\$extract_dir" -mindepth 1 -maxdepth 1 -type d -print -quit/);
+  assert.match(source, /\[ ! -x "\$\{extracted_dir\}\/\$\{zig_bin\}" \]/);
+});
+
 function actionYamlFiles(directory: string): string[] {
   const files: string[] = [];
 

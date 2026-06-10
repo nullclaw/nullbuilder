@@ -212,11 +212,15 @@ else:
         for member in handle.getmembers():
             ensure_safe_tar_member(member)
         handle.extractall(destination, **tar_extract_kwargs())
+
+top_level_entries = list(destination.iterdir())
+if len(top_level_entries) != 1 or not top_level_entries[0].is_dir():
+    raise SystemExit("unexpected Zig archive layout")
 PY
 
-  extracted_dir="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-  if [ -z "$extracted_dir" ]; then
-    echo "failed to extract Zig archive: $archive_url" >&2
+  extracted_dir="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+  if [ -z "$extracted_dir" ] || [ ! -x "${extracted_dir}/${zig_bin}" ]; then
+    echo "failed to extract Zig executable: $archive_url" >&2
     exit 1
   fi
 
