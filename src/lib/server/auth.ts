@@ -3,7 +3,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Cookies } from '@sveltejs/kit';
 import type { NullbuilderConfig } from './config';
 import { readSafeTextInput } from '../text-safety';
-import { isSafeNonNegativeInteger, normalizeBoundedPositiveInteger } from '../number-safety';
+import {
+  isSafeNonNegativeInteger,
+  normalizeBoundedPositiveInteger,
+  saturatingSafeIntegerAdd
+} from '../number-safety';
 
 export const AUTH_COOKIE = 'nullbuilder_auth';
 export const AUTH_MAX_AGE_SECONDS = 8 * 60 * 60;
@@ -95,7 +99,7 @@ export class LoginRateLimiter {
       return;
     }
 
-    current.failures += 1;
+    current.failures = nextFailureCount(current.failures, this.#options.maxFailures);
   }
 
   clear(key: string): void {
@@ -107,8 +111,7 @@ export class LoginRateLimiter {
   }
 
   #nowMs(): number {
-    const now = this.#now();
-    return Number.isFinite(now) && now >= 0 ? Math.floor(now) : Date.now();
+    return safeClockMillis(this.#now()) ?? safeClockMillis(Date.now()) ?? 0;
   }
 
   #prune(now: number): void {
@@ -134,6 +137,15 @@ function normalizeLoginRateLimitKey(value: string): string {
     trim: true
   });
   return safe || FALLBACK_LOGIN_RATE_LIMIT_KEY;
+}
+
+function safeClockMillis(value: number): number | null {
+  const timestamp = Math.floor(value);
+  return isSafeNonNegativeInteger(timestamp) ? timestamp : null;
+}
+
+function nextFailureCount(value: number, maxFailures: number): number {
+  return Math.min(saturatingSafeIntegerAdd(value, 1), maxFailures);
 }
 
 function normalizeLoginRateLimiterOptions(options: LoginRateLimiterOptions): NormalizedLoginRateLimiterOptions {

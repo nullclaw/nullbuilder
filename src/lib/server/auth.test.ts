@@ -168,6 +168,30 @@ test('login rate limiter blocks repeated failures and prunes old attempts', () =
   assert.equal(limiter.size, 0);
 });
 
+test('login rate limiter falls back from unsafe provider clocks', () => {
+  const originalDateNow = Date.now;
+  let fallbackNow = 10_000;
+  Date.now = () => fallbackNow;
+
+  try {
+    const limiter = new LoginRateLimiter({
+      windowMs: 1000,
+      maxFailures: 1,
+      maxKeys: 10,
+      now: () => Number.MAX_SAFE_INTEGER + 1
+    });
+
+    limiter.recordFailure('client');
+    assert.equal(limiter.isAllowed('client'), false);
+
+    fallbackNow += 1001;
+    assert.equal(limiter.isAllowed('client'), true);
+    assert.equal(limiter.size, 0);
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
 test('login rate limiter bounds distinct failed clients immediately', () => {
   const limiter = new LoginRateLimiter({
     windowMs: 1000,
