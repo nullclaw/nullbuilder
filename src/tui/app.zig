@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const arg_safety = @import("arg_safety");
 const cli = @import("cli.zig");
 const dashboard = @import("dashboard.zig");
 const terminal = @import("terminal.zig");
@@ -73,17 +74,12 @@ fn isSafeCliPath(value: []const u8) bool {
 }
 
 fn isSafeForwardedArgs(args: []const []const u8) bool {
-    if (args.len == 0 or args.len > max_forwarded_arg_count) return false;
-
-    var total_bytes: usize = 0;
-    for (args) |arg| {
-        if (arg.len > max_forwarded_arg_bytes) return false;
-        if (arg.len > max_forwarded_args_total_bytes - total_bytes) return false;
-        if (hasArgumentControl(arg)) return false;
-        total_bytes += arg.len;
-    }
-
-    return true;
+    return arg_safety.isSafeArgVector(args, .{
+        .max_count = max_forwarded_arg_count,
+        .max_arg_bytes = max_forwarded_arg_bytes,
+        .max_total_bytes = max_forwarded_args_total_bytes,
+        .allow_empty = false,
+    }, hasArgumentControl);
 }
 
 fn hasArgumentControl(value: []const u8) bool {

@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const arg_safety = @import("src/zig/arg_safety.zig");
 const text_safety = @import("src/zig/text_safety.zig");
 
 const ZigBuildOptions = struct {
@@ -24,8 +25,10 @@ pub fn build(b: *std.Build) void {
         .optimize = b.standardOptimizeOption(.{}),
     };
 
+    const arg_safety_module = createModule(b, options, "src/zig/arg_safety.zig");
     const text_safety_module = createModule(b, options, "src/zig/text_safety.zig");
     const tui_module = createModule(b, options, "src/tui/main.zig");
+    tui_module.addImport("arg_safety", arg_safety_module);
     tui_module.addImport("text_safety", text_safety_module);
     const tui = b.addExecutable(.{
         .name = "nullbuilder-tui",
@@ -49,6 +52,7 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run Zig tests");
     addModuleTest(b, test_step, createModule(b, options, "build.zig"));
+    addModuleTest(b, test_step, arg_safety_module);
     addModuleTest(b, test_step, text_safety_module);
     addModuleTest(b, test_step, tui_module);
 
@@ -112,17 +116,11 @@ fn addModuleTest(b: *std.Build, test_step: *std.Build.Step, module: *std.Build.M
 }
 
 fn isSafeTuiRunArgs(args: []const []const u8) bool {
-    if (args.len > max_tui_run_arg_count) return false;
-
-    var total_bytes: usize = 0;
-    for (args) |arg| {
-        if (arg.len > max_tui_run_arg_bytes) return false;
-        if (arg.len > max_tui_run_args_total_bytes - total_bytes) return false;
-        if (hasUnsafeText(arg)) return false;
-        total_bytes += arg.len;
-    }
-
-    return true;
+    return arg_safety.isSafeArgVector(args, .{
+        .max_count = max_tui_run_arg_count,
+        .max_arg_bytes = max_tui_run_arg_bytes,
+        .max_total_bytes = max_tui_run_args_total_bytes,
+    }, hasUnsafeText);
 }
 
 fn hasUnsafeText(value: []const u8) bool {
