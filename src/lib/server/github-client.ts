@@ -342,23 +342,42 @@ function linkParametersIncludeRelation(parameters: string, relation: string): bo
 
 export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): string {
   if (path.startsWith('/')) {
-    return `${config.apiBaseUrl}${path}`;
+    return resolveRelativeGitHubApiUrl(config, path);
   }
 
   if (!/^https?:\/\//i.test(path)) {
     throw new Error('Invalid GitHub API path.');
   }
 
+  return resolveAbsoluteGitHubApiUrl(config, path);
+}
+
+function resolveRelativeGitHubApiUrl(config: NullbuilderConfig, path: string): string {
+  if (path.startsWith('//') || hasUnsafeApiPathControl(path)) {
+    throw new Error('Invalid GitHub API path.');
+  }
+
+  return normalizeGitHubApiUrl(config, new URL(`${config.apiBaseUrl}${path}`), 'Invalid GitHub API path.');
+}
+
+function resolveAbsoluteGitHubApiUrl(config: NullbuilderConfig, path: string): string {
+  return normalizeGitHubApiUrl(config, new URL(path), 'Invalid GitHub API URL.');
+}
+
+function normalizeGitHubApiUrl(config: NullbuilderConfig, url: URL, errorMessage: string): string {
   const base = new URL(config.apiBaseUrl);
-  const url = new URL(path);
   const basePath = base.pathname.replace(/\/+$/, '');
 
   if (url.origin !== base.origin || (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`))) {
-    throw new Error('Invalid GitHub API URL.');
+    throw new Error(errorMessage);
   }
 
   url.hash = '';
   return url.toString();
+}
+
+function hasUnsafeApiPathControl(value: string): boolean {
+  return /[\u0000-\u001f\u007f-\u009f]/.test(value);
 }
 
 export function publicErrorMessage(error: unknown): string {

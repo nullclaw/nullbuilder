@@ -21,6 +21,25 @@ test('resolveGitHubApiUrl appends relative paths to configured API base', () => 
   );
 });
 
+test('resolveGitHubApiUrl validates relative paths before URL normalization', () => {
+  const config = readConfig({
+    NULLBUILDER_GITHUB_API_URL: 'https://github.example.test/api/v3',
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+
+  assert.equal(
+    resolveGitHubApiUrl(config, '/repos/nullclaw/nullbuilder#ignored'),
+    'https://github.example.test/api/v3/repos/nullclaw/nullbuilder'
+  );
+
+  for (const path of ['/../meta', '/%2e%2e/meta', '//evil.example.test/repos', '/repos\nsecret']) {
+    assert.throws(
+      () => resolveGitHubApiUrl(config, path),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub API path.'
+    );
+  }
+});
+
 test('resolveGitHubApiUrl rejects cross-origin absolute next URLs', () => {
   const config = readConfig({
     NULLBUILDER_GITHUB_API_URL: 'https://api.github.com',
