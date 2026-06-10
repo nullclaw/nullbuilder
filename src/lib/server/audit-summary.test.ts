@@ -9,6 +9,7 @@ import {
   collectCheckFindings,
   countFindings,
   MAX_AUDIT_REPORT_FINDINGS,
+  MAX_AUDIT_REPOSITORY_FINDINGS,
   scoreFindings,
   sortFindings
 } from './audit-summary';
@@ -83,6 +84,36 @@ test('collectCheckFindings flattens checks into sorted repository findings', () 
       'critical:nullclaw/zeta:Beta',
       'info:nullclaw/zeta:Info'
     ]
+  );
+});
+
+test('collectCheckFindings caps noisy repository findings', () => {
+  const findings = Array.from({ length: MAX_AUDIT_REPOSITORY_FINDINGS + 2 }, (_, index) =>
+    finding('warning', 'nullclaw/noisy', `Finding ${String(index).padStart(4, '0')}`)
+  );
+  const noisyCheck = {
+    id: 'noisy-check',
+    title: 'Noisy check',
+    area: 'workflow',
+    status: 'warning',
+    findings
+  } as const;
+  const collected = collectCheckFindings([noisyCheck]);
+  const explicitlyOversized = collectCheckFindings([noisyCheck], MAX_AUDIT_REPOSITORY_FINDINGS + 500);
+
+  assert.equal(collected.length, MAX_AUDIT_REPOSITORY_FINDINGS);
+  assert.equal(explicitlyOversized.length, MAX_AUDIT_REPOSITORY_FINDINGS);
+  assert.equal(
+    collected.at(-1)?.title,
+    `Finding ${String(MAX_AUDIT_REPOSITORY_FINDINGS - 1).padStart(4, '0')}`
+  );
+  assert.deepEqual(
+    collectCheckFindings([noisyCheck], 0),
+    []
+  );
+  assert.deepEqual(
+    collectCheckFindings([noisyCheck], Number.NaN),
+    []
   );
 });
 

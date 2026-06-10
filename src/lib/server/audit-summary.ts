@@ -21,6 +21,7 @@ const SEVERITY_PENALTY: Record<AuditSeverity, number> = {
 };
 
 export const MAX_AUDIT_REPORT_FINDINGS = 1000;
+export const MAX_AUDIT_REPOSITORY_FINDINGS = 1000;
 
 export function checkStatus(findings: readonly AuditFinding[]): AuditStatus {
   let status: AuditStatus = 'ok';
@@ -66,16 +67,23 @@ export function sortFindings(left: AuditFinding, right: AuditFinding): number {
   );
 }
 
-export function collectCheckFindings(checks: readonly AuditCheckResult[]): AuditFinding[] {
+export function collectCheckFindings(
+  checks: readonly AuditCheckResult[],
+  maxFindings = MAX_AUDIT_REPOSITORY_FINDINGS
+): AuditFinding[] {
+  const findingLimit = normalizeFindingLimit(maxFindings, MAX_AUDIT_REPOSITORY_FINDINGS);
+  if (findingLimit === 0) {
+    return [];
+  }
+
   const findings: AuditFinding[] = [];
 
   for (const check of checks) {
     for (const finding of check.findings) {
-      findings.push(finding);
+      insertSortedFinding(findings, finding, findingLimit);
     }
   }
 
-  findings.sort(sortFindings);
   return findings;
 }
 
@@ -83,7 +91,7 @@ export function collectAuditFindings(
   repositories: readonly AuditRepositoryResult[],
   maxFindings = MAX_AUDIT_REPORT_FINDINGS
 ): AuditFinding[] {
-  const findingLimit = normalizeFindingLimit(maxFindings);
+  const findingLimit = normalizeFindingLimit(maxFindings, MAX_AUDIT_REPORT_FINDINGS);
   if (findingLimit === 0) {
     return [];
   }
@@ -158,8 +166,12 @@ function countSeverityFindings(counts: Record<AuditSeverity, number>, findings: 
   }
 }
 
-function normalizeFindingLimit(value: number): number {
-  return isSafePositiveInteger(value) ? Math.min(value, MAX_AUDIT_REPORT_FINDINGS) : 0;
+function normalizeFindingLimit(value: number, maxFindings: number): number {
+  if (!isSafePositiveInteger(value) || !isSafePositiveInteger(maxFindings)) {
+    return 0;
+  }
+
+  return Math.min(value, maxFindings);
 }
 
 function totalFindingCount(counts: Record<AuditSeverity, number>): number {
