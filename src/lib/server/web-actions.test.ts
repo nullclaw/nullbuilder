@@ -176,6 +176,41 @@ test('mutation form parsers reject unknown fields without echoing values', () =>
   });
 });
 
+test('mutation form parsers reject unsafe field names without echoing values', () => {
+  const buildFormData = new FormData();
+  buildFormData.set('repo', 'nullbuilder');
+  buildFormData.set('prNumber', '17');
+  buildFormData.set('bad\x1b[31m\nfield', 'secret-build-value');
+
+  assert.throws(() => parseBuildPrMutationForm(buildFormData), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid form field.');
+    assert.doesNotMatch(error.message, /\x1b|\n|bad|secret-build-value/);
+    return true;
+  });
+
+  const releaseFormData = new FormData();
+  releaseFormData.set('repo', 'nullbuilder');
+  releaseFormData.set('tagName', 'v1.2.3');
+  releaseFormData.set(`unexpected${'\u202e'}field`, 'secret-release-value');
+
+  assert.throws(() => parseReleaseTagMutationForm(releaseFormData), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid form field.');
+    assert.doesNotMatch(error.message, /\u202e|unexpected|secret-release-value/u);
+    return true;
+  });
+
+  const oversizedFieldFormData = new FormData();
+  oversizedFieldFormData.set('x'.repeat(65), 'secret-oversized-value');
+  assert.throws(() => parseReleaseTagMutationForm(oversizedFieldFormData), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid form field.');
+    assert.doesNotMatch(error.message, /xxxxx|secret-oversized-value/);
+    return true;
+  });
+});
+
 test('mutation form parsers avoid getAll allocations while validating form shape', () => {
   const buildFormData = formDataWithoutGetAll();
   buildFormData.set('repo', 'nullbuilder');

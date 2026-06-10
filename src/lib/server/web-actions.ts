@@ -70,12 +70,14 @@ export type WebMutationResult<T, Field extends string> = WebMutationSuccess<T> |
 
 const DUPLICATE_FORM_FIELD_MESSAGE = 'Duplicate form field.';
 const UNKNOWN_FORM_FIELD_MESSAGE = 'Unknown form field.';
+const INVALID_FORM_FIELD_MESSAGE = 'Invalid form field.';
 const WEB_ACTION_METHOD_INVALID_MESSAGE = 'Invalid request method.';
 const WEB_ACTION_FORM_INVALID_MESSAGE = 'Invalid form body.';
 const WEB_ACTION_FORM_TOO_LARGE_MESSAGE = 'Request body is too large.';
 const TOO_MANY_FORM_FIELDS_MESSAGE = 'Too many form fields.';
 const MAX_WEB_ACTION_CONTENT_LENGTH_HEADER = 32;
 const MAX_WEB_ACTION_CONTENT_TYPE_HEADER = 128;
+const MAX_WEB_ACTION_FIELD_NAME_LENGTH = 64;
 export const MAX_WEB_ACTION_FORM_BYTES = 16 * 1024;
 const LOGIN_FORM_FIELDS = ['webToken'] as const;
 const LOGOUT_FORM_FIELDS = ['csrfToken'] as const;
@@ -516,6 +518,10 @@ function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>):
       throw new Error(TOO_MANY_FORM_FIELDS_MESSAGE);
     }
 
+    if (!isSafeFormFieldName(field)) {
+      throw new Error(INVALID_FORM_FIELD_MESSAGE);
+    }
+
     if (!allowedFields.has(field)) {
       throw new Error(UNKNOWN_FORM_FIELD_MESSAGE);
     }
@@ -558,8 +564,13 @@ function isInvalidFormShapeError(error: unknown): boolean {
     error instanceof Error &&
     (error.message === DUPLICATE_FORM_FIELD_MESSAGE ||
       error.message === UNKNOWN_FORM_FIELD_MESSAGE ||
+      error.message === INVALID_FORM_FIELD_MESSAGE ||
       error.message === TOO_MANY_FORM_FIELDS_MESSAGE)
   );
+}
+
+function isSafeFormFieldName(field: string): boolean {
+  return Boolean(field && readSafeTextInput(field, { maxLength: MAX_WEB_ACTION_FIELD_NAME_LENGTH }) === field);
 }
 
 function isCsrfTokenValueMatch(value: FormDataEntryValue | null, expected: string | null): boolean {
