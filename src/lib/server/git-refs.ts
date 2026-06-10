@@ -1,5 +1,6 @@
 const FULL_GIT_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const MAX_GIT_REF_NAME_LENGTH = 255;
+const MAX_GIT_REF_INPUT_LENGTH = 1024;
 const UNSAFE_GIT_REF_NAME_PATTERN = /[\u0000-\u001f\u007f ~^:?*[\]\\]/;
 
 export function assertFullGitSha(value: string, label: string): string {
@@ -15,6 +16,10 @@ export function isFullGitSha(value: string): boolean {
 }
 
 export function sanitizeGitBranchName(value: string, label = 'branch'): string {
+  if (value.length > MAX_GIT_REF_INPUT_LENGTH) {
+    throw new Error(`Invalid ${label}.`);
+  }
+
   const branchName = value.trim();
 
   if (!isSafeGitBranchName(branchName)) {
@@ -33,6 +38,10 @@ export function safeGitBranchName(value: string, fallback: string): string {
 }
 
 export function sanitizeGitTargetRef(value: string, label = 'target ref'): string {
+  if (value.length > MAX_GIT_REF_INPUT_LENGTH) {
+    throw new Error(`Invalid ${label}.`);
+  }
+
   const targetRef = value.trim();
 
   if (isFullGitSha(targetRef) || isSafeGitBranchName(targetRef)) {

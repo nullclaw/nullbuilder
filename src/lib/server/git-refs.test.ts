@@ -29,13 +29,19 @@ test('git ref helpers reject unsafe branch names without echoing input', () => {
     'release/../main',
     'release/@{upstream}',
     'main\ninjected',
-    `branch-${'x'.repeat(260)}`
+    `branch-${'x'.repeat(260)}`,
+    `${' '.repeat(1025)}main`
   ]) {
     assert.throws(
       () => sanitizeGitBranchName(value, 'default branch'),
       (error: unknown) => error instanceof Error && error.message === 'Invalid default branch.'
     );
   }
+
+  assert.throws(
+    () => sanitizeGitTargetRef(`${' '.repeat(1025)}${SHA}`),
+    (error: unknown) => error instanceof Error && error.message === 'Invalid target ref.'
+  );
 });
 
 test('safeGitBranchName returns a bounded fallback for unsafe input', () => {

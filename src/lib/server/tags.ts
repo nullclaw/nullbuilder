@@ -1,6 +1,7 @@
 export const BUILD_PR_TAG_PREFIX = 'build-pr-';
 
 const MAX_TAG_NAME_LENGTH = 120;
+const MAX_TAG_NAME_INPUT_LENGTH = 512;
 const SAFE_TAG_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 export function defaultBuildPrTagName(prNumber: number, sha: string): string {
@@ -8,6 +9,10 @@ export function defaultBuildPrTagName(prNumber: number, sha: string): string {
 }
 
 export function sanitizeBuildPrTagName(value: string): string {
+  if (value.length > MAX_TAG_NAME_INPUT_LENGTH) {
+    throw new Error('Invalid tag name.');
+  }
+
   const tagName = value.trim();
 
   if (!tagName) {
@@ -26,6 +31,10 @@ export function sanitizeBuildPrTagName(value: string): string {
 }
 
 export function sanitizeReleaseTagName(value: string): string {
+  if (value.length > MAX_TAG_NAME_INPUT_LENGTH) {
+    throw new Error('Invalid tag name.');
+  }
+
   const tagName = value.trim();
 
   if (!tagName) {

@@ -23,6 +23,8 @@ test('tag sanitizers reject unsafe git ref fragments', () => {
   assert.throws(() => sanitizeReleaseTagName('v1.2.3.'), /^Error: Invalid tag name\.$/);
   assert.throws(() => sanitizeReleaseTagName('v1.2.3.lock'), /^Error: Invalid tag name\.$/);
   assert.throws(() => sanitizeReleaseTagName(`v${'a'.repeat(121)}`), /^Error: Invalid tag name\.$/);
+  assert.throws(() => sanitizeBuildPrTagName(`${' '.repeat(513)}build-pr-17`), /^Error: Invalid tag name\.$/);
+  assert.throws(() => sanitizeReleaseTagName(`${' '.repeat(513)}v1.2.3`), /^Error: Invalid tag name\.$/);
 });
 
 test('tag sanitizers do not echo unsafe tag input in errors', () => {
