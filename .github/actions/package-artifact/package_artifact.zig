@@ -34,6 +34,7 @@ const PackageValidationError = error{
 const ManifestBuildError = error{
     InvalidManifestRunUrl,
     InvalidManifestBinaryPath,
+    InvalidManifestMetadata,
 };
 
 const ArtifactNameError = error{
@@ -77,6 +78,7 @@ fn formatRunUrl(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
 
 fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
     const binary_name = artifactNameFromPath(options.binary_path) catch return ManifestBuildError.InvalidManifestBinaryPath;
+    try validateManifestMetadata(options);
     const run_url = try formatRunUrl(allocator, options);
     defer allocator.free(run_url);
 
@@ -104,6 +106,17 @@ fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
         std.json.fmt(options.version, .{}),
         std.json.fmt(options.zig_target, .{}),
     });
+}
+
+fn validateManifestMetadata(options: PackageOptions) ManifestBuildError!void {
+    if (!action_paths.isSafeLabel(options.target) or
+        !action_values.isSafeMetadataToken(options.zig_target, 128) or
+        !action_values.isSafeMetadataToken(options.version, 128) or
+        !action_values.isFullHexSha(options.commit) or
+        !action_values.isUtcTimestamp(options.built_at))
+    {
+        return ManifestBuildError.InvalidManifestMetadata;
+    }
 }
 
 fn formatSha256Path(allocator: std.mem.Allocator, binary_path: []const u8) ![]u8 {
@@ -374,6 +387,36 @@ test "package artifact validates manifest run URL fields at the formatter bounda
     var unsafe_binary_options = valid_options;
     unsafe_binary_options.binary_path = "../nullclaw-linux-x86_64";
     try std.testing.expectError(error.InvalidManifestBinaryPath, buildManifest(std.testing.allocator, unsafe_binary_options));
+}
+
+test "package artifact validates manifest metadata at the formatter boundary" {
+    const valid_options = PackageOptions{
+        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
+        .target = "linux-x86_64",
+        .zig_target = "x86_64-linux-musl",
+        .version = "nightly-20260504-abcdef0",
+        .repository = "nullclaw/nullclaw",
+        .commit = "abcdef0123456789abcdef0123456789abcdef01",
+        .run_id = "123",
+        .server_url = "https://github.com",
+        .built_at = "2026-05-04T02:23:00Z",
+    };
+
+    var unsafe_target_options = valid_options;
+    unsafe_target_options.target = "../outside";
+    try std.testing.expectError(error.InvalidManifestMetadata, buildManifest(std.testing.allocator, unsafe_target_options));
+
+    var unsafe_version_options = valid_options;
+    unsafe_version_options.version = "nightly\n20260504";
+    try std.testing.expectError(error.InvalidManifestMetadata, buildManifest(std.testing.allocator, unsafe_version_options));
+
+    var unsafe_commit_options = valid_options;
+    unsafe_commit_options.commit = "not-a-sha";
+    try std.testing.expectError(error.InvalidManifestMetadata, buildManifest(std.testing.allocator, unsafe_commit_options));
+
+    var unsafe_timestamp_options = valid_options;
+    unsafe_timestamp_options.built_at = "2026-05-04 02:23:00Z";
+    try std.testing.expectError(error.InvalidManifestMetadata, buildManifest(std.testing.allocator, unsafe_timestamp_options));
 }
 
 test "package artifact formats safe generated paths" {
