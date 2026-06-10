@@ -154,9 +154,9 @@ fn repositoryFromObject(repo: JsonObject) Repository {
 
     return .{
         .slug = dashboard_json.boundedStringField(repo, "slug", "unknown", max_repo_text_len),
-        .open_issues = dashboard_json.intField(repo, "openIssues"),
-        .open_pulls = dashboard_json.intField(repo, "openPulls"),
-        .stars = dashboard_json.intField(repo, "stars"),
+        .open_issues = dashboard_json.safeIntegerField(repo, "openIssues"),
+        .open_pulls = dashboard_json.safeIntegerField(repo, "openPulls"),
+        .stars = dashboard_json.safeIntegerField(repo, "stars"),
         .runs = dashboard_runs.repositoryRunStatuses(status, latest),
         .has_failure = dashboard_runs.repositoryHasFailure(latest),
         .issues = dashboard_json.boundedArrayField(repo, "issues", max_work_items_per_repository) orelse emptyJsonValues(),
@@ -261,24 +261,30 @@ test "dashboard model collects repository totals and run statuses" {
     try std.testing.expectEqual(null, errors.next());
 }
 
-test "dashboard totals saturate untrusted counters" {
-    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
-        \\{
+test "dashboard totals reject counters outside the safe JSON integer domain" {
+    const json = try std.fmt.allocPrint(std.testing.allocator,
+        \\{{
         \\  "items": [
-        \\    {"slug": "alpha", "openIssues": 9223372036854775807, "openPulls": 9223372036854775807, "stars": 9223372036854775807},
-        \\    {"slug": "beta", "openIssues": 9223372036854775807, "openPulls": 9223372036854775807, "stars": 9223372036854775807},
-        \\    {"slug": "gamma", "openIssues": 10, "openPulls": 10, "stars": 10}
+        \\    {{"slug": "alpha", "openIssues": {d}, "openPulls": {d}, "stars": {d}}},
+        \\    {{"slug": "beta", "openIssues": 10, "openPulls": 10, "stars": 10}}
         \\  ]
-        \\}
-    , .{});
+        \\}}
+    , .{
+        dashboard_json.max_safe_json_integer,
+        dashboard_json.max_safe_json_integer + 1,
+        dashboard_json.max_safe_json_integer,
+    });
+    defer std.testing.allocator.free(json);
+
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator, json, .{});
     defer parsed.deinit();
 
     const dashboard = try Dashboard.init(parsed.value.object);
     const totals = dashboard.totals();
 
-    try std.testing.expectEqual(std.math.maxInt(u64), totals.issues);
-    try std.testing.expectEqual(std.math.maxInt(u64), totals.pull_requests);
-    try std.testing.expectEqual(std.math.maxInt(u64), totals.stars);
+    try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.issues);
+    try std.testing.expectEqual(@as(u64, 10), totals.pull_requests);
+    try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.stars);
 }
 
 test "dashboard model bounds external collection sizes" {

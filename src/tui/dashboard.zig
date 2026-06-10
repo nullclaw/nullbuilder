@@ -267,7 +267,7 @@ test "render caps numeric columns from external dashboard json" {
         \\    {
         \\      "slug": "alpha",
         \\      "openIssues": 1000000,
-        \\      "openPulls": 9223372036854775807,
+        \\      "openPulls": 9007199254740991,
         \\      "issues": [{"repo": "alpha", "number": 100000, "title": "Large external number"}]
         \\    }
         \\  ]

@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
+pub const max_safe_json_integer: u64 = 9_007_199_254_740_991;
 
 pub fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue {
     const value = object.get(field_name) orelse return null;
@@ -59,6 +60,10 @@ pub fn intField(object: JsonObject, field_name: []const u8) u64 {
 pub fn boundedIntField(object: JsonObject, field_name: []const u8, max_value: u64) u64 {
     const value = intField(object, field_name);
     return if (value <= max_value) value else 0;
+}
+
+pub fn safeIntegerField(object: JsonObject, field_name: []const u8) u64 {
+    return boundedIntField(object, field_name, max_safe_json_integer);
 }
 
 test "field helpers return typed values and fallbacks" {
@@ -134,4 +139,16 @@ test "boundedIntField rejects positive integers above a domain limit" {
     try std.testing.expectEqual(@as(u64, 999), boundedIntField(object, "valid", 999));
     try std.testing.expectEqual(@as(u64, 0), boundedIntField(object, "tooLarge", 999));
     try std.testing.expectEqual(@as(u64, 0), boundedIntField(object, "missing", 999));
+}
+
+test "safeIntegerField matches the JSON producer safe integer domain" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{"valid":9007199254740991,"tooLarge":9007199254740992,"negative":-1}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try std.testing.expectEqual(max_safe_json_integer, safeIntegerField(object, "valid"));
+    try std.testing.expectEqual(@as(u64, 0), safeIntegerField(object, "tooLarge"));
+    try std.testing.expectEqual(@as(u64, 0), safeIntegerField(object, "negative"));
 }
