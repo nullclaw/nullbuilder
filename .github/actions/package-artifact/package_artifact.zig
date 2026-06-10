@@ -33,9 +33,20 @@ const PackageValidationError = error{
 
 const ManifestBuildError = error{
     InvalidManifestRunUrl,
+    InvalidManifestBinaryPath,
 };
 
-fn formatSha256Line(allocator: std.mem.Allocator, bytes: []const u8, name: []const u8) ![]u8 {
+const ArtifactNameError = error{
+    InvalidArtifactBinaryPath,
+};
+
+fn artifactNameFromPath(binary_path: []const u8) ArtifactNameError![]const u8 {
+    if (!action_paths.isSafeRelativePath(binary_path)) return error.InvalidArtifactBinaryPath;
+    return std.Io.Dir.path.basename(binary_path);
+}
+
+fn formatSha256Line(allocator: std.mem.Allocator, bytes: []const u8, binary_path: []const u8) ![]u8 {
+    const name = try artifactNameFromPath(binary_path);
     var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
     const hex_buf = std.fmt.bytesToHex(digest, .lower);
@@ -65,7 +76,7 @@ fn formatRunUrl(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
 }
 
 fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
-    const binary_name = std.Io.Dir.path.basename(options.binary_path);
+    const binary_name = artifactNameFromPath(options.binary_path) catch return ManifestBuildError.InvalidManifestBinaryPath;
     const run_url = try formatRunUrl(allocator, options);
     defer allocator.free(run_url);
 
@@ -243,8 +254,7 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
     );
     defer allocator.free(binary_bytes);
 
-    const binary_name = std.Io.Dir.path.basename(options.binary_path);
-    const sha_text = try formatSha256Line(allocator, binary_bytes, binary_name);
+    const sha_text = try formatSha256Line(allocator, binary_bytes, options.binary_path);
     defer allocator.free(sha_text);
 
     const sha_path = formatSha256Path(allocator, options.binary_path) catch |err| switch (err) {
@@ -290,13 +300,22 @@ pub fn main(init: std.process.Init) !u8 {
 }
 
 test "package artifact formats sha256 line" {
-    const line = try formatSha256Line(std.testing.allocator, "", "empty.bin");
+    const line = try formatSha256Line(std.testing.allocator, "", "nightly-artifacts/empty.bin");
     defer std.testing.allocator.free(line);
 
     try std.testing.expectEqualStrings(
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  empty.bin\n",
         line,
     );
+}
+
+test "package artifact rejects unsafe checksum artifact paths" {
+    try std.testing.expectEqualStrings(
+        "empty.bin",
+        try artifactNameFromPath("nightly-artifacts/empty.bin"),
+    );
+    try std.testing.expectError(error.InvalidArtifactBinaryPath, artifactNameFromPath("../empty.bin"));
+    try std.testing.expectError(error.InvalidArtifactBinaryPath, formatSha256Line(std.testing.allocator, "", "../empty.bin"));
 }
 
 test "package artifact builds parseable manifest" {
@@ -351,6 +370,10 @@ test "package artifact validates manifest run URL fields at the formatter bounda
     var unsafe_run_options = valid_options;
     unsafe_run_options.run_id = "0";
     try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_run_options));
+
+    var unsafe_binary_options = valid_options;
+    unsafe_binary_options.binary_path = "../nullclaw-linux-x86_64";
+    try std.testing.expectError(error.InvalidManifestBinaryPath, buildManifest(std.testing.allocator, unsafe_binary_options));
 }
 
 test "package artifact formats safe generated paths" {
