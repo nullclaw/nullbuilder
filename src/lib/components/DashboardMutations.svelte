@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AlertTriangle, CheckCircle2, Play, Tags } from '@lucide/svelte';
-  import { buildPrResultMessage, releaseResultMessage } from '$lib/dashboard-view';
+  import { buildPrResultMessage, dashboardExternalHref, releaseResultMessage } from '$lib/dashboard-view';
   import type { BuildPrResult, ReleaseTagResult } from '$lib/server/github-mutations';
   import type { RepositorySummary } from '$lib/server/github-dashboard';
 
@@ -59,8 +59,12 @@
       <span>
         {buildPrResultMessage(form.buildResult)}
       </span>
-      <a href={form.buildResult.tagUrl} target="_blank" rel="noopener noreferrer">Open</a>
-      <a href={form.buildResult.workflowUrl} target="_blank" rel="noopener noreferrer">Runs</a>
+      <a href={dashboardExternalHref(form.buildResult.tagUrl)} target="_blank" rel="noopener noreferrer">
+        Open
+      </a>
+      <a href={dashboardExternalHref(form.buildResult.workflowUrl)} target="_blank" rel="noopener noreferrer">
+        Runs
+      </a>
     </div>
   {/if}
 
@@ -129,8 +133,12 @@
       <span>
         {releaseResultMessage(form.releaseResult)}
       </span>
-      <a href={form.releaseResult.tagUrl} target="_blank" rel="noopener noreferrer">Open</a>
-      <a href={form.releaseResult.workflowUrl} target="_blank" rel="noopener noreferrer">Runs</a>
+      <a href={dashboardExternalHref(form.releaseResult.tagUrl)} target="_blank" rel="noopener noreferrer">
+        Open
+      </a>
+      <a href={dashboardExternalHref(form.releaseResult.workflowUrl)} target="_blank" rel="noopener noreferrer">
+        Runs
+      </a>
     </div>
   {/if}
 

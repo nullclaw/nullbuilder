@@ -12,6 +12,7 @@ export const DASHBOARD_SECTIONS = [
 const DEFAULT_DASHBOARD_OWNER = 'nullclaw';
 const MAX_DASHBOARD_HREF_LENGTH = 2048;
 const UNSAFE_DASHBOARD_HREF_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
+const SAFE_LOCAL_DASHBOARD_HREF_PATTERN = /^#[A-Za-z][A-Za-z0-9_-]*$/;
 const AUDIT_SECTION_HREF = '#audit';
 
 type DashboardOwnerLike = {
@@ -124,7 +125,16 @@ export function auditFindingHref(
 }
 
 export function auditRepositoryHref(value: unknown): string {
-  return safeDashboardExternalHref(value) ?? AUDIT_SECTION_HREF;
+  return dashboardExternalHref(value, AUDIT_SECTION_HREF);
+}
+
+export function dashboardExternalHref(value: unknown, fallback: unknown = '#'): string {
+  return (
+    safeDashboardExternalHref(value) ??
+    safeLocalDashboardHref(fallback) ??
+    safeDashboardExternalHref(fallback) ??
+    '#'
+  );
 }
 
 export function buildPrResultMessage(result: BuildPrResultLike): string {
@@ -169,4 +179,8 @@ function safeDashboardExternalHref(value: unknown): string | null {
   }
 
   return safeValue;
+}
+
+function safeLocalDashboardHref(value: unknown): string | null {
+  return typeof value === 'string' && SAFE_LOCAL_DASHBOARD_HREF_PATTERN.test(value) ? value : null;
 }

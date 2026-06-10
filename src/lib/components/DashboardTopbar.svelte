@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ExternalLink } from '@lucide/svelte';
+  import { dashboardExternalHref } from '$lib/dashboard-view';
 
   let {
     authenticated,
@@ -25,7 +26,7 @@
     <span class:ok={authenticated || hasToken} class="token-state">
       {tokenState}
     </span>
-    <a class="icon-button" href={ownerUrl} target="_blank" rel="noopener noreferrer">
+    <a class="icon-button" href={dashboardExternalHref(ownerUrl)} target="_blank" rel="noopener noreferrer">
       <ExternalLink size={17} />
       <span>GitHub</span>
     </a>

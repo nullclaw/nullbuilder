@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ArrowRight, CircleDot, GitPullRequest } from '@lucide/svelte';
   import { formatDashboardDate } from '$lib/dashboard-format';
+  import { dashboardExternalHref } from '$lib/dashboard-view';
   import type { IssueSummary, PullRequestSummary } from '$lib/server/github-dashboard-types';
 
   let {
@@ -22,7 +23,7 @@
 
   <div class="work-list">
     {#each issues as issue}
-      <a class="work-row" href={issue.url} target="_blank" rel="noopener noreferrer">
+      <a class="work-row" href={dashboardExternalHref(issue.url)} target="_blank" rel="noopener noreferrer">
         <CircleDot size={16} />
         <span class="work-repo">{issue.repo}</span>
         <span class="work-number">#{issue.number}</span>
@@ -44,7 +45,7 @@
 
   <div class="work-list">
     {#each pullRequests as pull}
-      <a class="work-row" href={pull.url} target="_blank" rel="noopener noreferrer">
+      <a class="work-row" href={dashboardExternalHref(pull.url)} target="_blank" rel="noopener noreferrer">
         <GitPullRequest size={16} />
         <span class="work-repo">{pull.repo}</span>
         <span class="work-number">#{pull.number}</span>

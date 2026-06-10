@@ -17,6 +17,7 @@
     workflowRunClass,
     workflowRunLabel
   } from '$lib/dashboard-format';
+  import { dashboardExternalHref } from '$lib/dashboard-view';
   import type { RepositorySummary } from '$lib/server/github-dashboard';
 
   let { repositories }: { repositories: RepositorySummary[] } = $props();
@@ -32,7 +33,7 @@
         </div>
         <a
           class="repo-link"
-          href={repo.url}
+          href={dashboardExternalHref(repo.url)}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Open {repo.fullName}"
@@ -57,7 +58,7 @@
         <div class="run-grid">
           <a
             class={workflowRunClass(repo.latestRuns.ci)}
-            href={repo.latestRuns.ci?.url ?? repo.url}
+            href={dashboardExternalHref(repo.latestRuns.ci?.url, repo.url)}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -67,7 +68,7 @@
           </a>
           <a
             class={workflowRunClass(repo.latestRuns.nightly)}
-            href={repo.latestRuns.nightly?.url ?? repo.url}
+            href={dashboardExternalHref(repo.latestRuns.nightly?.url, repo.url)}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -77,7 +78,7 @@
           </a>
           <a
             class={workflowRunClass(repo.latestRuns.release)}
-            href={repo.latestRuns.release?.url ?? repo.url}
+            href={dashboardExternalHref(repo.latestRuns.release?.url, repo.url)}
             target="_blank"
             rel="noopener noreferrer"
           >

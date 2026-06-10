@@ -9,6 +9,7 @@ import {
   buildAuditRepositoryUrls,
   buildPrResultMessage,
   dashboardOwner,
+  dashboardExternalHref,
   hasDashboardReadErrors,
   releaseResultMessage,
   visibleAuditFindings
@@ -90,6 +91,19 @@ test('audit href helpers reject control-bearing and credentialed URLs', () => {
       repositoryUrls
     ),
     'http://localhost/nullclaw/safe'
+  );
+});
+
+test('dashboardExternalHref applies a safe fallback before the local fallback', () => {
+  assert.equal(
+    dashboardExternalHref('javascript:alert(1)', 'https://github.example.test/nullclaw/nullbuilder'),
+    'https://github.example.test/nullclaw/nullbuilder'
+  );
+  assert.equal(dashboardExternalHref('javascript:alert(1)', '#audit'), '#audit');
+  assert.equal(dashboardExternalHref('javascript:alert(1)', 'https://user:pass@github.example.test/repo'), '#');
+  assert.equal(
+    dashboardExternalHref('https://github.example.test/nullclaw/nullbuilder'),
+    'https://github.example.test/nullclaw/nullbuilder'
   );
 });
 
