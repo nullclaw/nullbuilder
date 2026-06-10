@@ -99,7 +99,7 @@ fn isHttpAuthority(authority: []const u8) bool {
         if (byte == '/' or byte == '?' or byte == '#' or byte == '@') return false;
     }
 
-    const host_port = splitHostPort(authority);
+    const host_port = splitHostPort(authority) orelse return false;
     if (!isSafeHost(host_port.host)) return false;
     if (host_port.port) |port| {
         if (!isSafePort(port)) return false;
@@ -109,11 +109,24 @@ fn isHttpAuthority(authority: []const u8) bool {
 }
 
 fn isLoopbackAuthority(authority: []const u8) bool {
-    const host_port = splitHostPort(authority);
+    const host_port = splitHostPort(authority) orelse return false;
     return isLoopbackHost(host_port.host);
 }
 
-fn splitHostPort(authority: []const u8) HostPort {
+fn splitHostPort(authority: []const u8) ?HostPort {
+    if (std.mem.startsWith(u8, authority, "[")) {
+        const close = std.mem.indexOfScalar(u8, authority, ']') orelse return null;
+        const host = authority[0 .. close + 1];
+        const tail = authority[close + 1 ..];
+
+        if (tail.len == 0) return .{ .host = host };
+        if (tail[0] != ':') return null;
+        return .{
+            .host = host,
+            .port = tail[1..],
+        };
+    }
+
     const separator = std.mem.lastIndexOfScalar(u8, authority, ':') orelse return .{ .host = authority };
     return .{
         .host = authority[0..separator],
@@ -123,6 +136,7 @@ fn splitHostPort(authority: []const u8) HostPort {
 
 fn isSafeHost(host: []const u8) bool {
     if (host.len == 0 or host.len > max_host_bytes) return false;
+    if (isLoopbackIpv6(host)) return true;
 
     var labels = std.mem.splitScalar(u8, host, '.');
     while (labels.next()) |label| {
@@ -133,7 +147,7 @@ fn isSafeHost(host: []const u8) bool {
 }
 
 fn isLoopbackHost(host: []const u8) bool {
-    return eqlAsciiIgnoreCase(host, "localhost") or isLoopbackIpv4(host);
+    return eqlAsciiIgnoreCase(host, "localhost") or isLoopbackIpv4(host) or isLoopbackIpv6(host);
 }
 
 fn eqlAsciiIgnoreCase(left: []const u8, right: []const u8) bool {
@@ -158,6 +172,10 @@ fn isLoopbackIpv4(host: []const u8) bool {
     }
 
     return count == 4;
+}
+
+fn isLoopbackIpv6(host: []const u8) bool {
+    return std.mem.eql(u8, host, "[::1]");
 }
 
 fn isDecimalIpv4Octet(value: []const u8) bool {
@@ -421,11 +439,18 @@ test "action values validate URL bases" {
     try std.testing.expect(isHttpUrlBase("https://github.example.com:8443"));
     try std.testing.expect(isHttpUrlBase("http://localhost"));
     try std.testing.expect(isHttpUrlBase("http://127.0.0.1:8080"));
+    try std.testing.expect(isHttpUrlBase("http://[::1]"));
+    try std.testing.expect(isHttpUrlBase("http://[::1]:8080"));
 
     try std.testing.expect(!isHttpUrlBase("github.com"));
     try std.testing.expect(!isHttpUrlBase("http://github.example.local"));
     try std.testing.expect(!isHttpUrlBase("http://127.0.0.999"));
     try std.testing.expect(!isHttpUrlBase("http://127.0.0.01"));
+    try std.testing.expect(!isHttpUrlBase("http://::1"));
+    try std.testing.expect(!isHttpUrlBase("http://[::2]"));
+    try std.testing.expect(!isHttpUrlBase("http://[::1"));
+    try std.testing.expect(!isHttpUrlBase("http://[::1]evil"));
+    try std.testing.expect(!isHttpUrlBase("http://[::1]:08080"));
     try std.testing.expect(!isHttpUrlBase("https://."));
     try std.testing.expect(!isHttpUrlBase("https://github.com."));
     try std.testing.expect(!isHttpUrlBase("https://github..com"));
@@ -489,6 +514,7 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(isHttpUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
     try std.testing.expect(isHttpUrl("http://localhost/runs/1?check=true", 256));
     try std.testing.expect(isHttpUrl("http://127.0.0.1:8080/runs/1?check=true", 256));
+    try std.testing.expect(isHttpUrl("http://[::1]:8080/runs/1?check=true", 256));
     try std.testing.expect(isHttpUrl("https://github.com:8443/actions/runs/123#summary", 256));
     try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?check_suite_focus=true#summary", 256));
     try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?name=check%20suite#step%2D1", 256));
@@ -498,6 +524,8 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("http://github.example.local/runs/1?check=true", 256));
     try std.testing.expect(!isHttpUrl("http://127.0.0.999/runs/1", 256));
     try std.testing.expect(!isHttpUrl("http://127.0.0.01/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("http://[::2]/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("http://[::1]evil/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github..com/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com:bad/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com:0443/runs/1", 256));
