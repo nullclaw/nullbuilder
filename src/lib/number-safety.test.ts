@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   isSafeNonNegativeInteger,
   isSafePositiveInteger,
+  normalizeBoundedNonNegativeInteger,
   normalizeBoundedPositiveInteger,
   safeNonNegativeInteger,
   saturatingSafeIntegerAdd
@@ -36,6 +37,23 @@ test('normalizeBoundedPositiveInteger normalizes malformed runtime options', () 
   assert.equal(normalizeBoundedPositiveInteger(null, 'fallback', 10), 1);
   assert.equal(normalizeBoundedPositiveInteger(50, 2, 'max'), 2);
   assert.equal(normalizeBoundedPositiveInteger(50, 20, 10), 20);
+});
+
+test('normalizeBoundedNonNegativeInteger preserves zero stop-limits while bounding values', () => {
+  assert.equal(normalizeBoundedNonNegativeInteger(0, 2, 10), 0);
+  assert.equal(normalizeBoundedNonNegativeInteger(-1, 2, 10), 0);
+  assert.equal(normalizeBoundedNonNegativeInteger(2.8, 1, 10), 2);
+  assert.equal(normalizeBoundedNonNegativeInteger(50, 2, 10), 10);
+});
+
+test('normalizeBoundedNonNegativeInteger normalizes malformed runtime options', () => {
+  assert.equal(normalizeBoundedNonNegativeInteger(null, 2, 10), 2);
+  assert.equal(normalizeBoundedNonNegativeInteger('5', 2, 10), 2);
+  assert.equal(normalizeBoundedNonNegativeInteger(Number.POSITIVE_INFINITY, 2, 10), 2);
+  assert.equal(normalizeBoundedNonNegativeInteger(5, 'fallback', 10), 5);
+  assert.equal(normalizeBoundedNonNegativeInteger(null, 'fallback', 10), 0);
+  assert.equal(normalizeBoundedNonNegativeInteger(50, 2, 'max'), 2);
+  assert.equal(normalizeBoundedNonNegativeInteger(50, 20, 10), 20);
 });
 
 test('safeNonNegativeInteger preserves only safe non-negative numbers', () => {

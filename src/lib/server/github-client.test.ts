@@ -183,7 +183,7 @@ test('githubGetPages normalizes unsafe page limits', async () => {
     NULLBUILDER_CACHE_TTL_MS: '0'
   });
 
-  async function countRequests(maxPages: number): Promise<number> {
+  async function countRequests(maxPages: unknown): Promise<number> {
     let requests = 0;
     globalThis.fetch = (async () => {
       requests += 1;
@@ -200,8 +200,33 @@ test('githubGetPages normalizes unsafe page limits', async () => {
 
   assert.equal(await countRequests(0), 0);
   assert.equal(await countRequests(2.8), 2);
+  assert.equal(await countRequests('2'), GITHUB_DEFAULT_MAX_PAGES);
+  assert.equal(await countRequests(Number.NaN), GITHUB_DEFAULT_MAX_PAGES);
   assert.equal(await countRequests(Number.POSITIVE_INFINITY), GITHUB_DEFAULT_MAX_PAGES);
   assert.equal(await countRequests(GITHUB_ABSOLUTE_MAX_PAGES + 1), GITHUB_ABSOLUTE_MAX_PAGES);
+});
+
+test('githubGetPages normalizes unsafe item limits', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://bounded-items.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const page = Array.from({ length: 5 }, (_, index) => ({ id: index + 1 }));
+  let requests = 0;
+
+  globalThis.fetch = (async () => {
+    requests += 1;
+    return new Response(JSON.stringify(page));
+  }) as typeof fetch;
+
+  assert.deepEqual(await githubGetPages<{ id: number }>(config, '/repos', {}, 1, 0), []);
+  assert.equal(requests, 0);
+
+  const values = await githubGetPages<{ id: number }>(config, '/repos', {}, 1, '3');
+
+  assert.deepEqual(values, page);
+  assert.equal(requests, 1);
 });
 
 test('githubGetPages rejects non-array paginated responses', async () => {

@@ -26,6 +26,17 @@ test('mapWithConcurrency clamps invalid low concurrency to one worker', async ()
   assert.deepEqual(seen, [1, 2, 3]);
 });
 
+test('mapWithConcurrency normalizes malformed runtime concurrency to one worker', async () => {
+  const seen: number[] = [];
+  const mapped = await mapWithConcurrency([1, 2, 3], '2', async (value) => {
+    seen.push(value);
+    return value;
+  });
+
+  assert.deepEqual(mapped, [1, 2, 3]);
+  assert.deepEqual(seen, [1, 2, 3]);
+});
+
 test('mapWithConcurrency caps high concurrency to a bounded worker count', async () => {
   const values = Array.from({ length: MAX_MAP_CONCURRENCY + 5 }, (_, index) => index);
   let active = 0;

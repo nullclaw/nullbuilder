@@ -17,6 +17,21 @@ export function normalizeBoundedPositiveInteger(value: unknown, fallback: unknow
   return Math.min(value, safeMax);
 }
 
+export function normalizeBoundedNonNegativeInteger(value: unknown, fallback: unknown, max: unknown): number {
+  const safeFallback = isSafeNonNegativeInteger(fallback) ? fallback : 0;
+  const safeMax = isSafeNonNegativeInteger(max) ? Math.max(max, safeFallback) : safeFallback;
+
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return safeFallback;
+  }
+
+  if (value <= 0) {
+    return 0;
+  }
+
+  return Math.min(Math.floor(value), safeMax);
+}
+
 export function safeNonNegativeInteger(value: unknown): number | null {
   return isSafeNonNegativeInteger(value) ? value : null;
 }

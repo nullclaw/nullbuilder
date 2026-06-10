@@ -1,9 +1,11 @@
+import { normalizeBoundedNonNegativeInteger } from '../number-safety';
+
 export const MAX_MAP_CONCURRENCY = 10;
 export const MAX_MAP_ITEMS = 1000;
 
 export async function mapWithConcurrency<T, R>(
   values: readonly T[],
-  concurrency: number,
+  concurrency: unknown,
   mapper: (value: T, index: number) => Promise<R>
 ): Promise<R[]> {
   if (values.length === 0) {
@@ -30,8 +32,11 @@ export async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function normalizeWorkerCount(concurrency: number, valueCount: number): number {
-  const normalizedConcurrency = Number.isFinite(concurrency) ? Math.max(1, Math.floor(concurrency)) : 1;
+function normalizeWorkerCount(concurrency: unknown, valueCount: number): number {
+  const normalizedConcurrency = Math.max(
+    1,
+    normalizeBoundedNonNegativeInteger(concurrency, 1, MAX_MAP_CONCURRENCY)
+  );
 
-  return Math.min(normalizedConcurrency, MAX_MAP_CONCURRENCY, valueCount);
+  return Math.min(normalizedConcurrency, valueCount);
 }

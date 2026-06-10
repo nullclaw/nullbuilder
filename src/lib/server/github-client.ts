@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { normalizeBoundedNonNegativeInteger } from '../number-safety';
 import { readSafeTextInput } from '../text-safety';
 import type { NullbuilderConfig } from './config';
 
@@ -58,8 +59,8 @@ export async function githubGetPages<T>(
   config: NullbuilderConfig,
   path: string,
   init: GitHubRequestOptions = {},
-  maxPages = GITHUB_DEFAULT_MAX_PAGES,
-  maxItems = GITHUB_PAGINATED_ITEMS_MAX
+  maxPages: unknown = GITHUB_DEFAULT_MAX_PAGES,
+  maxItems: unknown = GITHUB_PAGINATED_ITEMS_MAX
 ): Promise<T[]> {
   const values: T[] = [];
   let next: string | null = path;
@@ -634,28 +635,20 @@ function appendPageValues<T>(values: T[], page: unknown, maxItems: number): void
   }
 }
 
-function normalizeMaxPages(value: number): number {
-  if (!Number.isFinite(value)) {
-    return GITHUB_DEFAULT_MAX_PAGES;
-  }
-
-  if (value <= 0) {
-    return 0;
-  }
-
-  return Math.min(GITHUB_ABSOLUTE_MAX_PAGES, Math.floor(value));
+function normalizeMaxPages(value: unknown): number {
+  return normalizeBoundedNonNegativeInteger(
+    value,
+    GITHUB_DEFAULT_MAX_PAGES,
+    GITHUB_ABSOLUTE_MAX_PAGES
+  );
 }
 
-function normalizeMaxItems(value: number): number {
-  if (!Number.isFinite(value)) {
-    return GITHUB_PAGINATED_ITEMS_MAX;
-  }
-
-  if (value <= 0) {
-    return 0;
-  }
-
-  return Math.min(GITHUB_PAGINATED_ITEMS_MAX, Math.floor(value));
+function normalizeMaxItems(value: unknown): number {
+  return normalizeBoundedNonNegativeInteger(
+    value,
+    GITHUB_PAGINATED_ITEMS_MAX,
+    GITHUB_PAGINATED_ITEMS_MAX
+  );
 }
 
 function readPendingRequest<T>(key: string): Promise<GitHubFetchResult<T>> | undefined {
