@@ -4,10 +4,17 @@ const action_args = @import("action_args");
 const action_paths = @import("action_paths");
 const action_values = @import("action_values");
 
+const JsonValue = std.json.Value;
+const JsonObject = std.json.ObjectMap;
+
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 const MAX_OUTPUT_VALUE_BYTES = 4096;
 const MAX_WORKFLOW_NAME_BYTES = 256;
 const MAX_WORKFLOW_RUNS_TO_SCAN = 100;
+const MAX_RUN_EVENT_BYTES = 64;
+const MAX_RUN_CONCLUSION_BYTES = 64;
+const MAX_RUN_HEAD_SHA_BYTES = 64;
+const empty_json_values = [_]JsonValue{};
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
 
@@ -18,10 +25,6 @@ const Run = struct {
     head_sha: []const u8 = "",
     conclusion: ?[]const u8 = null,
     html_url: []const u8 = "",
-};
-
-const RunsPayload = struct {
-    workflow_runs: []const Run = &.{},
 };
 
 const Decision = struct {
@@ -62,10 +65,8 @@ fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
     }
 }
 
-fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(RunsPayload) {
-    return try std.json.parseFromSlice(RunsPayload, allocator, json_bytes, .{
-        .ignore_unknown_fields = true,
-    });
+fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(JsonValue) {
+    return try std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{});
 }
 
 fn decideShouldBuild(
@@ -77,26 +78,61 @@ fn decideShouldBuild(
 ) Decision {
     if (force) return .{ .should_build = true, .reason = "forced" };
 
-    const current_id = std.fmt.parseUnsigned(u64, current_run_id, 10) catch null;
+    const current_id = parseCurrentRunId(current_run_id);
 
     for (boundedWorkflowRuns(runs)) |run| {
-        if (run.id == 0) continue;
-        if (current_id) |id| {
-            if (run.id == id) continue;
+        if (matchingSuccessfulRun(run, current_id, head_sha, workflow_name)) {
+            return skipDecision(run);
         }
-        if (workflow_name.len > 0 and !std.mem.eql(u8, run.name, workflow_name)) continue;
-        if (!isNightlyEvent(run.event)) continue;
-        if (!std.mem.eql(u8, run.head_sha, head_sha)) continue;
-        if (run.conclusion == null or !std.mem.eql(u8, run.conclusion.?, "success")) continue;
-        return .{
-            .should_build = false,
-            .reason = "successful-nightly-exists",
-            .matched_run_id = run.id,
-            .matched_run_url = safeMatchedRunUrl(run.html_url),
-        };
     }
 
     return .{ .should_build = true, .reason = "new-sha" };
+}
+
+fn decideShouldBuildFromPayload(
+    payload: JsonValue,
+    current_run_id: []const u8,
+    head_sha: []const u8,
+    workflow_name: []const u8,
+    force: bool,
+) Decision {
+    if (force) return .{ .should_build = true, .reason = "forced" };
+
+    const current_id = parseCurrentRunId(current_run_id);
+
+    for (boundedWorkflowRunValues(workflowRunValues(payload))) |value| {
+        const run = runFromValue(value) orelse continue;
+        if (matchingSuccessfulRun(run, current_id, head_sha, workflow_name)) {
+            return skipDecision(run);
+        }
+    }
+
+    return .{ .should_build = true, .reason = "new-sha" };
+}
+
+fn parseCurrentRunId(current_run_id: []const u8) ?u64 {
+    return std.fmt.parseUnsigned(u64, current_run_id, 10) catch null;
+}
+
+fn matchingSuccessfulRun(run: Run, current_id: ?u64, head_sha: []const u8, workflow_name: []const u8) bool {
+    if (run.id == 0) return false;
+    if (current_id) |id| {
+        if (run.id == id) return false;
+    }
+    if (workflow_name.len > 0 and !std.mem.eql(u8, run.name, workflow_name)) return false;
+    if (!isNightlyEvent(run.event)) return false;
+    if (!std.mem.eql(u8, run.head_sha, head_sha)) return false;
+    if (run.conclusion == null or !std.mem.eql(u8, run.conclusion.?, "success")) return false;
+    return true;
+}
+
+fn skipDecision(run: Run) Decision {
+    return .{
+        .should_build = false,
+        .reason = "successful-nightly-exists",
+        .matched_run_id = run.id,
+        .matched_run_url = safeMatchedRunUrl(run.html_url),
+    };
 }
 
 fn safeMatchedRunUrl(value: []const u8) []const u8 {
@@ -105,6 +141,69 @@ fn safeMatchedRunUrl(value: []const u8) []const u8 {
 
 fn boundedWorkflowRuns(runs: []const Run) []const Run {
     return runs[0..@min(runs.len, MAX_WORKFLOW_RUNS_TO_SCAN)];
+}
+
+fn workflowRunValues(payload: JsonValue) []const JsonValue {
+    const root = switch (payload) {
+        .object => |object| object,
+        else => return emptyJsonValues(),
+    };
+    const runs = root.get("workflow_runs") orelse return emptyJsonValues();
+
+    return switch (runs) {
+        .array => |array| array.items,
+        else => emptyJsonValues(),
+    };
+}
+
+fn boundedWorkflowRunValues(values: []const JsonValue) []const JsonValue {
+    return values[0..@min(values.len, MAX_WORKFLOW_RUNS_TO_SCAN)];
+}
+
+fn runFromValue(value: JsonValue) ?Run {
+    return switch (value) {
+        .object => |object| runFromObject(object),
+        else => null,
+    };
+}
+
+fn runFromObject(object: JsonObject) Run {
+    return .{
+        .id = safePositiveIntegerField(object, "id"),
+        .name = safeStringField(object, "name", MAX_WORKFLOW_NAME_BYTES),
+        .event = safeStringField(object, "event", MAX_RUN_EVENT_BYTES),
+        .head_sha = safeStringField(object, "head_sha", MAX_RUN_HEAD_SHA_BYTES),
+        .conclusion = optionalSafeStringField(object, "conclusion", MAX_RUN_CONCLUSION_BYTES),
+        .html_url = safeStringField(object, "html_url", MAX_OUTPUT_VALUE_BYTES),
+    };
+}
+
+fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 {
+    const value = object.get(field_name) orelse return 0;
+    return switch (value) {
+        .integer => |integer| if (integer > 0) std.math.cast(u64, integer) orelse 0 else 0,
+        else => 0,
+    };
+}
+
+fn safeStringField(object: JsonObject, field_name: []const u8, max_len: usize) []const u8 {
+    const value = object.get(field_name) orelse return "";
+    return switch (value) {
+        .string => |string| if (action_values.isSafeActionOutputValue(string, max_len)) string else "",
+        else => "",
+    };
+}
+
+fn optionalSafeStringField(object: JsonObject, field_name: []const u8, max_len: usize) ?[]const u8 {
+    const value = object.get(field_name) orelse return null;
+    return switch (value) {
+        .string => |string| if (action_values.isSafeActionOutputValue(string, max_len)) string else null,
+        else => null,
+    };
+}
+
+fn emptyJsonValues() []const JsonValue {
+    return empty_json_values[0..];
 }
 
 fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void {
@@ -227,8 +326,8 @@ fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !
     var parsed = try parseRunsPayload(allocator, json_bytes);
     defer parsed.deinit();
 
-    const decision = decideShouldBuild(
-        parsed.value.workflow_runs,
+    const decision = decideShouldBuildFromPayload(
+        parsed.value,
         options.current_run_id,
         options.head_sha,
         options.workflow_name,
@@ -480,9 +579,47 @@ test "nightly parses workflow run API payload with unknown fields" {
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuild(parsed.value.workflow_runs, "43", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
+}
+
+test "nightly skips malformed workflow run API entries" {
+    const json =
+        \\{
+        \\  "workflow_runs": [
+        \\    null,
+        \\    "not-a-run",
+        \\    {"id":"42","name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42"},
+        \\    {"id":43,"name":null,"event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/43"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\  ]
+        \\}
+    ;
+    var parsed = try parseRunsPayload(std.testing.allocator, json);
+    defer parsed.deinit();
+
+    const decision = decideShouldBuildFromPayload(parsed.value, "45", "abc", "Nightly", false);
+    try std.testing.expect(!decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
+    try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
+}
+
+test "nightly treats malformed workflow run collections as empty history" {
+    for ([_][]const u8{
+        "null",
+        "{\"workflow_runs\":null}",
+        "{\"workflow_runs\":{\"id\":42}}",
+        "{\"workflow_runs\":\"not-an-array\"}",
+    }) |json| {
+        var parsed = try parseRunsPayload(std.testing.allocator, json);
+        defer parsed.deinit();
+
+        const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
+        try std.testing.expect(decision.should_build);
+        try std.testing.expectEqualStrings("new-sha", decision.reason);
+        try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
+    }
 }
 
 test "nightly omits unsafe matched run URLs from API payload" {
@@ -492,7 +629,7 @@ test "nightly omits unsafe matched run URLs from API payload" {
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuild(parsed.value.workflow_runs, "43", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
     try std.testing.expectEqualStrings("", decision.matched_run_url);
@@ -515,7 +652,7 @@ test "nightly omits encoded-control matched run URLs from API payload" {
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuild(parsed.value.workflow_runs, "43", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
     try std.testing.expectEqualStrings("", decision.matched_run_url);
