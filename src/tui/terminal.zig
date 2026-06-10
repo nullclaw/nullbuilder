@@ -88,10 +88,10 @@ fn isSafe(value: []const u8, options: SanitizeOptions) bool {
     var index: usize = 0;
     while (index < value.len) {
         const byte = value[index];
-        if (byte == ascii_escape or isUnsafeTerminalControlByte(byte, options) or isUtf8C1Control(value, index)) {
+        if (byte == ascii_escape or isUtf8C1Control(value, index) or isUnsafeTerminalControlByte(byte, options)) {
             return false;
         }
-        index += 1;
+        index += utf8SequenceLength(value, index);
     }
 
     return true;
@@ -203,6 +203,14 @@ test "terminal sanitizer borrows already safe text" {
     try std.testing.expect(!safe.allocated);
     try std.testing.expectEqual(@intFromPtr(input.ptr), @intFromPtr(safe.value.ptr));
     try std.testing.expectEqualStrings(input, safe.value);
+
+    const unicode = "repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82-🙂";
+    const safe_unicode = try sanitizeMaybeAlloc(std.testing.allocator, unicode, .{});
+    defer safe_unicode.deinit(std.testing.allocator);
+
+    try std.testing.expect(!safe_unicode.allocated);
+    try std.testing.expectEqual(@intFromPtr(unicode.ptr), @intFromPtr(safe_unicode.value.ptr));
+    try std.testing.expectEqualStrings(unicode, safe_unicode.value);
 }
 
 test "terminal sanitizer allocates only when text changes" {
