@@ -48,6 +48,21 @@ test('collectRecentWorkItems treats invalid timestamps as older than valid times
   assert.deepEqual(collectRecentWorkItems(items, 3).map(({ id }) => id), [4, 2, 1]);
 });
 
+test('recent work item collectors avoid user-controlled array iterators', () => {
+  class UnsafeIteratorArray<T> extends Array<T> {
+    override [Symbol.iterator](): ArrayIterator<T> {
+      throw new Error('iterator should not be called');
+    }
+  }
+  const items = new UnsafeIteratorArray(
+    workItem(1, '2026-06-09T00:00:00Z'),
+    workItem(2, '2026-06-10T00:00:00Z'),
+    workItem(3, '2026-06-08T00:00:00Z')
+  );
+
+  assert.deepEqual(collectRecentWorkItems(items, 2).map(({ id }) => id), [2, 1]);
+});
+
 test('recent work item helpers reject unsafe limits', () => {
   assert.equal(hasValidRecentWorkItemLimit(MAX_RECENT_WORK_ITEM_LIMIT), true);
   assert.equal(hasValidRecentWorkItemLimit(0), false);

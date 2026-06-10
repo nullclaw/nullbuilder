@@ -42,8 +42,8 @@ export class RecentWorkItemCollector<T extends WorkItemWithUpdatedAt> {
 
   items(): T[] {
     const items: T[] = [];
-    for (const rankedItem of this.rankedItems) {
-      items.push(rankedItem.item);
+    for (let index = 0; index < this.rankedItems.length; index += 1) {
+      items.push(this.rankedItems[index].item);
     }
 
     return items;
@@ -59,6 +59,14 @@ export function collectRecentWorkItems<T extends WorkItemWithUpdatedAt>(
   }
 
   const collector = new RecentWorkItemCollector<T>(maxItems);
+  if (Array.isArray(values)) {
+    for (let index = 0; index < values.length; index += 1) {
+      collector.add(values[index]);
+    }
+
+    return collector.items();
+  }
+
   for (const value of values) {
     collector.add(value);
   }
