@@ -428,6 +428,7 @@ test "action values validate HTTP URLs with paths" {
 
 test "action values validate single-line GitHub output values" {
     try std.testing.expect(isSafeActionOutputValue("scheduled build", 64));
+    try std.testing.expect(isSafeActionOutputValue("scheduled \xd0\xbf\xd1\x83\xd1\x82\xd1\x8c", 64));
     try std.testing.expect(isSafeActionOutputValue("https://example.com/runs/1?check=true", 128));
 
     try std.testing.expect(!isSafeActionOutputValue("", 64));

@@ -2,6 +2,7 @@ const std = @import("std");
 
 const cli = @import("cli.zig");
 const dashboard = @import("dashboard.zig");
+const terminal = @import("terminal.zig");
 
 const max_cli_path_bytes = 4096;
 const max_forwarded_arg_count = 64;
@@ -45,12 +46,7 @@ fn isTagCommand(value: []const u8) bool {
 fn isSafeCliPath(value: []const u8) bool {
     if (value.len == 0 or value.len > max_cli_path_bytes) return false;
     if (std.mem.startsWith(u8, value, "-")) return false;
-
-    for (value) |byte| {
-        if (isControlByte(byte)) return false;
-    }
-
-    return true;
+    return !terminal.hasUnsafeControl(value, .{});
 }
 
 fn isSafeForwardedArgs(args: []const []const u8) bool {
@@ -68,19 +64,7 @@ fn isSafeForwardedArgs(args: []const []const u8) bool {
 }
 
 fn hasArgumentControl(value: []const u8) bool {
-    for (value, 0..) |byte, index| {
-        if (isControlByte(byte) or isUtf8C1Control(value, index)) return true;
-    }
-
-    return false;
-}
-
-fn isControlByte(byte: u8) bool {
-    return byte < 0x20 or (byte >= 0x7f and byte <= 0x9f);
-}
-
-fn isUtf8C1Control(value: []const u8, index: usize) bool {
-    return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+    return terminal.hasUnsafeControl(value, .{});
 }
 
 fn printHelp(out: *std.Io.Writer) !void {
@@ -162,6 +146,7 @@ test "node cli path rejects option injection and controls" {
     try std.testing.expect(isSafeCliPath("./bin/nullbuilder.js"));
     try std.testing.expect(isSafeCliPath("/tmp/nullbuilder.js"));
     try std.testing.expect(isSafeCliPath("scripts/nullbuilder.js"));
+    try std.testing.expect(isSafeCliPath("bin/\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c/nullbuilder.js"));
 
     try std.testing.expect(!isSafeCliPath(""));
     try std.testing.expect(!isSafeCliPath("-e"));
@@ -179,6 +164,7 @@ test "forwarded tag arguments are bounded before spawning node" {
 
     try std.testing.expect(isSafeForwardedArgs(&.{ "build-pr", "nullclaw/nullbuilder", "--pr", "7", "--tag", "build-pr-7" }));
     try std.testing.expect(isSafeForwardedArgs(&.{ "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3", "--ref", "release/v1" }));
+    try std.testing.expect(isSafeForwardedArgs(&.{ "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3", "--ref", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c" }));
 
     try std.testing.expect(!isSafeForwardedArgs(&.{}));
     try std.testing.expect(!isSafeForwardedArgs(too_many_args[0..]));

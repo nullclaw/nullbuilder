@@ -84,17 +84,21 @@ pub fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
     return value[0..end];
 }
 
-fn isSafe(value: []const u8, options: SanitizeOptions) bool {
+pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
     var index: usize = 0;
     while (index < value.len) {
         const byte = value[index];
         if (byte == ascii_escape or isUtf8C1Control(value, index) or isUnsafeTerminalControlByte(byte, options)) {
-            return false;
+            return true;
         }
         index += utf8SequenceLength(value, index);
     }
 
-    return true;
+    return false;
+}
+
+fn isSafe(value: []const u8, options: SanitizeOptions) bool {
+    return !hasUnsafeControl(value, options);
 }
 
 fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions, buffer: *[4]u8) ?[]const u8 {
@@ -193,6 +197,17 @@ test "terminal sanitizer strips escape sequences and controls" {
 
     try std.testing.expectEqualStrings("ok badred text next rawdone", safe);
     try std.testing.expect(std.mem.indexOfScalar(u8, safe, ascii_escape) == null);
+}
+
+test "terminal control detector skips safe UTF-8 sequences" {
+    try std.testing.expect(!hasUnsafeControl("safe text", .{}));
+    try std.testing.expect(!hasUnsafeControl("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82-\xf0\x9f\x99\x82", .{}));
+
+    try std.testing.expect(hasUnsafeControl("bad\nvalue", .{}));
+    try std.testing.expect(!hasUnsafeControl("line\nvalue", .{ .preserve_newlines = true }));
+    try std.testing.expect(hasUnsafeControl("bad\x1b[31mvalue", .{ .preserve_newlines = true }));
+    try std.testing.expect(hasUnsafeControl("bad\xc2\x85value", .{}));
+    try std.testing.expect(hasUnsafeControl("bad\x85value", .{}));
 }
 
 test "terminal sanitizer borrows already safe text" {

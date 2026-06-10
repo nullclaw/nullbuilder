@@ -125,6 +125,7 @@ test "value tokens are bounded before duplication" {
 
 test "value tokens reject terminal controls before duplication" {
     try validateValueToken("--flag", "value with spaces");
+    try validateValueToken("--flag", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c");
 
     try std.testing.expect(hasUnsafeValueControl("bad\nvalue"));
     try std.testing.expect(hasUnsafeValueControl("bad\x1b[31mvalue"));

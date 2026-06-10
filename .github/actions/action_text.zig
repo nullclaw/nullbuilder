@@ -45,7 +45,7 @@ pub fn hasControl(value: []const u8) bool {
         if (isControlByte(value[index]) or isUtf8C1Control(value, index)) {
             return true;
         }
-        index += 1;
+        index += utf8SequenceLength(value, index);
     }
     return false;
 }
@@ -116,6 +116,7 @@ fn skipAnsiEscape(value: []const u8, start: usize) usize {
 
 test "action text detects ASCII and UTF-8 encoded control characters" {
     try std.testing.expect(!hasControl("safe value"));
+    try std.testing.expect(!hasControl("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82-\xf0\x9f\x99\x82"));
     try std.testing.expect(hasControl("line\nbreak"));
     try std.testing.expect(hasControl("escape\x1b[31m"));
     try std.testing.expect(hasControl("raw\x85control"));
