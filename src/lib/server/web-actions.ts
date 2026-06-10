@@ -411,22 +411,36 @@ function optionalTargetRef(value: string | undefined): string | undefined | null
 
 function assertFormShape(formData: FormData, allowedFields: readonly string[]): void {
   const allowed = new Set(allowedFields);
+  const seen = new Set<string>();
+
   for (const field of formData.keys()) {
     if (!allowed.has(field)) {
       throw new Error(UNKNOWN_FORM_FIELD_MESSAGE);
     }
-  }
 
-  for (const field of allowedFields) {
-    if (formData.getAll(field).length > 1) {
+    if (seen.has(field)) {
       throw new Error(DUPLICATE_FORM_FIELD_MESSAGE);
     }
+    seen.add(field);
   }
 }
 
 function singleFormValue(formData: FormData, field: string): FormDataEntryValue | null {
-  const values = formData.getAll(field);
-  return values.length === 1 ? values[0] : null;
+  let value: FormDataEntryValue | null = null;
+
+  for (const [entryField, entryValue] of formData.entries()) {
+    if (entryField !== field) {
+      continue;
+    }
+
+    if (value !== null) {
+      return null;
+    }
+
+    value = entryValue;
+  }
+
+  return value;
 }
 
 function isInvalidFormShapeError(error: unknown): boolean {

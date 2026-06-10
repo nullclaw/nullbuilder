@@ -172,6 +172,29 @@ test('mutation form parsers reject unknown fields without echoing values', () =>
   });
 });
 
+test('mutation form parsers avoid getAll allocations while validating form shape', () => {
+  const buildFormData = formDataWithoutGetAll();
+  buildFormData.set('repo', 'nullbuilder');
+  buildFormData.set('prNumber', '17');
+  buildFormData.set('tagName', 'build-pr-17');
+
+  assert.deepEqual(parseBuildPrMutationForm(buildFormData), {
+    repo: 'nullbuilder',
+    prNumber: 17,
+    tagName: 'build-pr-17',
+    confirm: false,
+    force: false
+  });
+
+  const releaseFormData = formDataWithoutGetAll();
+  releaseFormData.set('repo', 'nullbuilder');
+  releaseFormData.set('tagName', 'v1.2.3');
+  releaseFormData.append('targetRef', 'main');
+  releaseFormData.append('targetRef', 'release/v1');
+
+  assert.throws(() => parseReleaseTagMutationForm(releaseFormData), /^Error: Duplicate form field\.$/);
+});
+
 test('mutationAccessError enforces enablement authentication and CSRF order', () => {
   const disabled = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
@@ -677,6 +700,14 @@ function testLoginRateLimiter(maxFailures = 1): LoginRateLimiter {
     maxKeys: 10,
     now: () => 10_000
   });
+}
+
+function formDataWithoutGetAll(): FormData {
+  const formData = new FormData();
+  formData.getAll = () => {
+    throw new Error('getAll should not be called.');
+  };
+  return formData;
 }
 
 function mutationForm(
