@@ -4,8 +4,11 @@ import type { NullbuilderConfig } from './config';
 import { mapWithConcurrency } from './concurrency';
 import {
   buildDashboard,
+  GITHUB_WORK_ITEMS_PAGE_SIZE,
   makeErrorRepository,
   mapRepositorySummary,
+  MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN,
+  MAX_REPOSITORY_WORK_ITEMS_TO_SCAN,
   type DashboardData,
   type GitHubIssueResponse,
   type GitHubPullResponse,
@@ -132,8 +135,20 @@ export async function getRepositorySummary(config: NullbuilderConfig, repo: Repo
   try {
     const repository = await githubRequest<GitHubRepositoryResponse>(config, `/repos/${repo}`);
     const [issues, pulls, runs, starGrowth] = await Promise.all([
-      githubGetPages<GitHubIssueResponse>(config, `/repos/${repo}/issues?state=open&per_page=100`, {}, 20),
-      githubGetPages<GitHubPullResponse>(config, `/repos/${repo}/pulls?state=open&per_page=100`, {}, 20),
+      githubGetPages<GitHubIssueResponse>(
+        config,
+        `/repos/${repo}/issues?state=open&per_page=${GITHUB_WORK_ITEMS_PAGE_SIZE}`,
+        {},
+        MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN,
+        MAX_REPOSITORY_WORK_ITEMS_TO_SCAN
+      ),
+      githubGetPages<GitHubPullResponse>(
+        config,
+        `/repos/${repo}/pulls?state=open&per_page=${GITHUB_WORK_ITEMS_PAGE_SIZE}`,
+        {},
+        MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN,
+        MAX_REPOSITORY_WORK_ITEMS_TO_SCAN
+      ),
       githubRequest<unknown>(config, `/repos/${repo}/actions/runs?per_page=100`),
       getStarGrowth(config, repo, repository.stargazers_count)
     ]);

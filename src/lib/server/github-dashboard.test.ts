@@ -13,6 +13,7 @@ import {
   MAX_LABELS_TO_SCAN,
   MAX_LABEL_NAME_LENGTH,
   MAX_REPOSITORY_WORK_ITEMS,
+  MAX_REPOSITORY_WORK_ITEMS_TO_SCAN,
   MAX_TIMESTAMP_TEXT_LENGTH,
   MAX_WORKFLOW_RUNS_PER_REPOSITORY,
   MAX_WORK_ITEM_TITLE_LENGTH,
@@ -503,6 +504,47 @@ test('mapRepositorySummary caps per-repository work rows without changing counts
     MAX_REPOSITORY_WORK_ITEMS
   ]);
   assert.equal(summary.issues.at(-1)?.number, 3);
+});
+
+test('mapRepositorySummary caps work item scanning before reading oversized payloads', () => {
+  const issues = Array.from({ length: MAX_REPOSITORY_WORK_ITEMS_TO_SCAN + 1 }, (_, index) =>
+    issue({
+      number: index + 1,
+      updated_at: new Date(Date.UTC(2026, 5, 9, 0, index % 60)).toISOString()
+    })
+  );
+  const pulls = Array.from({ length: MAX_REPOSITORY_WORK_ITEMS_TO_SCAN + 1 }, (_, index) =>
+    pull({
+      number: index + 1,
+      updated_at: new Date(Date.UTC(2026, 5, 9, 0, index % 60)).toISOString()
+    })
+  );
+  Object.defineProperty(issues, MAX_REPOSITORY_WORK_ITEMS_TO_SCAN, {
+    get() {
+      throw new Error('issue scan exceeded limit');
+    }
+  });
+  Object.defineProperty(pulls, MAX_REPOSITORY_WORK_ITEMS_TO_SCAN, {
+    get() {
+      throw new Error('pull request scan exceeded limit');
+    }
+  });
+
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    issues,
+    pulls,
+    [],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.openIssues, MAX_REPOSITORY_WORK_ITEMS_TO_SCAN);
+  assert.equal(summary.openPulls, MAX_REPOSITORY_WORK_ITEMS_TO_SCAN);
+  assert.equal(summary.issues.length, MAX_REPOSITORY_WORK_ITEMS);
+  assert.equal(summary.pullRequests.length, MAX_REPOSITORY_WORK_ITEMS);
+  assert.equal(summary.issues.some((item) => item.number === MAX_REPOSITORY_WORK_ITEMS_TO_SCAN + 1), false);
+  assert.equal(summary.pullRequests.some((item) => item.number === MAX_REPOSITORY_WORK_ITEMS_TO_SCAN + 1), false);
 });
 
 test('buildDashboard summarizes loaded error and failing repositories', () => {

@@ -1,6 +1,6 @@
 import type { RepoSlug } from '../repositories';
 import { safeUtcTimestampText } from '../date-safety';
-import { readArray, readBoundedArray, readObjectRecord } from '../record-safety';
+import { readBoundedArray, readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
 import type {
   GitHubLabel,
@@ -33,6 +33,10 @@ export const MAX_LABELS_PER_WORK_ITEM = 20;
 export const MAX_LABELS_TO_SCAN = MAX_LABELS_PER_WORK_ITEM * 4;
 export const MAX_LABEL_NAME_LENGTH = 64;
 export const MAX_REPOSITORY_WORK_ITEMS = 100;
+export const GITHUB_WORK_ITEMS_PAGE_SIZE = 100;
+export const MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN = 20;
+export const MAX_REPOSITORY_WORK_ITEMS_TO_SCAN =
+  GITHUB_WORK_ITEMS_PAGE_SIZE * MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN;
 export const MAX_WORKFLOW_RUNS_PER_REPOSITORY = 100;
 
 export function mapRepositorySummary(
@@ -45,8 +49,8 @@ export function mapRepositorySummary(
   webBaseUrl = 'https://github.com'
 ): RepositorySummary {
   const urlContext = githubRepositoryUrlContext(webBaseUrl, repo, safeString(repository.html_url));
-  const openIssues = mapIssueSummaries(repo, readArray(issues), urlContext);
-  const pullRequests = mapPullRequestSummaries(repo, readArray(pulls), urlContext);
+  const openIssues = mapIssueSummaries(repo, issues, urlContext);
+  const pullRequests = mapPullRequestSummaries(repo, pulls, urlContext);
   const [fallbackOwner, fallbackName] = repo.split('/');
 
   return {
@@ -69,7 +73,7 @@ export function mapRepositorySummary(
     issues: openIssues.items,
     pullRequests: pullRequests.items,
     starGrowth,
-    latestRuns: mapLatestRunsForRepository(readArray(workflowRuns), urlContext),
+    latestRuns: mapLatestRunsForRepository(workflowRuns, urlContext),
     status: 'ok'
   };
 }
@@ -81,18 +85,24 @@ type BoundedWorkItems<T extends IssueSummary | PullRequestSummary> = {
 
 function mapIssueSummaries(
   repo: RepoSlug,
-  issues: unknown[],
+  issues: unknown,
   urlContext: GitHubWebUrlContext
 ): BoundedWorkItems<IssueSummary> {
-  return collectBoundedWorkItems(issues, (issue) => mapIssue(repo, issue, urlContext));
+  return collectBoundedWorkItems(
+    readBoundedArray(issues, MAX_REPOSITORY_WORK_ITEMS_TO_SCAN),
+    (issue) => mapIssue(repo, issue, urlContext)
+  );
 }
 
 function mapPullRequestSummaries(
   repo: RepoSlug,
-  pulls: unknown[],
+  pulls: unknown,
   urlContext: GitHubWebUrlContext
 ): BoundedWorkItems<PullRequestSummary> {
-  return collectBoundedWorkItems(pulls, (pull) => mapPullRequest(repo, pull, urlContext));
+  return collectBoundedWorkItems(
+    readBoundedArray(pulls, MAX_REPOSITORY_WORK_ITEMS_TO_SCAN),
+    (pull) => mapPullRequest(repo, pull, urlContext)
+  );
 }
 
 function collectBoundedWorkItems<Input, Output extends IssueSummary | PullRequestSummary>(
@@ -124,14 +134,14 @@ function collectBoundedWorkItems<Input, Output extends IssueSummary | PullReques
 }
 
 export function mapLatestRuns(runs: unknown): RepositoryLatestRuns {
-  return mapLatestRunsForRepository(readArray(runs), EMPTY_GITHUB_WEB_URL_CONTEXT);
+  return mapLatestRunsForRepository(runs, EMPTY_GITHUB_WEB_URL_CONTEXT);
 }
 
 function mapLatestRunsForRepository(
-  runs: unknown[],
+  runs: unknown,
   urlContext: GitHubWebUrlContext
 ): RepositoryLatestRuns {
-  const selectedRuns = selectLatestRuns(runs);
+  const selectedRuns = selectLatestRuns(readBoundedArray(runs, MAX_WORKFLOW_RUNS_PER_REPOSITORY));
 
   return {
     ci: mapRun(selectedRuns.ci, urlContext),
@@ -309,7 +319,7 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
     release: null
   };
 
-  for (const run of readBoundedArray(runs, MAX_WORKFLOW_RUNS_PER_REPOSITORY)) {
+  for (const run of runs) {
     const runObject = readObjectRecord(run);
     if (!runObject) {
       continue;
