@@ -644,6 +644,25 @@ test('githubRequest rejects malformed JSON responses with a generic parse error'
   );
 });
 
+test('githubRequest releases response stream readers after successful reads', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://released-stream.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"ok":true}'));
+      controller.close();
+    }
+  });
+
+  globalThis.fetch = (async () => new Response(stream)) as typeof fetch;
+
+  assert.deepEqual(await githubRequest(config, '/repos/nullclaw/nullbuilder'), { ok: true });
+  assert.equal(stream.locked, false);
+});
+
 test('githubRequest rejects malformed content-length before parsing', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

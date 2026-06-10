@@ -287,19 +287,23 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
 
-    totalBytes += value.byteLength;
-    if (totalBytes > maxBytes) {
-      await reader.cancel().catch(() => undefined);
-      throw new Error('GitHub response body is too large.');
-    }
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error('GitHub response body is too large.');
+      }
 
-    chunks.push(value);
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
   }
 
   const bytes = new Uint8Array(totalBytes);
