@@ -9,6 +9,9 @@ import {
 import { formatGrowth, formatNullableNumber, workflowRunLabel } from '../lib/dashboard-format';
 import type { Command } from './options';
 
+const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\|$)|[@-Z\\-_])/g;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
+
 export function selectDashboardJson(command: Command, dashboard: DashboardData) {
   const errors = dashboard.repositories
     .filter((repo) => repo.status === 'error')
@@ -38,12 +41,12 @@ export function selectDashboardJson(command: Command, dashboard: DashboardData) 
 
 export function formatBuildPrResult(result: BuildPrResult): string {
   const lines = [
-    `${result.dryRun ? 'Dry run' : result.forced ? 'Moved tag' : 'Created tag'} ${result.tagName}`,
-    `repo: ${result.repo}`,
-    `pr: #${result.prNumber} ${result.prTitle}`,
-    `head: ${result.headSha} (${result.headBranch})`,
-    `tag: ${result.tagUrl}`,
-    `runs: ${result.workflowUrl}`
+    terminalLine(`${result.dryRun ? 'Dry run' : result.forced ? 'Moved tag' : 'Created tag'} ${result.tagName}`),
+    terminalLine(`repo: ${result.repo}`),
+    terminalLine(`pr: #${result.prNumber} ${result.prTitle}`),
+    terminalLine(`head: ${result.headSha} (${result.headBranch})`),
+    terminalLine(`tag: ${result.tagUrl}`),
+    terminalLine(`runs: ${result.workflowUrl}`)
   ];
 
   if (result.dryRun) {
@@ -55,11 +58,11 @@ export function formatBuildPrResult(result: BuildPrResult): string {
 
 export function formatReleaseTagResult(result: ReleaseTagResult): string {
   const lines = [
-    `${result.dryRun ? 'Dry run' : result.forced ? 'Moved tag' : 'Created tag'} ${result.tagName}`,
-    `repo: ${result.repo}`,
-    `target: ${result.targetSha} (${result.targetRef})`,
-    `tag: ${result.tagUrl}`,
-    `runs: ${result.workflowUrl}`
+    terminalLine(`${result.dryRun ? 'Dry run' : result.forced ? 'Moved tag' : 'Created tag'} ${result.tagName}`),
+    terminalLine(`repo: ${result.repo}`),
+    terminalLine(`target: ${result.targetSha} (${result.targetRef})`),
+    terminalLine(`tag: ${result.tagUrl}`),
+    terminalLine(`runs: ${result.workflowUrl}`)
   ];
 
   if (result.dryRun) {
@@ -113,7 +116,7 @@ export function formatAuditReport(report: AuditReport): string {
 export function formatRepositoryErrors(dashboard: DashboardData): string {
   return dashboard.repositories
     .filter((repo) => repo.status === 'error')
-    .map((repo) => `${repo.slug}: ${repo.error}`)
+    .map((repo) => terminalLine(`${repo.slug}: ${repo.error}`))
     .join('\n');
 }
 
@@ -131,10 +134,10 @@ export function auditExitCode(report: AuditReport): number | null {
 
 export function formatCliError(error: unknown): string {
   if (error instanceof GitHubApiError) {
-    return publicErrorMessage(error);
+    return terminalLine(publicErrorMessage(error));
   }
 
-  return error instanceof Error ? error.message : String(error);
+  return terminalLine(error instanceof Error ? error.message : String(error));
 }
 
 function formatRepos(dashboard: DashboardData): string {
@@ -222,15 +225,16 @@ function formatTable(rows: Array<Record<string, string>>, columns: string[]): st
     return 'No rows.';
   }
 
+  const safeRows = sanitizeRows(rows, columns);
   const widths = columns.map((column) => {
-    return Math.max(column.length, ...rows.map((row) => printableLength(row[column] ?? '')));
+    return Math.max(column.length, ...safeRows.map((row) => printableLength(row[column] ?? '')));
   });
   const lines = [
     columns.map((column, index) => column.padEnd(widths[index])).join('  '),
     widths.map((width) => '-'.repeat(width)).join('  ')
   ];
 
-  for (const row of rows) {
+  for (const row of safeRows) {
     lines.push(columns.map((column, index) => (row[column] ?? '').padEnd(widths[index])).join('  '));
   }
 
@@ -239,10 +243,13 @@ function formatTable(rows: Array<Record<string, string>>, columns: string[]): st
 
 function formatAuditFinding(item: AuditFinding): string {
   const path = item.path ? ` (${item.path})` : '';
-  const lines = [`[${item.severity}] ${item.repo}: ${item.title}${path}`, `  ${item.detail}`];
+  const lines = [
+    terminalLine(`[${item.severity}] ${item.repo}: ${item.title}${path}`),
+    terminalLine(`  ${item.detail}`)
+  ];
 
   if (item.url) {
-    lines.push(`  ${item.url}`);
+    lines.push(terminalLine(`  ${item.url}`));
   }
 
   return lines.join('\n');
@@ -264,4 +271,18 @@ function printableLength(value: string): number {
 
 function formatDate(value: string): string {
   return value.slice(0, 10);
+}
+
+function sanitizeRows(rows: Array<Record<string, string>>, columns: string[]): Array<Record<string, string>> {
+  return rows.map((row) => {
+    const sanitized: Record<string, string> = {};
+    for (const column of columns) {
+      sanitized[column] = terminalLine(row[column] ?? '');
+    }
+    return sanitized;
+  });
+}
+
+function terminalLine(value: string): string {
+  return value.replace(ANSI_ESCAPE_PATTERN, '').replace(CONTROL_CHARACTER_PATTERN, ' ');
 }

@@ -68,6 +68,30 @@ test('formatBuildPrResult and formatReleaseTagResult preserve tag command output
   assert.match(formatReleaseTagResult(releaseTagResultFixture({ forced: true })), /^Moved tag v1\.2\.3\n/);
 });
 
+test('formatters sanitize terminal control characters from external text', () => {
+  const dashboard = dashboardFixture({
+    issues: [
+      {
+        ...dashboardFixture().issues[0],
+        title: 'Fix \x1b[31mred\x1b[0m\nnext\titem'
+      }
+    ]
+  });
+  const issues = formatDashboard('issues', dashboard);
+  const buildPr = formatBuildPrResult(
+    buildPrResultFixture({
+      prTitle: 'Improve \x1b]0;title\x07build\rnow',
+      headBranch: 'feature\x1b[2Kbranch'
+    })
+  );
+
+  assert.doesNotMatch(issues, /\x1b/);
+  assert.match(issues, /Fix red next item/);
+  assert.doesNotMatch(buildPr, /\x1b/);
+  assert.match(buildPr, /pr: #7 Improve build now/);
+  assert.match(buildPr, /head: de0fac2e4500dabe0009e67214ff5f5447ce83dd \(featurebranch\)/);
+});
+
 test('formatAuditReport includes per-repository counts and finding details', () => {
   const output = formatAuditReport(auditReportFixture());
 
