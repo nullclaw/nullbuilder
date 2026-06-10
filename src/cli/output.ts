@@ -257,13 +257,13 @@ function formatStars(dashboard: DashboardData): string {
   );
 }
 
-function formatTable(rows: Array<Record<string, string>>, columns: string[]): string {
+function formatTable(rows: Array<Record<string, string>>, columns: readonly string[]): string {
   return formatTableFromItems(rows, columns, (row) => row);
 }
 
 function formatTableFromItems<T>(
   items: readonly T[],
-  columns: string[],
+  columns: readonly string[],
   rowForItem: (item: T) => Record<string, string>
 ): string {
   return formatBoundedTable(items.length, columns, (index) => rowForItem(items[index]));
@@ -271,7 +271,7 @@ function formatTableFromItems<T>(
 
 function formatBoundedTable(
   rowCount: number,
-  columns: string[],
+  columns: readonly string[],
   rowAt: (index: number) => Record<string, string>
 ): string {
   if (rowCount === 0) {
@@ -289,7 +289,7 @@ function formatBoundedTable(
 
 function formatSanitizedTable(
   safeRows: Array<Record<string, string>>,
-  columns: string[],
+  columns: readonly string[],
   omittedRows: number
 ): string {
   if (safeRows.length === 0) {
@@ -297,13 +297,10 @@ function formatSanitizedTable(
   }
 
   const widths = columnWidths(safeRows, columns);
-  const lines = [
-    columns.map((column, index) => column.padEnd(widths[index])).join('  '),
-    widths.map((width) => '-'.repeat(width)).join('  ')
-  ];
+  const lines = [formatTableHeader(columns, widths), formatTableSeparator(widths)];
 
   for (const row of safeRows) {
-    lines.push(columns.map((column, index) => (row[column] ?? '').padEnd(widths[index])).join('  '));
+    lines.push(formatTableRow(row, columns, widths));
   }
 
   if (omittedRows > 0) {
@@ -357,12 +354,52 @@ function printableLength(value: string): number {
   return value.length;
 }
 
-function columnWidths(rows: Array<Record<string, string>>, columns: string[]): number[] {
-  const widths = columns.map((column) => column.length);
+function formatTableHeader(columns: readonly string[], widths: readonly number[]): string {
+  let line = '';
+  for (let index = 0; index < columns.length; index += 1) {
+    line = appendTableCell(line, columns[index], widths[index]);
+  }
+  return line;
+}
+
+function formatTableSeparator(widths: readonly number[]): string {
+  let line = '';
+  for (const width of widths) {
+    line = appendTablePart(line, '-'.repeat(width));
+  }
+  return line;
+}
+
+function formatTableRow(row: Record<string, string>, columns: readonly string[], widths: readonly number[]): string {
+  let line = '';
+  for (let index = 0; index < columns.length; index += 1) {
+    const column = columns[index];
+    line = appendTableCell(line, row[column] ?? '', widths[index]);
+  }
+  return line;
+}
+
+function appendTableCell(line: string, value: string, width: number): string {
+  return appendTablePart(line, value.padEnd(width));
+}
+
+function appendTablePart(line: string, value: string): string {
+  return line.length === 0 ? value : `${line}  ${value}`;
+}
+
+function columnWidths(rows: Array<Record<string, string>>, columns: readonly string[]): number[] {
+  const widths: number[] = [];
+  for (const column of columns) {
+    widths.push(column.length);
+  }
 
   for (const row of rows) {
-    for (const [index, column] of columns.entries()) {
-      widths[index] = Math.max(widths[index], printableLength(row[column] ?? ''));
+    for (let index = 0; index < columns.length; index += 1) {
+      const column = columns[index];
+      const width = printableLength(row[column] ?? '');
+      if (width > widths[index]) {
+        widths[index] = width;
+      }
     }
   }
 
@@ -373,7 +410,7 @@ function formatDate(value: string): string {
   return formatDashboardDateOnly(value);
 }
 
-function sanitizeRow(row: Record<string, string>, columns: string[]): Record<string, string> {
+function sanitizeRow(row: Record<string, string>, columns: readonly string[]): Record<string, string> {
   const sanitized: Record<string, string> = {};
   for (const column of columns) {
     sanitized[column] = terminalCell(row[column] ?? '');
