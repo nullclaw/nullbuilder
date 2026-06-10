@@ -631,6 +631,21 @@ test('buildDashboard caps aggregated work lists without changing totals', () => 
   );
 });
 
+test('buildDashboard counts failures only from known latest run slots', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+  const latestRuns = {
+    ci: null,
+    nightly: null,
+    release: null,
+    injected: workflowSummary({ status: 'completed', conclusion: 'failure' })
+  } as RepositorySummary['latestRuns'];
+  const dashboard = buildDashboard(config, config.repos, [repositorySummary({ latestRuns })]);
+
+  assert.equal(dashboard.totals.failingRuns, 0);
+});
+
 test('buildDashboard saturates unsafe star totals', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder'

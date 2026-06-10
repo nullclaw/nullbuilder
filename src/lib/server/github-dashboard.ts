@@ -8,7 +8,6 @@ import { MAX_TIMESTAMP_TEXT_LENGTH } from './github-dashboard-mappers';
 import { saturatingSafeIntegerAdd } from '../number-safety';
 import {
   compareByUpdatedAtDesc,
-  hasValidRecentWorkItemLimit,
   RecentWorkItemCollector,
   type WorkItemWithUpdatedAt
 } from './recent-work-items';
@@ -48,16 +47,7 @@ export function buildDashboard(
   repositories: RepositorySummary[],
   generatedAt = new Date().toISOString()
 ): DashboardData {
-  const loadedRepositories = repositories.filter((repo) => repo.status === 'ok');
-  const issues = collectRecentWorkItems(loadedRepositories, (repo) => repo.issues);
-  const pullRequests = collectRecentWorkItems(loadedRepositories, (repo) => repo.pullRequests);
-  const failingRuns = loadedRepositories.filter(repositoryHasFailingRun).length;
-  const erroredRepositories = repositories.length - loadedRepositories.length;
-  const issueCount = countWorkItems(loadedRepositories, (repo) => repo.openIssues ?? repo.issues.length);
-  const pullRequestCount = countWorkItems(
-    loadedRepositories,
-    (repo) => repo.openPulls ?? repo.pullRequests.length
-  );
+  const summary = summarizeRepositories(repositories);
 
   return {
     generatedAt: safeDashboardTimestamp(generatedAt),
@@ -65,46 +55,76 @@ export function buildDashboard(
     owner: config.owner,
     repos: repoList,
     repositories,
-    issues,
-    pullRequests,
-    hasReadErrors: erroredRepositories > 0,
+    issues: summary.issues,
+    pullRequests: summary.pullRequests,
+    hasReadErrors: summary.erroredRepositories > 0,
     totals: {
       repositories: repositories.length,
-      loadedRepositories: loadedRepositories.length,
-      erroredRepositories,
-      issues: issueCount,
-      pullRequests: pullRequestCount,
-      stars: loadedRepositories.reduce((total, repo) => saturatingSafeIntegerAdd(total, repo.stars ?? 0), 0),
-      failingRuns
+      loadedRepositories: summary.loadedRepositories,
+      erroredRepositories: summary.erroredRepositories,
+      issues: summary.issueCount,
+      pullRequests: summary.pullRequestCount,
+      stars: summary.starCount,
+      failingRuns: summary.failingRuns
     }
   };
 }
 
-function collectRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
-  repositories: RepositorySummary[],
-  itemsForRepository: (repo: RepositorySummary) => T[],
-  maxItems = MAX_DASHBOARD_WORK_LIST_ITEMS
-): T[] {
-  if (!hasValidRecentWorkItemLimit(maxItems)) {
-    return [];
-  }
+type DashboardRepositorySummary = {
+  issues: IssueSummary[];
+  pullRequests: PullRequestSummary[];
+  loadedRepositories: number;
+  erroredRepositories: number;
+  issueCount: number;
+  pullRequestCount: number;
+  starCount: number;
+  failingRuns: number;
+};
 
-  const collector = new RecentWorkItemCollector<T>(maxItems);
+function summarizeRepositories(repositories: RepositorySummary[]): DashboardRepositorySummary {
+  const issues = new RecentWorkItemCollector<IssueSummary>(MAX_DASHBOARD_WORK_LIST_ITEMS);
+  const pullRequests = new RecentWorkItemCollector<PullRequestSummary>(MAX_DASHBOARD_WORK_LIST_ITEMS);
+  let loadedRepositories = 0;
+  let issueCount = 0;
+  let pullRequestCount = 0;
+  let starCount = 0;
+  let failingRuns = 0;
 
   for (const repo of repositories) {
-    for (const item of itemsForRepository(repo)) {
-      collector.add(item);
+    if (repo.status !== 'ok') {
+      continue;
+    }
+
+    loadedRepositories += 1;
+    issueCount = saturatingSafeIntegerAdd(issueCount, repo.openIssues ?? repo.issues.length);
+    pullRequestCount = saturatingSafeIntegerAdd(
+      pullRequestCount,
+      repo.openPulls ?? repo.pullRequests.length
+    );
+    starCount = saturatingSafeIntegerAdd(starCount, repo.stars ?? 0);
+
+    if (repositoryHasFailingRun(repo)) {
+      failingRuns += 1;
+    }
+
+    for (const issue of repo.issues) {
+      issues.add(issue);
+    }
+    for (const pullRequest of repo.pullRequests) {
+      pullRequests.add(pullRequest);
     }
   }
 
-  return collector.items();
-}
-
-function countWorkItems(
-  repositories: RepositorySummary[],
-  countForRepository: (repo: RepositorySummary) => number
-): number {
-  return repositories.reduce((total, repo) => saturatingSafeIntegerAdd(total, countForRepository(repo)), 0);
+  return {
+    issues: issues.items(),
+    pullRequests: pullRequests.items(),
+    loadedRepositories,
+    erroredRepositories: repositories.length - loadedRepositories,
+    issueCount,
+    pullRequestCount,
+    starCount,
+    failingRuns
+  };
 }
 
 export function makeErrorRepository(
@@ -158,6 +178,13 @@ export function sortByUpdatedAt(left: WorkItemWithUpdatedAt, right: WorkItemWith
 }
 
 function repositoryHasFailingRun(repo: RepositorySummary): boolean {
-  const runs = Object.values(repo.latestRuns);
-  return runs.some((run) => run?.status === 'completed' && run.conclusion !== 'success');
+  return (
+    isFailingRun(repo.latestRuns.ci) ||
+    isFailingRun(repo.latestRuns.nightly) ||
+    isFailingRun(repo.latestRuns.release)
+  );
+}
+
+function isFailingRun(run: RepositorySummary['latestRuns']['ci']): boolean {
+  return run?.status === 'completed' && run.conclusion !== 'success';
 }
