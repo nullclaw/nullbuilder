@@ -61,7 +61,13 @@ pub fn writeSafeBounded(out: *std.Io.Writer, value: []const u8, max_bytes: usize
 
     while (index < value.len) {
         if (nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
-            if (slice.len > max_bytes - written) {
+            if (written >= max_bytes) {
+                try out.writeAll(truncated_output_suffix);
+                return true;
+            }
+
+            const remaining = max_bytes - written;
+            if (slice.len > remaining) {
                 try out.writeAll(truncated_output_suffix);
                 return true;
             }
@@ -281,6 +287,25 @@ test "bounded terminal writer limits sanitized output" {
     try std.testing.expect(truncated);
     try std.testing.expectEqualStrings("abcd" ++ truncated_output_suffix, out.writer.buffered());
     try std.testing.expect(std.mem.indexOfScalar(u8, out.writer.buffered(), ascii_escape) == null);
+}
+
+test "bounded terminal writer handles zero and exact limits explicitly" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const zero_limit = try writeSafeBounded(&out.writer, "abc", 0, .{});
+    try std.testing.expect(zero_limit);
+    try std.testing.expectEqualStrings(truncated_output_suffix, out.writer.buffered());
+
+    out.clearRetainingCapacity();
+    const exact_limit = try writeSafeBounded(&out.writer, "abc", 3, .{});
+    try std.testing.expect(!exact_limit);
+    try std.testing.expectEqualStrings("abc", out.writer.buffered());
+
+    out.clearRetainingCapacity();
+    const removed_only = try writeSafeBounded(&out.writer, "\x1b[31m\x1b[0m", 0, .{});
+    try std.testing.expect(!removed_only);
+    try std.testing.expectEqualStrings("", out.writer.buffered());
 }
 
 test "bounded terminal writer does not split UTF-8 sequences" {
