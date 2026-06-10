@@ -26,8 +26,8 @@ export function mapRepositorySummary(
 ): RepositorySummary {
   const openIssues = issues
     .filter((issue) => !issue.pull_request)
-    .map((issue) => mapIssue(repo, issue));
-  const pullRequests = pulls.map((pull) => mapPullRequest(repo, pull));
+    .flatMap((issue) => mapIssue(repo, issue) ?? []);
+  const pullRequests = pulls.flatMap((pull) => mapPullRequest(repo, pull) ?? []);
 
   return {
     slug: repo,
@@ -62,10 +62,15 @@ export function mapLatestRuns(runs: GitHubWorkflowRunResponse[]): RepositoryLate
   };
 }
 
-function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse): IssueSummary {
+function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse): IssueSummary | null {
+  const number = safeWorkItemNumber(issue.number);
+  if (number === null) {
+    return null;
+  }
+
   return {
     repo,
-    number: issue.number,
+    number,
     title: issue.title,
     url: issue.html_url,
     author: issue.user?.login ?? 'unknown',
@@ -76,10 +81,15 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse): IssueSummary {
   };
 }
 
-function mapPullRequest(repo: RepoSlug, pull: GitHubPullResponse): PullRequestSummary {
+function mapPullRequest(repo: RepoSlug, pull: GitHubPullResponse): PullRequestSummary | null {
+  const number = safeWorkItemNumber(pull.number);
+  if (number === null) {
+    return null;
+  }
+
   return {
     repo,
-    number: pull.number,
+    number,
     title: pull.title,
     url: pull.html_url,
     author: pull.user?.login ?? 'unknown',
@@ -120,6 +130,10 @@ function safeCount(value: number | null | undefined): number {
 
 function safeNullableCount(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function safeWorkItemNumber(value: number): number | null {
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
 function findRun(

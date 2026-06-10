@@ -103,6 +103,38 @@ test('mapRepositorySummary normalizes unsafe GitHub counters', () => {
   assert.equal(summary.pullRequests[0].comments, 0);
 });
 
+test('mapRepositorySummary skips invalid issue and pull request numbers', () => {
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [
+      issue({ number: 0, title: 'Zero' }),
+      issue({ number: -1, title: 'Negative' }),
+      issue({ number: 1.5, title: 'Fractional' }),
+      issue({ number: Number.MAX_SAFE_INTEGER + 1, title: 'Unsafe' }),
+      issue({ number: 7, title: 'Valid issue' })
+    ],
+    [
+      pull({ number: 0, title: 'Zero' }),
+      pull({ number: Number.NaN, title: 'NaN' }),
+      pull({ number: 9, title: 'Valid pull' })
+    ],
+    [],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.openIssues, 1);
+  assert.equal(summary.openPulls, 1);
+  assert.deepEqual(
+    summary.issues.map((item) => item.number),
+    [7]
+  );
+  assert.deepEqual(
+    summary.pullRequests.map((item) => item.number),
+    [9]
+  );
+});
+
 test('buildDashboard summarizes loaded error and failing repositories', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder,broken',
