@@ -51,6 +51,39 @@ test('formatRepositoryErrors and exit code helpers keep CLI policy pure', () => 
   assert.equal(auditExitCode(auditReportFixture({ findings: [] })), null);
 });
 
+test('formatRepositoryErrors bounds stderr rows without reading past the display cap', () => {
+  const base = dashboardFixture();
+  const errorRepo = base.repositories[1];
+  const repositories = Array.from({ length: 1001 }, (_, index) => ({
+    ...errorRepo,
+    slug: `nullclaw/error-${index + 1}` as DashboardData['repositories'][number]['slug'],
+    error: `Repository error ${index + 1}`
+  }));
+  Object.defineProperty(repositories, 1000, {
+    get() {
+      throw new Error('read past repository error cap');
+    }
+  });
+
+  const output = formatRepositoryErrors(
+    dashboardFixture({
+      repositories,
+      issues: [],
+      pullRequests: [],
+      totals: {
+        ...base.totals,
+        repositories: 1001,
+        loadedRepositories: 0,
+        erroredRepositories: 1001
+      }
+    })
+  );
+
+  assert.match(output, /\.\.\. 1 repository errors omitted; use --json for full output\./);
+  assert.equal(output.includes('nullclaw/error-1000'), true);
+  assert.equal(output.includes('nullclaw/error-1001'), false);
+});
+
 test('formatBuildPrResult and formatReleaseTagResult preserve tag command output', () => {
   assert.equal(
     formatBuildPrResult(buildPrResultFixture({ dryRun: true })),

@@ -117,10 +117,25 @@ export function formatAuditReport(report: AuditReport): string {
 }
 
 export function formatRepositoryErrors(dashboard: DashboardData): string {
-  return dashboard.repositories
-    .filter((repo) => repo.status === 'error')
-    .map((repo) => terminalLine(`${repo.slug}: ${repo.error}`))
-    .join('\n');
+  const lines: string[] = [];
+
+  for (let index = 0; index < dashboard.repositories.length; index += 1) {
+    if (lines.length >= MAX_TERMINAL_TABLE_ROWS) {
+      break;
+    }
+
+    const repo = dashboard.repositories[index];
+    if (repo.status === 'error') {
+      lines.push(terminalLine(`${repo.slug}: ${repo.error}`));
+    }
+  }
+
+  const omittedRows = Math.max(0, dashboard.totals.erroredRepositories - lines.length);
+  if (omittedRows > 0) {
+    lines.push(terminalLine(`... ${omittedRows} repository errors omitted; use --json for full output.`));
+  }
+
+  return lines.join('\n');
 }
 
 export function readErrorExitCode(dashboard: DashboardData): number | null {
