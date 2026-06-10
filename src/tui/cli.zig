@@ -11,6 +11,7 @@ const max_child_output_display_bytes = 64 * 1024;
 const max_child_arg_count = 128;
 const max_child_arg_bytes = 4096;
 const max_child_args_total_bytes = max_child_arg_count * max_child_arg_bytes;
+const abnormal_child_exit_code: u8 = 1;
 
 pub const OutputLimits = struct {
     stdout: usize = default_stdout_limit,
@@ -54,7 +55,7 @@ pub fn exitCodeForFailure(
         else => {
             var budget = terminal.OutputBudget{ .remaining = max_child_output_display_bytes };
             try writeCapturedStream(out, result.stderr, &budget);
-            return error.ChildProcessFailed;
+            return abnormal_child_exit_code;
         },
     }
 }
@@ -222,4 +223,25 @@ test "failure output keeps stderr first while sharing the display budget" {
     try std.testing.expect(std.mem.allEqual(u8, output[0..max_child_output_display_bytes], 'e'));
     try std.testing.expectEqualStrings(terminal.truncated_output_suffix, output[max_child_output_display_bytes..]);
     try std.testing.expect(std.mem.indexOf(u8, output, "stdout") == null);
+}
+
+test "abnormal child termination returns a stable exit code" {
+    const stdout = try std.testing.allocator.dupe(u8, "stdout");
+    defer std.testing.allocator.free(stdout);
+
+    const stderr = try std.testing.allocator.dupe(u8, "stderr\nbad\x1b[31mred\x1b[0m");
+    defer std.testing.allocator.free(stderr);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const exit_code = try exitCodeForFailure(&out.writer, .{
+        .term = .{ .unknown = 9 },
+        .stdout = stdout,
+        .stderr = stderr,
+    }, &.{0});
+
+    try std.testing.expectEqual(@as(?u8, abnormal_child_exit_code), exit_code);
+    try std.testing.expectEqualStrings("stderr\nbadred", out.writer.buffered());
+    try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "stdout") == null);
 }
