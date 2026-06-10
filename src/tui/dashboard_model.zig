@@ -11,6 +11,7 @@ const max_dashboard_repositories = 1000;
 const max_load_errors = 200;
 const max_repo_text_len = 256;
 const max_work_items_per_repository = 100;
+const max_work_item_number = 999_999_999;
 const max_work_title_len = 1024;
 const max_error_message_len = 2048;
 
@@ -178,7 +179,7 @@ fn workItemFromValue(value: JsonValue) ?WorkItem {
 }
 
 fn workItemFromObject(work: JsonObject) ?WorkItem {
-    const number = dashboard_json.intField(work, "number");
+    const number = dashboard_json.boundedIntField(work, "number", max_work_item_number);
     if (number == 0) return null;
 
     return .{
@@ -370,6 +371,7 @@ test "work item iterator skips invalid rows across repositories" {
         \\      "invalid",
         \\      {"repo": "alpha", "number": 0, "title": "Zero"},
         \\      {"repo": "alpha", "title": "Missing number"},
+        \\      {"repo": "alpha", "number": 1000000000, "title": "Huge number"},
         \\      {"repo": "alpha", "number": 7, "title": "Fix build"}
         \\    ]},
         \\    {"slug": "beta", "issues": [

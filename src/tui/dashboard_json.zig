@@ -56,6 +56,11 @@ pub fn intField(object: JsonObject, field_name: []const u8) u64 {
     };
 }
 
+pub fn boundedIntField(object: JsonObject, field_name: []const u8, max_value: u64) u64 {
+    const value = intField(object, field_name);
+    return if (value <= max_value) value else 0;
+}
+
 test "field helpers return typed values and fallbacks" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
@@ -117,4 +122,16 @@ test "intField accepts only safe positive integers" {
     try std.testing.expectEqual(@as(u64, 0), intField(object, "fractional"));
     try std.testing.expectEqual(@as(u64, 0), intField(object, "unsafe"));
     try std.testing.expectEqual(@as(u64, 0), intField(object, "missing"));
+}
+
+test "boundedIntField rejects positive integers above a domain limit" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{"valid":999,"tooLarge":1000,"missing":null}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try std.testing.expectEqual(@as(u64, 999), boundedIntField(object, "valid", 999));
+    try std.testing.expectEqual(@as(u64, 0), boundedIntField(object, "tooLarge", 999));
+    try std.testing.expectEqual(@as(u64, 0), boundedIntField(object, "missing", 999));
 }
