@@ -35,6 +35,15 @@ test('format helpers keep null values explicit', () => {
   assert.equal(formatDashboardDateOnly('2026-06-02T12:34:56Z'), '2026-06-02');
 });
 
+test('format helpers bound and sanitize date inputs before parsing', () => {
+  const oversized = `${' '.repeat(65)}2026-06-02T12:34:56Z`;
+
+  assert.equal(formatDashboardDate(oversized), 'n/a');
+  assert.equal(formatDashboardDateOnly(oversized), 'n/a');
+  assert.equal(formatDashboardDate('2026-06-02T12:34:56Z\nhidden'), 'n/a');
+  assert.equal(formatDashboardDateOnly('2026-06-02T12:34:56Z\x85hidden'), 'n/a');
+});
+
 test('format helpers treat unsafe numbers as unknown display values', () => {
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
     assert.equal(formatNullableNumber(value), 'unknown');
