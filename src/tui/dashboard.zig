@@ -2,6 +2,7 @@ const std = @import("std");
 
 const dashboard_model = @import("dashboard_model.zig");
 const dashboard_json = @import("dashboard_json.zig");
+const dashboard_runs = @import("dashboard_runs.zig");
 const terminal = @import("terminal.zig");
 
 const JsonValue = dashboard_json.JsonValue;
@@ -173,10 +174,10 @@ fn printStatus(arena: std.mem.Allocator, out: *std.Io.Writer, no_color: bool, st
 
 fn statusColor(no_color: bool, status: []const u8) []const u8 {
     if (no_color) return "";
-    if (std.mem.eql(u8, status, "success")) return green;
-    if (std.mem.eql(u8, status, "queued") or std.mem.eql(u8, status, "in_progress")) return yellow;
-    if (std.mem.eql(u8, status, "n/a")) return dim;
-    if (std.mem.eql(u8, status, "failure") or std.mem.eql(u8, status, "cancelled") or std.mem.eql(u8, status, "timed_out") or std.mem.eql(u8, status, "error")) return red;
+    if (dashboard_runs.isSuccessLabel(status)) return green;
+    if (dashboard_runs.isRunningLabel(status)) return yellow;
+    if (dashboard_runs.isMissingLabel(status)) return dim;
+    if (dashboard_runs.isFailureLabel(status)) return red;
     return "";
 }
 
@@ -325,6 +326,34 @@ test "render falls back for empty external status labels" {
     try expectContains(output, "completed");
     try expectContains(output, "success");
     try expectContains(output, "1 failing");
+}
+
+test "render canonicalizes unknown workflow labels before terminal output" {
+    const json =
+        \\{
+        \\  "items": [
+        \\    {
+        \\      "slug": "nullclaw/alpha",
+        \\      "latestRuns": {
+        \\        "ci": {"status": "deploying-secret"},
+        \\        "nightly": {"status": "completed", "conclusion": "private-secret"},
+        \\        "release": {"status": "completed", "conclusion": "action_required"}
+        \\      }
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try render(std.testing.allocator, &out.writer, json, true);
+    const output = out.writer.buffered();
+
+    try expectContains(output, "n/a");
+    try expectContains(output, "failure");
+    try expectContains(output, "action_requi");
+    try std.testing.expect(std.mem.indexOf(u8, output, "deploying-secret") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "private-secret") == null);
 }
 
 test "render treats malformed dashboard collections as empty" {
