@@ -221,7 +221,7 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
                 index += 3;
                 continue;
             },
-            '-', '.', '_', '~', '!', '$', '&', '(', ')', '*', '+', ',', ';', '=', ':', '@', '/', '?', '#' => {},
+            '-', '.', '_', '~', '!', '$', '&', '(', ')', '*', '+', ',', ';', '=', ':', '@', '/', '?' => {},
             else => return false,
         }
         index += 1;
@@ -515,9 +515,9 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(isHttpUrl("http://localhost/runs/1?check=true", 256));
     try std.testing.expect(isHttpUrl("http://127.0.0.1:8080/runs/1?check=true", 256));
     try std.testing.expect(isHttpUrl("http://[::1]:8080/runs/1?check=true", 256));
-    try std.testing.expect(isHttpUrl("https://github.com:8443/actions/runs/123#summary", 256));
-    try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?check_suite_focus=true#summary", 256));
-    try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?name=check%20suite#step%2D1", 256));
+    try std.testing.expect(isHttpUrl("https://github.com:8443/actions/runs/123", 256));
+    try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?check_suite_focus=true", 256));
+    try std.testing.expect(isHttpUrl("https://github.com/actions/runs/123?name=check%20suite&step=1", 256));
 
     try std.testing.expect(!isHttpUrl("", 256));
     try std.testing.expect(!isHttpUrl("github.com/runs/1", 256));
@@ -539,6 +539,9 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123`bad`", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123{bad}", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123|bad", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123#summary", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123?check_suite_focus=true#summary", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123?name=check%20suite#step%2D1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%2", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%zz", 256));
