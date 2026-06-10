@@ -37,12 +37,16 @@ test('buildChildArgs rejects unsafe forwarded arguments before spawning', () => 
     bundledCli: '/repo/dist/cli/nullbuilder.js',
     sourceCli: '/repo/src/cli/nullbuilder.ts'
   };
+  const maxTotalArgs = Array.from({ length: 32 }, () => 'x'.repeat(4096));
+  const overTotalArgs = [...maxTotalArgs, 'x'];
 
   assert.equal(buildChildArgs(paths, ['bad\nrepo'], true), null);
   assert.equal(buildChildArgs(paths, ['bad\u202erepo'], true), null);
   assert.equal(buildChildArgs(paths, ['bad\uD800repo'], true), null);
   assert.equal(buildChildArgs(paths, ['repo-🙂'], true)?.at(-1), 'repo-🙂');
   assert.equal(buildChildArgs(paths, ['x'.repeat(4097)], true), null);
+  assert.equal(buildChildArgs(paths, maxTotalArgs, true)?.length, maxTotalArgs.length + 1);
+  assert.equal(buildChildArgs(paths, overTotalArgs, true), null);
   assert.equal(buildChildArgs(paths, Array.from({ length: 129 }, (_, index) => `arg-${index}`), true), null);
 });
 

@@ -78,7 +78,7 @@ function isSafeForwardedArgs(args) {
     }
 
     const bytes = Buffer.byteLength(arg);
-    if (bytes > MAX_FORWARDED_ARG_BYTES || bytes > MAX_FORWARDED_ARGS_TOTAL_BYTES - totalBytes) {
+    if (bytes > MAX_FORWARDED_ARG_BYTES || !fitsTotalByteBudget(totalBytes, bytes, MAX_FORWARDED_ARGS_TOTAL_BYTES)) {
       return false;
     }
 
@@ -90,6 +90,18 @@ function isSafeForwardedArgs(args) {
   }
 
   return true;
+}
+
+function fitsTotalByteBudget(usedBytes, nextBytes, maxBytes) {
+  if (!Number.isSafeInteger(usedBytes) || !Number.isSafeInteger(nextBytes) || !Number.isSafeInteger(maxBytes)) {
+    return false;
+  }
+
+  if (usedBytes < 0 || nextBytes < 0 || maxBytes < 0 || usedBytes > maxBytes) {
+    return false;
+  }
+
+  return nextBytes <= maxBytes - usedBytes;
 }
 
 function isSafeChildCliPath(value) {
