@@ -14,6 +14,8 @@ test('security headers set conservative browser boundaries', () => {
     "base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
   );
   assert.equal(headers.get('Cross-Origin-Opener-Policy'), 'same-origin');
+  assert.equal(headers.get('Cross-Origin-Resource-Policy'), 'same-origin');
+  assert.equal(headers.get('Origin-Agent-Cluster'), '?1');
   assert.equal(headers.get('Permissions-Policy'), 'camera=(), geolocation=(), microphone=(), payment=(), usb=()');
   assert.equal(headers.get('Referrer-Policy'), 'no-referrer');
   assert.equal(headers.get('X-Content-Type-Options'), 'nosniff');
