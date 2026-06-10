@@ -124,10 +124,14 @@ function insertSortedFinding(findings: AuditFinding[], finding: AuditFinding, ma
     }
   }
 
-  findings.splice(lower, 0, finding);
+  findings.splice(lower, 0, copyAuditFinding(finding));
   if (findings.length > maxFindings) {
     findings.length = maxFindings;
   }
+}
+
+function copyAuditFinding(finding: AuditFinding): AuditFinding {
+  return { ...finding };
 }
 
 export function buildAuditTotals(repositories: readonly AuditRepositoryResult[]): AuditReport['totals'] {

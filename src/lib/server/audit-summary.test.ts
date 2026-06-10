@@ -117,6 +117,24 @@ test('collectCheckFindings caps noisy repository findings', () => {
   );
 });
 
+test('collectCheckFindings isolates collected findings from check results', () => {
+  const sourceFinding = finding('critical', 'nullclaw/nullbuilder', 'Original title');
+  const collected = collectCheckFindings([
+    {
+      id: 'source-check',
+      title: 'Source check',
+      area: 'security',
+      status: 'critical',
+      findings: [sourceFinding]
+    }
+  ]);
+
+  assert.notEqual(collected[0], sourceFinding);
+  collected[0].title = 'Changed title';
+
+  assert.equal(sourceFinding.title, 'Original title');
+});
+
 test('collectAuditFindings returns a bounded sorted report list', () => {
   const collected = collectAuditFindings(
     [
@@ -154,6 +172,16 @@ test('collectAuditFindings caps noisy audit reports', () => {
   assert.equal(collected.length, MAX_AUDIT_REPORT_FINDINGS);
   assert.equal(explicitlyOversized.length, MAX_AUDIT_REPORT_FINDINGS);
   assert.equal(collected.at(-1)?.title, `Finding ${String(MAX_AUDIT_REPORT_FINDINGS - 1).padStart(4, '0')}`);
+});
+
+test('collectAuditFindings isolates report findings from repository findings', () => {
+  const sourceFinding = finding('warning', 'nullclaw/nullbuilder', 'Repository warning');
+  const collected = collectAuditFindings([repository('ok', 100, [sourceFinding])]);
+
+  assert.notEqual(collected[0], sourceFinding);
+  collected[0].detail = 'changed detail';
+
+  assert.equal(sourceFinding.detail, 'detail');
 });
 
 test('buildAuditTotals summarizes loaded errored and average score', () => {
