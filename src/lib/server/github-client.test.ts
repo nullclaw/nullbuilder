@@ -422,6 +422,28 @@ test('githubRequest rejects oversized JSON responses before parsing', async () =
   );
 });
 
+test('githubRequest rejects malformed content-length before parsing', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://malformed-content-length.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  for (const contentLength of ['10junk', '1e9', '-1', '1.5', '9007199254740992']) {
+    globalThis.fetch = (async () =>
+      new Response('{}', {
+        headers: {
+          'Content-Length': contentLength
+        }
+      })) as typeof fetch;
+
+    await assert.rejects(
+      githubRequest(config, `/repos/nullclaw/nullbuilder-${contentLength}`),
+      (error: unknown) => error instanceof Error && error.message === 'GitHub response body is too large.'
+    );
+  }
+});
+
 test('githubRequest bounds streamed JSON responses without content-length', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

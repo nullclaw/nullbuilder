@@ -233,10 +233,10 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
 
 function contentLengthExceedsLimit(value: string, maxBytes: number): boolean {
   if (!/^[0-9]+$/.test(value)) {
-    return false;
+    return true;
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number(value);
   return !Number.isSafeInteger(parsed) || parsed > maxBytes;
 }
 
