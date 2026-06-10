@@ -47,6 +47,14 @@ test('parseCommandLine bounds argument vectors before parsing', () => {
   });
 });
 
+test('parseCommandLine rejects malformed runtime argument vectors', () => {
+  assert.throws(() => parseCommandLine([null] as unknown as string[]), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid CLI argument.');
+    return true;
+  });
+});
+
 test('parseOptions rejects unknown options without echoing raw input', () => {
   assert.throws(() => parseOptions(['--unknown']), /^Error: Unknown option\.$/);
   assert.throws(() => parseOptions(['--bad\x1b[31m\noption']), (error) => {
@@ -64,6 +72,15 @@ test('parseOptions bounds option vectors before scanning values', () => {
     assert(error instanceof Error);
     assert.equal(error.message, 'Too many CLI arguments.');
     assert.doesNotMatch(error.message, /repo-128/);
+    return true;
+  });
+});
+
+test('parseOptions rejects malformed runtime option vectors before scanning', () => {
+  assert.throws(() => parseOptions(['--repo', { value: 'nullbuilder' }] as unknown as string[]), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'Invalid CLI argument.');
+    assert.doesNotMatch(error.message, /nullbuilder/);
     return true;
   });
 });

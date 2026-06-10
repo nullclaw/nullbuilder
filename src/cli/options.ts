@@ -70,7 +70,7 @@ Environment:
 `;
 
 export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
-  assertCliArgCount(argv);
+  assertCliArgVector(argv);
   const rawCommand = argv[0] ?? 'help';
 
   if (rawCommand === 'help' || rawCommand === '--help' || rawCommand === '-h') {
@@ -89,7 +89,7 @@ export function parseCommandLine(argv: readonly string[]): ParsedCommandLine {
 }
 
 export function parseOptions(args: readonly string[]): CliOptions {
-  assertCliArgCount(args);
+  assertCliArgVector(args);
   const options: CliOptions = {
     json: false,
     discover: false,
@@ -152,9 +152,13 @@ export function parseOptions(args: readonly string[]): CliOptions {
   return options;
 }
 
-function assertCliArgCount(args: readonly string[]): void {
+function assertCliArgVector(args: readonly unknown[]): asserts args is readonly string[] {
   if (args.length > MAX_CLI_ARGS) {
     throw new Error('Too many CLI arguments.');
+  }
+
+  if (!args.every((arg) => typeof arg === 'string')) {
+    throw new Error('Invalid CLI argument.');
   }
 }
 
