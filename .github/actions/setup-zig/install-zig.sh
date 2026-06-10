@@ -58,7 +58,7 @@ esac
 host_key="${zig_arch}-${zig_os}"
 temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 case "$temp_root" in
-  "" | *$'\n'* | *$'\r'*)
+  "" | -* | *$'\n'* | *$'\r'*)
     echo "invalid temporary directory" >&2
     exit 1
     ;;

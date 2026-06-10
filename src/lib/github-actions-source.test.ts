@@ -71,7 +71,7 @@ test('setup-zig cache paths reject multiline temp roots', () => {
   const source = readFileSync(join(actionsRoot, 'setup-zig', 'install-zig.sh'), 'utf8');
 
   assert.ok(source.includes('temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"'));
-  assert.ok(source.includes("*$'\\n'* | *$'\\r'*)"));
+  assert.ok(source.includes('"" | -* | *$\'\\n\'* | *$\'\\r\'*)'));
   assert.ok(source.includes('tool_root="${temp_root}/nullbuilder-zig"'));
   assert.ok(source.includes('mktemp -d "${temp_root}/zig-archive.XXXXXX"'));
   assert.ok(source.includes('mktemp -d "${temp_root}/zig-extract.XXXXXX"'));
