@@ -14,6 +14,7 @@ const MAX_WORKFLOW_RUNS_TO_SCAN = 100;
 const MAX_RUN_EVENT_BYTES = 64;
 const MAX_RUN_CONCLUSION_BYTES = 64;
 const MAX_RUN_HEAD_SHA_BYTES = 64;
+const MAX_SAFE_JSON_INTEGER: u64 = 9_007_199_254_740_991;
 const empty_json_values = [_]JsonValue{};
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
@@ -182,9 +183,15 @@ fn runFromObject(object: JsonObject) Run {
 fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 {
     const value = object.get(field_name) orelse return 0;
     return switch (value) {
-        .integer => |integer| if (integer > 0) std.math.cast(u64, integer) orelse 0 else 0,
+        .integer => |integer| safePositiveJsonInteger(integer),
         else => 0,
     };
+}
+
+fn safePositiveJsonInteger(integer: i64) u64 {
+    if (integer <= 0) return 0;
+    const unsigned = std.math.cast(u64, integer) orelse return 0;
+    return if (unsigned <= MAX_SAFE_JSON_INTEGER) unsigned else 0;
 }
 
 fn safeStringField(object: JsonObject, field_name: []const u8, max_len: usize) []const u8 {
@@ -609,6 +616,24 @@ test "nightly skips malformed workflow run API entries" {
         \\    "not-a-run",
         \\    {"id":"42","name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42"},
         \\    {"id":43,"name":null,"event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/43"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\  ]
+        \\}
+    ;
+    var parsed = try parseRunsPayload(std.testing.allocator, json);
+    defer parsed.deinit();
+
+    const decision = decideShouldBuildFromPayload(parsed.value, "45", "abc", "Nightly", false);
+    try std.testing.expect(!decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
+    try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
+}
+
+test "nightly skips workflow runs with unsafe JSON integer ids" {
+    const json =
+        \\{
+        \\  "workflow_runs": [
+        \\    {"id":9007199254740992,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/unsafe"},
         \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/44"}
         \\  ]
         \\}
