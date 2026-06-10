@@ -77,3 +77,34 @@ test('mapWithConcurrency rejects oversized input before starting workers', async
 
   assert.equal(mapped, false);
 });
+
+test('mapWithConcurrency stops scheduling new work after mapper failures', async () => {
+  const failure = new Error('mapper failed');
+  const seen: number[] = [];
+  let releaseSecondMapper!: () => void;
+  const secondMapperReleased = new Promise<void>((resolve) => {
+    releaseSecondMapper = resolve;
+  });
+
+  await assert.rejects(
+    mapWithConcurrency([1, 2, 3, 4], 2, async (value) => {
+      seen.push(value);
+
+      if (value === 1) {
+        throw failure;
+      }
+
+      if (value === 2) {
+        await secondMapperReleased;
+      }
+
+      return value;
+    }),
+    (error: unknown) => error === failure
+  );
+
+  releaseSecondMapper();
+  await Promise.resolve();
+
+  assert.deepEqual(seen, [1, 2]);
+});
