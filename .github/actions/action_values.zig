@@ -172,7 +172,7 @@ fn isSafeRepoSegment(value: []const u8) bool {
         previous_dot = byte == '.';
     }
 
-    return true;
+    return !previous_dot;
 }
 
 fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
@@ -220,6 +220,8 @@ test "action values validate repository slugs" {
     try std.testing.expect(!isRepositorySlug("nullclaw-/nullbuilder"));
     try std.testing.expect(!isRepositorySlug("abcdefghijklmnopqrstuvwxyzabcdefghijklmn/nullbuilder"));
     try std.testing.expect(!isRepositorySlug("nullclaw/.hidden"));
+    try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder."));
+    try std.testing.expect(!isRepositorySlug("nullclaw/double..dot"));
     try std.testing.expect(!isRepositorySlug("nullclaw/" ++ ("a" ** 101)));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.git"));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.GIT"));

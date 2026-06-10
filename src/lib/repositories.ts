@@ -25,7 +25,7 @@ export const DEFAULT_IGNORED_REPOSITORIES = [
 export type RepoSlug = `${string}/${string}`;
 
 const OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
-const REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+const REPO_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
 
 export function normalizeRepoSlug(value: string, defaultOwner = DEFAULT_OWNER): RepoSlug {
   const trimmed = value.trim();

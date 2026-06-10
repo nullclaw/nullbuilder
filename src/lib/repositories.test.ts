@@ -13,6 +13,14 @@ test('normalizeRepoSlug validates default owner for unqualified repositories', (
   assert.throws(() => normalizeRepoSlug('nullbuilder', 'bad_owner!'), /^Error: Invalid repository owner\.$/);
 });
 
+test('normalizeRepoSlug rejects unsafe repository name edges', () => {
+  assert.throws(() => normalizeRepoSlug('.hidden', 'nullclaw'), /^Error: Invalid repository name\.$/);
+  assert.throws(() => normalizeRepoSlug('trailing.', 'nullclaw'), /^Error: Invalid repository name\.$/);
+  assert.throws(() => normalizeRepoSlug('-leading-dash', 'nullclaw'), /^Error: Invalid repository name\.$/);
+  assert.throws(() => normalizeRepoSlug('double..dot', 'nullclaw'), /^Error: Invalid repository name\.$/);
+  assert.throws(() => normalizeRepoSlug('nullbuilder.git', 'nullclaw'), /^Error: Invalid repository name\.$/);
+});
+
 test('parseRepositoryList deduplicates case-insensitively', () => {
   assert.deepEqual(parseRepositoryList('nullclaw/nullbuilder NullClaw/NullBuilder nullhub'), [
     'nullclaw/nullbuilder',
