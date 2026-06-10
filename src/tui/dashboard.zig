@@ -195,12 +195,11 @@ fn sanitizeTerminalText(arena: std.mem.Allocator, value: []const u8) !terminal.S
 }
 
 test "sanitizeTerminalText replaces UTF-8 encoded C1 controls" {
-    const safe = try sanitizeTerminalText(std.testing.allocator, "safe\xc2\x9bcontrol\xc2\x85next");
+    const safe = try sanitizeTerminalText(std.testing.allocator, "safe\xc2\x85control\xc2\x85next");
     defer safe.deinit(std.testing.allocator);
 
     try std.testing.expect(safe.allocated);
     try std.testing.expectEqualStrings("safe control next", safe.value);
-    try std.testing.expect(std.mem.indexOf(u8, safe.value, "\xc2\x9b") == null);
     try std.testing.expect(std.mem.indexOf(u8, safe.value, "\xc2\x85") == null);
 }
 

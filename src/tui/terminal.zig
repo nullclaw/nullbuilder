@@ -128,6 +128,16 @@ fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions
         return null;
     }
 
+    if (text_safety.isRawAnsiControlSequence(byte)) {
+        index.* = text_safety.skipAnsiControlSequence(value, index.* + 1);
+        return null;
+    }
+
+    if (text_safety.isUtf8AnsiControlSequence(value, index.*)) {
+        index.* = text_safety.skipAnsiControlSequence(value, index.* + 2);
+        return null;
+    }
+
     if (text_safety.isRawAnsiStringControl(byte)) {
         index.* = text_safety.skipAnsiStringControl(value, index.* + 1);
         return null;
@@ -258,6 +268,20 @@ test "terminal sanitizer strips raw C1 string control payloads" {
 
     try std.testing.expectEqualStrings("startmidpmapcenddone", safe);
     try std.testing.expect(std.mem.indexOf(u8, safe, "private") == null);
+    try std.testing.expect(!hasUnsafeControl(safe, .{}));
+}
+
+test "terminal sanitizer strips raw and UTF-8 C1 CSI payloads" {
+    const safe = try sanitizeAlloc(
+        std.testing.allocator,
+        "start\x9b31mred\xc2\x9b0mdone",
+        .{},
+    );
+    defer std.testing.allocator.free(safe);
+
+    try std.testing.expectEqualStrings("startreddone", safe);
+    try std.testing.expect(std.mem.indexOf(u8, safe, "31m") == null);
+    try std.testing.expect(std.mem.indexOf(u8, safe, "0m") == null);
     try std.testing.expect(!hasUnsafeControl(safe, .{}));
 }
 
