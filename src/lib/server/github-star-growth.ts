@@ -67,7 +67,8 @@ async function fetchStarGrowth(
     const stargazers = safeStargazerPage(stargazersResponse);
     let pageHasRecentStars = false;
 
-    for (const star of stargazers) {
+    for (let index = 0; index < stargazers.length; index += 1) {
+      const star = stargazers[index];
       const age = starAgeMs(readObjectRecord(star)?.starred_at, now);
       if (age === null) {
         continue;

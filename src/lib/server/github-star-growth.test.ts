@@ -6,11 +6,15 @@ import { getStarGrowth, STAR_PAGE_SIZE } from './github-star-growth';
 
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
+const originalJsonParse = JSON.parse;
+const originalArrayIterator = Array.prototype[Symbol.iterator];
 const REPO = 'nullclaw/nullbuilder' as RepoSlug;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
+  JSON.parse = originalJsonParse;
+  Array.prototype[Symbol.iterator] = originalArrayIterator;
 });
 
 test('getStarGrowth scans recent stargazer pages and stops at old pages', async () => {
@@ -178,6 +182,45 @@ test('getStarGrowth bounds oversized stargazer pages to the API page size', asyn
     current: STAR_PAGE_SIZE,
     last7Days: STAR_PAGE_SIZE,
     last30Days: STAR_PAGE_SIZE
+  });
+});
+
+test('getStarGrowth avoids global array iterators when scanning stargazer pages', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://star-iterator.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const now = Date.parse('2026-06-09T00:00:00Z');
+  const responseBody = JSON.stringify([{ starred_at: '2026-06-08T00:00:00Z' }]);
+  const throwingIterator: typeof originalArrayIterator = function iteratorShouldNotBeCalled() {
+    throw new Error('Array.prototype iterator should not be called');
+  };
+  let growth: unknown;
+
+  globalThis.fetch = (async () =>
+    new Response(responseBody, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })) as typeof fetch;
+  JSON.parse = ((text, reviver) => {
+    const parsed: unknown = originalJsonParse(text, reviver);
+    Array.prototype[Symbol.iterator] = throwingIterator;
+    return parsed;
+  }) as typeof JSON.parse;
+
+  try {
+    growth = await getStarGrowth(config, REPO, 1, now);
+  } finally {
+    JSON.parse = originalJsonParse;
+    Array.prototype[Symbol.iterator] = originalArrayIterator;
+  }
+
+  assert.deepEqual(growth, {
+    current: 1,
+    last7Days: 1,
+    last30Days: 1
   });
 });
 
