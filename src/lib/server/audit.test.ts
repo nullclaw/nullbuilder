@@ -4,9 +4,11 @@ import { getAuditReport, MAX_WORKFLOW_FILES_PER_REPOSITORY } from './audit';
 import { readConfig } from './config';
 
 const originalFetch = globalThis.fetch;
+const originalArrayPush = Array.prototype.push;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  restoreArrayPush();
 });
 
 test('getAuditReport normalizes repository and workflow URLs from GitHub payloads', async () => {
@@ -216,12 +218,102 @@ test('getAuditReport caps workflow file fetches before loading file content', as
   );
 });
 
+test('getAuditReport collects workflow items and files without global array push hooks', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://api.example.test',
+    NULLBUILDER_GITHUB_WEB_URL: 'https://github.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests = mockGitHub((path) => {
+    if (path === '/repos/nullclaw/nullbuilder') {
+      return {
+        full_name: 'nullclaw/nullbuilder',
+        html_url: 'https://github.example.test/nullclaw/nullbuilder',
+        default_branch: 'main',
+        private: false,
+        archived: false
+      };
+    }
+
+    if (path === '/repos/nullclaw/nullbuilder/contents/.github/workflows') {
+      return [
+        {
+          name: 'ci.yml',
+          path: '.github/workflows/ci.yml',
+          type: 'file',
+          html_url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/ci.yml'
+        },
+        {
+          name: 'notes.txt',
+          path: '.github/workflows/notes.txt',
+          type: 'file',
+          html_url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/notes.txt'
+        },
+        {
+          name: 'release.yaml',
+          path: '.github/workflows/release.yaml',
+          type: 'file',
+          html_url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/release.yaml'
+        }
+      ];
+    }
+
+    if (path === '/repos/nullclaw/nullbuilder/contents/.github/workflows/ci.yml') {
+      return contentFile(`
+permissions: read-all
+jobs:
+  ci:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@v1
+`);
+    }
+
+    if (path === '/repos/nullclaw/nullbuilder/contents/.github/workflows/release.yaml') {
+      return contentFile(`
+permissions: read-all
+jobs:
+  release:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-release.yml@v1
+`);
+    }
+
+    if (path === '/repos/nullclaw/nullbuilder/branches/main/protection') {
+      return {
+        required_status_checks: {},
+        required_pull_request_reviews: {}
+      };
+    }
+
+    if (
+      path === '/repos/nullclaw/nullbuilder/contents/.github/dependabot.yml' ||
+      path === '/repos/nullclaw/nullbuilder/contents/SECURITY.md' ||
+      path === '/repos/nullclaw/nullbuilder/contents/.github/SECURITY.md' ||
+      path === '/repos/nullclaw/nullbuilder/contents/CODEOWNERS' ||
+      path === '/repos/nullclaw/nullbuilder/contents/.github/CODEOWNERS'
+    ) {
+      return responseJson({ message: 'Not Found' }, 404);
+    }
+
+    throw new Error(`Unexpected GET ${path}`);
+  });
+
+  const { result: report, pushCalls } = await withGuardedArrayPush(() => getAuditReport(config));
+  const workflowFetches = requests.filter((path) => path.includes('/contents/.github/workflows/'));
+
+  assert.equal(pushCalls, 0);
+  assert.equal(report.repositories[0].status, 'ok');
+  assert.deepEqual(workflowFetches, [
+    '/repos/nullclaw/nullbuilder/contents/.github/workflows/ci.yml',
+    '/repos/nullclaw/nullbuilder/contents/.github/workflows/release.yaml'
+  ]);
+});
+
 function mockGitHub(handler: (path: string) => unknown): string[] {
   const requests: string[] = [];
 
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
-    requests.push(url.pathname);
+    requests[requests.length] = url.pathname;
     const response = handler(url.pathname);
     return response instanceof Response ? response : responseJson(response);
   }) as typeof fetch;
@@ -246,5 +338,36 @@ function responseJson(value: unknown, status = 200): Response {
     headers: {
       'Content-Type': 'application/json'
     }
+  });
+}
+
+async function withGuardedArrayPush<T>(
+  callback: () => Promise<T>
+): Promise<{ result: T; pushCalls: number }> {
+  let pushCalls = 0;
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: await callback(),
+      pushCalls
+    };
+  } finally {
+    restoreArrayPush();
+  }
+}
+
+function restoreArrayPush(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
   });
 }

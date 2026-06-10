@@ -191,7 +191,7 @@ async function loadWorkflowFiles(
   for (let index = 0; index < loadedWorkflowFiles.length; index += 1) {
     const file = loadedWorkflowFiles[index];
     if (file !== null) {
-      workflowFiles.push(file);
+      workflowFiles[workflowFiles.length] = file;
     }
   }
 
@@ -210,7 +210,7 @@ function collectWorkflowDirectoryItems(items: unknown[]): SafeWorkflowDirectoryI
       continue;
     }
 
-    workflowItems.push(safeItem);
+    workflowItems[workflowItems.length] = safeItem;
     if (workflowItems.length >= MAX_WORKFLOW_FILES_PER_REPOSITORY) {
       break;
     }
