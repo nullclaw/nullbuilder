@@ -87,6 +87,29 @@ test('readBoundedArray does not read past the configured prefix', () => {
   assert.deepEqual(readBoundedArray(values, 2), ['a', 'b']);
 });
 
+test('readBoundedArray rejects hostile array traps without throwing proxy details', () => {
+  const hostileLength = new Proxy(['a', 'b'], {
+    get(target, property, receiver) {
+      if (property === 'length') {
+        throw new Error('private length detail');
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  const hostileItem = new Proxy(['a', 'b', 'c'], {
+    get(target, property, receiver) {
+      if (property === '1') {
+        throw new Error('private item detail');
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  assert.deepEqual(readBoundedArray(hostileLength, 2), []);
+  assert.deepEqual(readBoundedArray(hostileItem, 3), ['a']);
+});
+
 test('readBoundedArray does not call user-controlled array methods', () => {
   class CustomArray<T> extends Array<T> {
     override slice(): T[] {

@@ -23,9 +23,13 @@ export function readBoundedArray(value: unknown, maxItems: unknown): unknown[] {
   }
 
   const bounded: unknown[] = [];
-  const count = Math.min(values.length, limit);
+  const count = boundedArrayLength(values, limit);
   for (let index = 0; index < count; index += 1) {
-    bounded[index] = values[index];
+    try {
+      bounded[index] = values[index];
+    } catch {
+      break;
+    }
   }
 
   return bounded;
@@ -40,6 +44,14 @@ function isRuntimeArray(value: unknown): value is unknown[] {
     return Array.isArray(value);
   } catch {
     return false;
+  }
+}
+
+function boundedArrayLength(value: unknown[], limit: number): number {
+  try {
+    return Math.min(value.length, limit);
+  } catch {
+    return 0;
   }
 }
 
