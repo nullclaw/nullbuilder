@@ -55,6 +55,59 @@ test('parseCommandLine avoids user-controlled argv array methods', () => {
   });
 });
 
+test('parseCommandLine and parseOptions avoid global array push hooks', () => {
+  const originalPush = Array.prototype.push;
+  let pushCalls = 0;
+  let parsedCommand: ReturnType<typeof parseCommandLine> | undefined;
+  let parsedOptions: ReturnType<typeof parseOptions> | undefined;
+
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('push should not be called');
+    }
+  });
+
+  try {
+    parsedCommand = parseCommandLine(['repos', '--', '--literal']);
+    parsedOptions = parseOptions(['repo-name', '--', '--literal']);
+  } finally {
+    Object.defineProperty(Array.prototype, 'push', {
+      configurable: true,
+      writable: true,
+      value: originalPush
+    });
+  }
+
+  assert.equal(pushCalls, 0);
+  assert.deepEqual(parsedCommand, {
+    kind: 'command',
+    command: 'repos',
+    options: {
+      json: false,
+      discover: false,
+      confirm: false,
+      force: false,
+      allowDraft: false,
+      allowFork: false,
+      allowNonDefaultBase: false,
+      positionals: ['--literal']
+    }
+  });
+  assert.deepEqual(parsedOptions, {
+    json: false,
+    discover: false,
+    confirm: false,
+    force: false,
+    allowDraft: false,
+    allowFork: false,
+    allowNonDefaultBase: false,
+    positionals: ['repo-name', '--literal']
+  });
+});
+
 test('parseCommandLine rejects unknown commands', () => {
   assert.throws(() => parseCommandLine(['unknown']), /^Error: Unknown command\.$/);
   assert.throws(() => parseCommandLine(['bad\x1b[31m\ncommand']), (error) => {

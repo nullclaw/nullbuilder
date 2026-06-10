@@ -171,7 +171,7 @@ function assertCliArgVector(args: readonly unknown[]): asserts args is readonly 
 function readArgTail(args: readonly string[], start: number): string[] {
   const tail: string[] = [];
   for (let index = start; index < args.length; index += 1) {
-    tail.push(args[index]);
+    tail[tail.length] = args[index];
   }
 
   return tail;
@@ -201,7 +201,7 @@ function pushPositional(options: CliOptions, value: string): void {
     throw new Error('Invalid positional argument.');
   }
 
-  options.positionals.push(safe);
+  options.positionals[options.positionals.length] = safe;
 }
 
 function readValue(args: readonly string[], index: number, option: string): string {
