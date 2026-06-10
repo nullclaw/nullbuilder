@@ -30,9 +30,11 @@ export const GITHUB_STATUS_TEXT_MAX_LENGTH = 128;
 export const GITHUB_RATE_LIMIT_RESET_MAX_LENGTH = 32;
 export const GITHUB_CONTENT_LENGTH_HEADER_MAX_LENGTH = 32;
 export const GITHUB_ACCEPT_HEADER_MAX_LENGTH = 256;
+export const GITHUB_METHOD_MAX_LENGTH = 16;
 
 const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie', 'Proxy-Authorization'] as const;
+const ALLOWED_GITHUB_REQUEST_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 const PUBLIC_ERROR_MESSAGE_PREFIXES = [
   'Pull request is not trusted:',
   'Build PR tag must start with ',
@@ -94,7 +96,7 @@ async function githubFetchJson<T>(
   init: GitHubRequestOptions = {}
 ): Promise<GitHubFetchResult<T>> {
   const { accept: requestedAccept, useCache, ...requestInit } = init;
-  const method = requestInit.method?.toUpperCase() ?? 'GET';
+  const method = normalizeGitHubRequestMethod(requestInit.method);
   const accept = normalizeGitHubAcceptHeader(requestedAccept);
   const url = resolveGitHubApiUrl(config, path);
   const shouldCache = method === 'GET' && useCache !== false && config.cacheTtlMs > 0;
@@ -126,6 +128,23 @@ async function githubFetchJson<T>(
       inFlightRequests.delete(key);
     }
   }
+}
+
+function normalizeGitHubRequestMethod(value: string | undefined): string {
+  if (value === undefined) {
+    return 'GET';
+  }
+
+  const safeValue = readSafeTextInput(value, {
+    maxLength: GITHUB_METHOD_MAX_LENGTH,
+    trim: true
+  });
+  const method = safeValue?.toUpperCase();
+  if (!method || !ALLOWED_GITHUB_REQUEST_METHODS.has(method)) {
+    throw new Error('Invalid GitHub request method.');
+  }
+
+  return method;
 }
 
 function normalizeGitHubAcceptHeader(value: string | undefined): string {

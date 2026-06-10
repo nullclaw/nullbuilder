@@ -9,6 +9,7 @@ import {
   GITHUB_ERROR_MESSAGE_MAX_LENGTH,
   GITHUB_JSON_RESPONSE_MAX_BYTES,
   GITHUB_LINK_HEADER_MAX_LENGTH,
+  GITHUB_METHOD_MAX_LENGTH,
   GITHUB_PAGINATED_ITEMS_MAX,
   GITHUB_RATE_LIMIT_RESET_MAX_LENGTH,
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
@@ -503,10 +504,37 @@ test('githubRequest returns undefined for no-content responses', async () => {
     NULLBUILDER_GITHUB_API_URL: 'https://no-content.example.test',
     NULLBUILDER_CACHE_TTL_MS: '0'
   });
+  const methods: Array<string | undefined> = [];
 
-  globalThis.fetch = (async () => new Response(null, { status: 204 })) as typeof fetch;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    methods.push(init?.method);
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
 
-  assert.equal(await githubRequest<void>(config, '/repos/nullclaw/nullbuilder', { method: 'DELETE' }), undefined);
+  assert.equal(await githubRequest<void>(config, '/repos/nullclaw/nullbuilder', { method: 'delete' }), undefined);
+  assert.deepEqual(methods, ['DELETE']);
+});
+
+test('githubRequest validates request methods before fetching GitHub', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://method.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  let fetched = false;
+  globalThis.fetch = (async () => {
+    fetched = true;
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  for (const method of ['', 'CONNECT', 'GET\nPOST', 'x'.repeat(GITHUB_METHOD_MAX_LENGTH + 1)]) {
+    await assert.rejects(
+      githubRequest(config, `/repos/nullclaw/nullbuilder-${method.length}`, { method }),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub request method.'
+    );
+  }
+
+  assert.equal(fetched, false);
 });
 
 test('githubRequest rejects oversized JSON responses before parsing', async () => {
