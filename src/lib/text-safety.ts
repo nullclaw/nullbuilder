@@ -1,8 +1,12 @@
 const ANSI_ESCAPE_PATTERN = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\|$)|[@-Z\\-_])/g;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
+const CONTROL_CHARACTER_TEST_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
+const POSITIVE_INTEGER_TEXT_PATTERN = /^[1-9]\d*$/;
+const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
 
 export const TERMINAL_TRUNCATION_SUFFIX = '...';
 export const MAX_TEXT_SAFETY_LENGTH = 8192;
+export const MAX_TEXT_INPUT_LENGTH = 512;
 
 export type SafeTextOptions = {
   maxLength: number;
@@ -10,6 +14,33 @@ export type SafeTextOptions = {
   suffix?: string;
   trim?: boolean;
 };
+
+export type SafeTextInputOptions = {
+  maxLength?: number;
+  trim?: boolean;
+};
+
+export function readSafeTextInput(value: string, options: SafeTextInputOptions = {}): string | null {
+  const maxLength = options.maxLength ?? MAX_TEXT_INPUT_LENGTH;
+  if (!Number.isSafeInteger(maxLength) || maxLength < 0 || value.length > maxLength) {
+    return null;
+  }
+
+  if (CONTROL_CHARACTER_TEST_PATTERN.test(value)) {
+    return null;
+  }
+
+  return options.trim ? value.trim() : value;
+}
+
+export function parsePositiveIntegerText(value: string): number | null {
+  if (value.length > MAX_SAFE_INTEGER_DIGITS || !POSITIVE_INTEGER_TEXT_PATTERN.test(value)) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 export function sanitizeText(value: string, options: SafeTextOptions): string {
   const sanitized = truncateText(

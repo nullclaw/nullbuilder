@@ -91,6 +91,34 @@ test('mutation form parsers reject oversized text fields', () => {
   });
 });
 
+test('mutation form parsers reject control-bearing text fields', () => {
+  const buildFormData = new FormData();
+  buildFormData.set('repo', 'nullbuilder\x1b[31m');
+  buildFormData.set('prNumber', '17');
+  buildFormData.set('tagName', 'build-pr-17\nsecret');
+
+  assert.deepEqual(parseBuildPrMutationForm(buildFormData), {
+    repo: '',
+    prNumber: 17,
+    tagName: undefined,
+    confirm: false,
+    force: false
+  });
+
+  const releaseFormData = new FormData();
+  releaseFormData.set('repo', ' nullbuilder ');
+  releaseFormData.set('tagName', 'v1.2.3');
+  releaseFormData.set('targetRef', 'release/v1\x85hidden');
+
+  assert.deepEqual(parseReleaseTagMutationForm(releaseFormData), {
+    repo: 'nullbuilder',
+    tagName: 'v1.2.3',
+    targetRef: undefined,
+    confirm: false,
+    force: false
+  });
+});
+
 test('mutationAccessError enforces enablement authentication and CSRF order', () => {
   const disabled = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

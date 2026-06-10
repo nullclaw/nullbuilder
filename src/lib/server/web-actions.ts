@@ -7,9 +7,7 @@ import {
   type LoginRateLimiter
 } from './auth';
 import type { NullbuilderConfig } from './config';
-
-const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
-const MAX_MUTATION_FORM_TEXT_LENGTH = 512;
+import { parsePositiveIntegerText, readSafeTextInput } from '../text-safety';
 
 export type WebMutationOperation = 'build-pr' | 'release-tag';
 
@@ -221,25 +219,12 @@ export function parsePositiveFormInteger(value: FormDataEntryValue | null): numb
     return null;
   }
 
-  if (value.length > MAX_SAFE_INTEGER_DIGITS) {
-    return null;
-  }
-
-  if (!/^[1-9]\d*$/.test(value)) {
-    return null;
-  }
-
-  const parsed = Number.parseInt(value, 10);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  return parsePositiveIntegerText(value);
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {
   const raw = formString(value);
-  if (raw.length > MAX_MUTATION_FORM_TEXT_LENGTH) {
-    return '';
-  }
-
-  return raw.trim();
+  return readSafeTextInput(raw, { trim: true }) ?? '';
 }
 
 function isChecked(value: FormDataEntryValue | null): boolean {

@@ -1,8 +1,7 @@
+import { parsePositiveIntegerText, readSafeTextInput } from '../lib/text-safety';
+
 const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
 const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
-const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
-const MAX_TEXT_OPTION_VALUE_LENGTH = 512;
-const UNSAFE_TEXT_OPTION_VALUE_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 
 export type Command = (typeof COMMANDS)[number];
 
@@ -147,23 +146,16 @@ function readValue(args: readonly string[], index: number, option: string): stri
 
 function readTextValue(args: readonly string[], index: number, option: string): string {
   const value = readValue(args, index, option);
-  if (value.length > MAX_TEXT_OPTION_VALUE_LENGTH || UNSAFE_TEXT_OPTION_VALUE_PATTERN.test(value)) {
+  const safe = readSafeTextInput(value);
+  if (safe === null) {
     throw new Error(`${option} has invalid value.`);
   }
-  return value;
+  return safe;
 }
 
 function parsePositiveInteger(value: string, option: string): number {
-  if (value.length > MAX_SAFE_INTEGER_DIGITS) {
-    throw new Error(`${option} must be a positive number.`);
-  }
-
-  if (!/^[1-9]\d*$/.test(value)) {
-    throw new Error(`${option} must be a positive number.`);
-  }
-
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed)) {
+  const parsed = parsePositiveIntegerText(value);
+  if (parsed === null) {
     throw new Error(`${option} must be a positive number.`);
   }
 
