@@ -5,11 +5,13 @@
     authenticated,
     hasToken,
     owner,
+    ownerUrl,
     tokenState
   }: {
     authenticated: boolean;
     hasToken: boolean;
     owner: string;
+    ownerUrl: string;
     tokenState: string;
   } = $props();
 </script>
@@ -23,7 +25,7 @@
     <span class:ok={authenticated || hasToken} class="token-state">
       {tokenState}
     </span>
-    <a class="icon-button" href="https://github.com/{owner}" target="_blank" rel="noreferrer">
+    <a class="icon-button" href={ownerUrl} target="_blank" rel="noreferrer">
       <ExternalLink size={17} />
       <span>GitHub</span>
     </a>

@@ -7,6 +7,7 @@
 
   const repositories = $derived(audit?.repositories ?? []);
   const findings = $derived(visibleAuditFindings(audit?.findings ?? []));
+  const repositoryUrls = $derived(new Map(repositories.map((repo) => [repo.repo, repo.url])));
 </script>
 
 <section id="audit" class="audit-panel">
@@ -40,7 +41,7 @@
       {#each findings as finding}
         <a
           class="audit-finding {finding.severity}"
-          href={finding.url ?? `https://github.com/${finding.repo}`}
+          href={finding.url ?? repositoryUrls.get(finding.repo) ?? '#audit'}
           target="_blank"
           rel="noreferrer"
         >

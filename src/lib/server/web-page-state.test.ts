@@ -30,13 +30,15 @@ test('dashboard page state blocks token-backed data until web auth is valid', ()
     webMutationsEnabled: false,
     webMutationsAvailable: false,
     hasGitHubToken: true,
+    ownerUrl: 'https://github.com/nullclaw',
     csrfToken: null
   });
 });
 
 test('dashboard page state allows anonymous data when no tokens are configured', () => {
   const config = readConfig({
-    NULLBUILDER_REPOS: 'nullbuilder'
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_WEB_URL: 'https://github.example.test/'
   });
   const cookies = cookiesWith();
   const access = resolveDashboardAccess(config, cookies);
@@ -52,6 +54,7 @@ test('dashboard page state allows anonymous data when no tokens are configured',
     webMutationsEnabled: false,
     webMutationsAvailable: false,
     hasGitHubToken: false,
+    ownerUrl: 'https://github.example.test/nullclaw',
     csrfToken: null
   });
 });

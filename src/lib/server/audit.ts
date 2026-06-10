@@ -16,6 +16,13 @@ import {
 import { decodeGitHubContent, encodeGitHubPath } from './audit-workflows';
 import { mapWithConcurrency } from './concurrency';
 import { discoverRepositories, GitHubApiError, githubGet, publicErrorMessage } from './github';
+import {
+  githubActionsUrl,
+  githubRepositoryWebUrl,
+  githubRepositoryUrlContext,
+  safeGitHubWebUrl,
+  type GitHubWebUrlContext
+} from './github-web-urls';
 
 export type {
   AuditArea,
@@ -49,6 +56,11 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
   try {
     const normalizedRepo = normalizeRepoSlug(repo, config.owner);
     const repository = await githubGet<GitHubRepositoryResponse>(config, `/repos/${normalizedRepo}`);
+    const urlContext = githubRepositoryUrlContext(config.webBaseUrl, normalizedRepo, repository.html_url);
+    const safeRepository = {
+      ...repository,
+      html_url: urlContext.repositoryUrl
+    };
     const workflowDirectory = await probeGitHub<GitHubContentItem[]>(
       config,
       `/repos/${normalizedRepo}/contents/.github/workflows`
@@ -62,7 +74,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
       codeowners,
       githubCodeowners
     ] = await Promise.all([
-      loadWorkflowFiles(config, normalizedRepo, workflowDirectory),
+      loadWorkflowFiles(config, normalizedRepo, workflowDirectory, urlContext),
       probeGitHub<GitHubBranchProtection>(
         config,
         `/repos/${normalizedRepo}/branches/${encodeURIComponent(repository.default_branch)}/protection`
@@ -75,7 +87,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
     ]);
     const context: AuditContext = {
       repo: normalizedRepo,
-      repository,
+      repository: safeRepository,
       workflowDirectory,
       workflowFiles,
       branchProtection,
@@ -90,7 +102,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
 
     return {
       repo: normalizedRepo,
-      url: repository.html_url,
+      url: urlContext.repositoryUrl,
       defaultBranch: repository.default_branch,
       status: 'ok',
       score: scoreFindings(findings),
@@ -102,7 +114,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
 
     return {
       repo: normalizedRepo,
-      url: `${config.webBaseUrl}/${normalizedRepo}`,
+      url: githubRepositoryWebUrl(config.webBaseUrl, normalizedRepo),
       defaultBranch: 'unknown',
       status: 'error',
       score: 0,
@@ -116,7 +128,8 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
 async function loadWorkflowFiles(
   config: NullbuilderConfig,
   repo: RepoSlug,
-  workflowDirectory: Probe<GitHubContentItem[]>
+  workflowDirectory: Probe<GitHubContentItem[]>,
+  urlContext: GitHubWebUrlContext
 ): Promise<WorkflowFile[]> {
   if (!isPresent(workflowDirectory) || !Array.isArray(workflowDirectory.data)) {
     return [];
@@ -140,7 +153,7 @@ async function loadWorkflowFiles(
       return {
         name: item.name,
         path: item.path,
-        url: item.html_url,
+        url: safeGitHubWebUrl(item.html_url, githubActionsUrl(urlContext), urlContext.repositoryOrigin),
         content: decodeGitHubContent(file.data)
       };
     })

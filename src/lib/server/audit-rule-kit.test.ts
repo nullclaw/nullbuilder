@@ -38,6 +38,22 @@ test('evaluateAuditRule binds findings to rule metadata', () => {
     finding.id,
     'nullclaw/nullbuilder:release-guard:critical:Mutable release workflow:.github/workflows/release.yml'
   );
+  assert.equal(finding.url, 'https://example.test/workflow');
+});
+
+test('evaluateAuditRule falls back to repository URLs for findings', () => {
+  const rule: AuditRule = {
+    id: 'security-policy',
+    title: 'Security policy exists',
+    area: 'security',
+    evaluate: (_context, finding) => [
+      finding('warning', 'Missing security policy', 'Add SECURITY.md so reports have a stable intake path.')
+    ]
+  };
+
+  const result = evaluateAuditRule(rule, auditContext());
+
+  assert.equal(result.findings[0].url, 'https://github.example.test/nullclaw/nullbuilder');
 });
 
 test('isPresent narrows probe data', () => {

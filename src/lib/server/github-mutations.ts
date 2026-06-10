@@ -3,6 +3,11 @@ import { sanitizeText } from '../text-safety';
 import type { NullbuilderConfig } from './config';
 import { GitHubApiError, githubRequest } from './github-client';
 import {
+  githubActionsBranchQueryUrl,
+  githubReleaseTagUrl,
+  githubRepositoryUrlContext
+} from './github-web-urls';
+import {
   BUILD_PR_TAG_PREFIX,
   defaultBuildPrTagName,
   sanitizeBuildPrTagName,
@@ -97,8 +102,9 @@ export async function buildPrTag(
   assertTrustedPullRequest(repo, defaultBranch, pull, options);
   const headSha = assertFullSha(pull.head.sha, 'pull request head SHA');
   const tagName = requestedTagName ?? sanitizeBuildPrTagName(defaultBuildPrTagName(prNumber, headSha));
-  const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
-  const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
+  const urlContext = githubRepositoryUrlContext(config.webBaseUrl, repo);
+  const tagUrl = githubReleaseTagUrl(urlContext, tagName);
+  const workflowUrl = githubActionsBranchQueryUrl(urlContext, tagName);
 
   const result: BuildPrResult = {
     repo,
@@ -148,8 +154,9 @@ export async function createReleaseTag(
   });
   const targetRef = targetRefOverride ?? sanitizeReleaseTargetRef(repository.default_branch, 'default branch');
   const targetSha = await resolveTargetSha(config, repo, targetRef);
-  const tagUrl = `${config.webBaseUrl}/${repo}/releases/tag/${tagName}`;
-  const workflowUrl = `${config.webBaseUrl}/${repo}/actions?query=${encodeURIComponent(`branch:${tagName}`)}`;
+  const urlContext = githubRepositoryUrlContext(config.webBaseUrl, repo);
+  const tagUrl = githubReleaseTagUrl(urlContext, tagName);
+  const workflowUrl = githubActionsBranchQueryUrl(urlContext, tagName);
 
   const result: ReleaseTagResult = {
     repo,

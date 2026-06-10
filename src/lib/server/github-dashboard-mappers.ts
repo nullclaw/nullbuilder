@@ -13,28 +13,24 @@ import type {
   StarGrowthSummary,
   WorkflowRunSummary
 } from './github-dashboard-types';
+import {
+  EMPTY_GITHUB_WEB_URL_CONTEXT,
+  githubActionsUrl,
+  githubRepositoryUrlContext,
+  MAX_GITHUB_WEB_URL_LENGTH,
+  safeGitHubWebUrl,
+  type GitHubWebUrlContext
+} from './github-web-urls';
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';
-const DEFAULT_DASHBOARD_WEB_BASE_URL = 'https://github.com';
 const LABEL_COLOR_PATTERN = /^[0-9a-f]{6}$/i;
-const UNSAFE_DASHBOARD_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
 export const MAX_DASHBOARD_TEXT_FIELD_LENGTH = 256;
 export const MAX_WORK_ITEM_TITLE_LENGTH = 512;
 export const MAX_TIMESTAMP_TEXT_LENGTH = 64;
-export const MAX_DASHBOARD_URL_LENGTH = 2048;
+export const MAX_DASHBOARD_URL_LENGTH = MAX_GITHUB_WEB_URL_LENGTH;
 export const MAX_LABELS_PER_WORK_ITEM = 20;
 export const MAX_LABEL_NAME_LENGTH = 64;
 export const MAX_REPOSITORY_WORK_ITEMS = 100;
-
-type DashboardUrlContext = {
-  repositoryUrl: string;
-  repositoryOrigin: string;
-};
-
-const EMPTY_DASHBOARD_URL_CONTEXT: DashboardUrlContext = {
-  repositoryUrl: '',
-  repositoryOrigin: ''
-};
 
 export function mapRepositorySummary(
   repo: RepoSlug,
@@ -43,9 +39,9 @@ export function mapRepositorySummary(
   pulls: GitHubPullResponse[],
   workflowRuns: GitHubWorkflowRunResponse[],
   starGrowth: StarGrowthSummary,
-  webBaseUrl = DEFAULT_DASHBOARD_WEB_BASE_URL
+  webBaseUrl = 'https://github.com'
 ): RepositorySummary {
-  const urlContext = dashboardUrlContext(webBaseUrl, repo, repository.html_url);
+  const urlContext = githubRepositoryUrlContext(webBaseUrl, repo, repository.html_url);
   const openIssues = mapIssueSummaries(repo, issues, urlContext);
   const pullRequests = mapPullRequestSummaries(repo, pulls, urlContext);
   const [fallbackOwner, fallbackName] = repo.split('/');
@@ -83,7 +79,7 @@ type BoundedWorkItems<T extends IssueSummary | PullRequestSummary> = {
 function mapIssueSummaries(
   repo: RepoSlug,
   issues: GitHubIssueResponse[],
-  urlContext: DashboardUrlContext
+  urlContext: GitHubWebUrlContext
 ): BoundedWorkItems<IssueSummary> {
   return collectBoundedWorkItems(issues, (issue) => {
     if (issue.pull_request) {
@@ -97,7 +93,7 @@ function mapIssueSummaries(
 function mapPullRequestSummaries(
   repo: RepoSlug,
   pulls: GitHubPullResponse[],
-  urlContext: DashboardUrlContext
+  urlContext: GitHubWebUrlContext
 ): BoundedWorkItems<PullRequestSummary> {
   return collectBoundedWorkItems(pulls, (pull) => mapPullRequest(repo, pull, urlContext));
 }
@@ -180,12 +176,12 @@ function compareRecentWorkItems<T extends IssueSummary | PullRequestSummary>(
 }
 
 export function mapLatestRuns(runs: GitHubWorkflowRunResponse[]): RepositoryLatestRuns {
-  return mapLatestRunsForRepository(runs, EMPTY_DASHBOARD_URL_CONTEXT);
+  return mapLatestRunsForRepository(runs, EMPTY_GITHUB_WEB_URL_CONTEXT);
 }
 
 function mapLatestRunsForRepository(
   runs: GitHubWorkflowRunResponse[],
-  urlContext: DashboardUrlContext
+  urlContext: GitHubWebUrlContext
 ): RepositoryLatestRuns {
   return {
     ci: mapRun(findRun(runs, ['ci', 'test'], ['ci.yml', 'zig-ci.yml']), urlContext),
@@ -194,7 +190,7 @@ function mapLatestRunsForRepository(
   };
 }
 
-function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: DashboardUrlContext): IssueSummary | null {
+function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: GitHubWebUrlContext): IssueSummary | null {
   const number = safeWorkItemNumber(issue.number);
   if (number === null) {
     return null;
@@ -204,7 +200,7 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: Dashbo
     repo,
     number,
     title: safeWorkItemTitle(issue.title, 'Untitled issue'),
-    url: safeDashboardUrl(
+    url: safeGitHubWebUrl(
       issue.html_url,
       `${urlContext.repositoryUrl}/issues/${number}`,
       urlContext.repositoryOrigin
@@ -220,7 +216,7 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse, urlContext: Dashbo
 function mapPullRequest(
   repo: RepoSlug,
   pull: GitHubPullResponse,
-  urlContext: DashboardUrlContext
+  urlContext: GitHubWebUrlContext
 ): PullRequestSummary | null {
   const number = safeWorkItemNumber(pull.number);
   if (number === null) {
@@ -231,7 +227,7 @@ function mapPullRequest(
     repo,
     number,
     title: safeWorkItemTitle(pull.title, 'Untitled PR'),
-    url: safeDashboardUrl(
+    url: safeGitHubWebUrl(
       pull.html_url,
       `${urlContext.repositoryUrl}/pull/${number}`,
       urlContext.repositoryOrigin
@@ -310,50 +306,6 @@ function safeOptionalTimestamp(value: string | null): string | null {
   return value === null ? null : safeTimestamp(value);
 }
 
-function safeDashboardUrl(value: string, fallback: string, allowedOrigin = ''): string {
-  return isSafeDashboardUrl(value, allowedOrigin) ? value : fallback;
-}
-
-function safeRepositoryUrl(webBaseUrl: string, repo: RepoSlug): string {
-  const normalizedWebBaseUrl = webBaseUrl.replace(/\/+$/, '');
-  const fallback = `${DEFAULT_DASHBOARD_WEB_BASE_URL}/${repo}`;
-  return safeDashboardUrl(`${normalizedWebBaseUrl}/${repo}`, fallback);
-}
-
-function dashboardUrlContext(webBaseUrl: string, repo: RepoSlug, repositoryHtmlUrl: string): DashboardUrlContext {
-  const repositoryUrlFallback = safeRepositoryUrl(webBaseUrl, repo);
-  const repositoryOrigin = new URL(repositoryUrlFallback).origin;
-  const repositoryUrl = safeDashboardUrl(repositoryHtmlUrl, repositoryUrlFallback, repositoryOrigin);
-  return { repositoryUrl, repositoryOrigin };
-}
-
-function isSafeDashboardUrl(value: string, allowedOrigin: string): boolean {
-  if (
-    value.length === 0 ||
-    value.length > MAX_DASHBOARD_URL_LENGTH ||
-    UNSAFE_DASHBOARD_URL_CHARACTER_PATTERN.test(value)
-  ) {
-    return false;
-  }
-
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    return false;
-  }
-
-  if (url.username !== '' || url.password !== '') {
-    return false;
-  }
-
-  return allowedOrigin === '' || url.origin === allowedOrigin;
-}
-
 function normalizeLabelColor(color: string | undefined): string {
   return color && LABEL_COLOR_PATTERN.test(color) ? color.toLowerCase() : DEFAULT_LABEL_COLOR;
 }
@@ -401,7 +353,7 @@ function findRun(
   );
 }
 
-function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: DashboardUrlContext): WorkflowRunSummary | null {
+function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: GitHubWebUrlContext): WorkflowRunSummary | null {
   if (!run) {
     return null;
   }
@@ -413,9 +365,9 @@ function mapRun(run: GitHubWorkflowRunResponse | null, urlContext: DashboardUrlC
     displayTitle: safeDashboardText(run.display_title, 'Workflow'),
     status: safeDashboardText(run.status, 'unknown'),
     conclusion: run.conclusion === null ? null : safeDashboardText(run.conclusion, 'unknown'),
-    url: safeDashboardUrl(
+    url: safeGitHubWebUrl(
       run.html_url,
-      urlContext.repositoryUrl ? `${urlContext.repositoryUrl}/actions` : '',
+      githubActionsUrl(urlContext),
       urlContext.repositoryOrigin
     ),
     branch: safeDashboardText(run.head_branch, 'unknown'),

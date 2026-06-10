@@ -2,6 +2,7 @@ import type { RepoSlug } from '../repositories';
 import type { NullbuilderConfig } from './config';
 import { publicErrorMessage } from './github-client';
 import type { DashboardData, IssueSummary, PullRequestSummary, RepositorySummary } from './github-dashboard-types';
+import { githubRepositoryWebUrl } from './github-web-urls';
 
 export const MAX_DASHBOARD_WORK_LIST_ITEMS = 500;
 
@@ -159,7 +160,7 @@ export function makeErrorRepository(
     owner,
     name,
     fullName: repo,
-    url: `${config.webBaseUrl}/${repo}`,
+    url: githubRepositoryWebUrl(config.webBaseUrl, repo),
     description: '',
     defaultBranch: 'unknown',
     language: null,

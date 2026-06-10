@@ -3,6 +3,7 @@ import type { AuditReport } from './audit-types';
 import { createCsrfToken, isAuthenticated } from './auth';
 import type { NullbuilderConfig } from './config';
 import type { DashboardData } from './github-dashboard';
+import { githubOwnerWebUrl } from './github-web-urls';
 
 export type DashboardAccessState = {
   authRequired: boolean;
@@ -25,6 +26,7 @@ export type DashboardPageState = {
   webMutationsEnabled: boolean;
   webMutationsAvailable: boolean;
   hasGitHubToken: boolean;
+  ownerUrl: string;
   csrfToken: string | null;
 };
 
@@ -55,6 +57,7 @@ export function buildDashboardPageState(
     webMutationsEnabled: config.enableWebMutations,
     webMutationsAvailable: config.enableWebMutations && access.authConfigured && access.authenticated,
     hasGitHubToken: Boolean(config.token),
+    ownerUrl: githubOwnerWebUrl(config.webBaseUrl, config.owner),
     csrfToken: payload ? createCsrfToken(cookies, config) : null
   };
 }

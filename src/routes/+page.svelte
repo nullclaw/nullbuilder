@@ -36,7 +36,13 @@
 </svelte:head>
 
 <main class="shell">
-  <DashboardTopbar authenticated={data.authenticated} hasToken={Boolean(dashboard?.hasToken)} {owner} {tokenState} />
+  <DashboardTopbar
+    authenticated={data.authenticated}
+    hasToken={Boolean(dashboard?.hasToken)}
+    {owner}
+    ownerUrl={data.ownerUrl}
+    {tokenState}
+  />
 
   {#if !dashboard}
     <AuthGate authConfigured={data.authConfigured} authError={form?.authError} />

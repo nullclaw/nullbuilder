@@ -107,7 +107,7 @@ function buildFinding(
     area: rule.area,
     title,
     detail,
-    url,
+    url: url ?? context.repository.html_url,
     path
   };
 }
