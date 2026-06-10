@@ -30,6 +30,13 @@ test('readConfig allows plaintext URLs only for loopback development origins', (
   assert.equal(localhostConfig.apiBaseUrl, 'http://localhost:8080/api');
   assert.equal(localhostConfig.webBaseUrl, 'http://127.0.0.1:3000');
 
+  const ipv6LoopbackConfig = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'http://[::1]:8080/api/'
+  });
+
+  assert.equal(ipv6LoopbackConfig.apiBaseUrl, 'http://[::1]:8080/api');
+
   assert.throws(
     () =>
       readConfig({
@@ -53,6 +60,20 @@ test('readConfig allows plaintext URLs only for loopback development origins', (
       error.message === 'Invalid URL protocol for NULLBUILDER_GITHUB_WEB_URL.' &&
       !error.message.includes('github.example.test')
   );
+
+  for (const value of ['http://127.0.0.01:3000', 'http://0177.0.0.1:3000', 'http://localhost:08080']) {
+    assert.throws(
+      () =>
+        readConfig({
+          NULLBUILDER_REPOS: 'nullbuilder',
+          NULLBUILDER_GITHUB_API_URL: value
+        }),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === 'Invalid URL protocol for NULLBUILDER_GITHUB_API_URL.' &&
+        !error.message.includes(value)
+    );
+  }
 });
 
 test('readConfig parses booleans and integers from bounded explicit env values only', () => {
