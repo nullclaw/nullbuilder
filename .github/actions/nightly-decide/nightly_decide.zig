@@ -15,9 +15,11 @@ const MAX_WORKFLOW_NAME_BYTES = 256;
 const MAX_WORKFLOW_RUNS_TO_SCAN = 100;
 const MAX_RUN_EVENT_BYTES = 64;
 const MAX_RUN_CONCLUSION_BYTES = 64;
-const MAX_RUN_HEAD_SHA_BYTES = 64;
+const MAX_RUN_HEAD_SHA_BYTES = 40;
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
+const TEST_HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
+const TEST_OTHER_HEAD_SHA = "89abcdef0123456789abcdef0123456789abcdef";
 
 const Run = struct {
     id: u64 = 0,
@@ -126,6 +128,7 @@ fn matchingSuccessfulRun(run: Run, current_id: ?u64, head_sha: []const u8, workf
     }
     if (workflow_name.len > 0 and !std.mem.eql(u8, run.name, workflow_name)) return false;
     if (!isNightlyEvent(run.event)) return false;
+    if (!action_values.isFullHexSha(run.head_sha)) return false;
     if (!std.mem.eql(u8, run.head_sha, head_sha)) return false;
     const conclusion = run.conclusion orelse return false;
     if (!std.mem.eql(u8, conclusion, "success")) return false;
@@ -164,10 +167,15 @@ fn runFromObject(object: JsonObject) Run {
         .id = action_json.safePositiveIntegerField(object, "id"),
         .name = action_json.safeTextField(object, "name", "", MAX_WORKFLOW_NAME_BYTES),
         .event = action_json.safeTextField(object, "event", "", MAX_RUN_EVENT_BYTES),
-        .head_sha = action_json.safeTextField(object, "head_sha", "", MAX_RUN_HEAD_SHA_BYTES),
+        .head_sha = safeHeadShaField(object),
         .conclusion = action_json.optionalSafeTextField(object, "conclusion", MAX_RUN_CONCLUSION_BYTES),
         .html_url = action_json.safeTextField(object, "html_url", "", MAX_OUTPUT_VALUE_BYTES),
     };
+}
+
+fn safeHeadShaField(object: JsonObject) []const u8 {
+    const value = action_json.safeTextField(object, "head_sha", "", MAX_RUN_HEAD_SHA_BYTES);
+    return if (action_values.isFullHexSha(value)) value else "";
 }
 
 fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void {
@@ -319,7 +327,7 @@ pub fn main(init: std.process.Init) !u8 {
 }
 
 test "nightly decide builds when history is empty" {
-    const decision = decideShouldBuild(&.{}, "10", "0123456789abcdef", "Nightly", false);
+    const decision = decideShouldBuild(&.{}, "10", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("new-sha", decision.reason);
 }
@@ -330,10 +338,10 @@ test "nightly decide skips successful previous nightly for same sha and workflow
         .id = 9,
         .name = "Nightly",
         .event = "schedule",
-        .head_sha = "0123456789abcdef",
+        .head_sha = TEST_HEAD_SHA,
         .conclusion = "success",
         .html_url = "https://example.com/run/9",
-    }}, "10", "0123456789abcdef", "Nightly", false);
+    }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqualStrings("successful-nightly-exists", decision.reason);
@@ -347,39 +355,39 @@ test "nightly decide ignores other workflows current run failed runs and non nig
             .id = 10,
             .name = "Nightly",
             .event = "schedule",
-            .head_sha = "0123456789abcdef",
+            .head_sha = TEST_HEAD_SHA,
             .conclusion = "success",
         },
         .{
             .id = 8,
             .name = "Nightly",
             .event = "schedule",
-            .head_sha = "0123456789abcdef",
+            .head_sha = TEST_HEAD_SHA,
             .conclusion = "failure",
         },
         .{
             .id = 7,
             .name = "CI",
             .event = "schedule",
-            .head_sha = "0123456789abcdef",
+            .head_sha = TEST_HEAD_SHA,
             .conclusion = "success",
         },
         .{
             .id = 6,
             .name = "Nightly",
             .event = "push",
-            .head_sha = "0123456789abcdef",
+            .head_sha = TEST_HEAD_SHA,
             .conclusion = "success",
         },
         .{
             .id = 5,
             .name = "Nightly",
             .event = "schedule",
-            .head_sha = "0123456789abcdef",
+            .head_sha = TEST_HEAD_SHA,
         },
     };
 
-    const decision = decideShouldBuild(&runs, "10", "0123456789abcdef", "Nightly", false);
+    const decision = decideShouldBuild(&runs, "10", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("new-sha", decision.reason);
 }
@@ -389,9 +397,9 @@ test "nightly decide force overrides existing success" {
         .id = 9,
         .name = "Nightly",
         .event = "workflow_dispatch",
-        .head_sha = "0123456789abcdef",
+        .head_sha = TEST_HEAD_SHA,
         .conclusion = "success",
-    }}, "10", "0123456789abcdef", "Nightly", true);
+    }}, "10", TEST_HEAD_SHA, "Nightly", true);
 
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("forced", decision.reason);
@@ -402,7 +410,7 @@ test "nightly decide scans only bounded workflow history" {
         .id = 1,
         .name = "Nightly",
         .event = "schedule",
-        .head_sha = "other",
+        .head_sha = TEST_OTHER_HEAD_SHA,
         .conclusion = "failure",
     }} ** (MAX_WORKFLOW_RUNS_TO_SCAN + 1);
 
@@ -410,11 +418,11 @@ test "nightly decide scans only bounded workflow history" {
         .id = 200,
         .name = "Nightly",
         .event = "schedule",
-        .head_sha = "0123456789abcdef",
+        .head_sha = TEST_HEAD_SHA,
         .conclusion = "success",
     };
 
-    var decision = decideShouldBuild(&runs, "999", "0123456789abcdef", "Nightly", false);
+    var decision = decideShouldBuild(&runs, "999", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("new-sha", decision.reason);
 
@@ -422,11 +430,11 @@ test "nightly decide scans only bounded workflow history" {
         .id = 199,
         .name = "Nightly",
         .event = "schedule",
-        .head_sha = "0123456789abcdef",
+        .head_sha = TEST_HEAD_SHA,
         .conclusion = "success",
     };
 
-    decision = decideShouldBuild(&runs, "999", "0123456789abcdef", "Nightly", false);
+    decision = decideShouldBuild(&runs, "999", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 199), decision.matched_run_id);
 }
@@ -436,10 +444,10 @@ test "nightly decide ignores matching API runs without a positive id" {
         .id = 0,
         .name = "Nightly",
         .event = "schedule",
-        .head_sha = "0123456789abcdef",
+        .head_sha = TEST_HEAD_SHA,
         .conclusion = "success",
         .html_url = "https://example.com/run/0",
-    }}, "10", "0123456789abcdef", "Nightly", false);
+    }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("new-sha", decision.reason);
@@ -561,12 +569,12 @@ test "nightly rejects duplicate force flag" {
 
 test "nightly parses workflow run API payload with unknown fields" {
     const json =
-        \\{"total_count":1,"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42","extra":true}]}
+        \\{"total_count":1,"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42","extra":true}]}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "43", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
 }
@@ -577,16 +585,16 @@ test "nightly skips malformed workflow run API entries" {
         \\  "workflow_runs": [
         \\    null,
         \\    "not-a-run",
-        \\    {"id":"42","name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42"},
-        \\    {"id":43,"name":null,"event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/43"},
-        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\    {"id":"42","name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42"},
+        \\    {"id":43,"name":null,"event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/43"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/44"}
         \\  ]
         \\}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuildFromPayload(parsed.value, "45", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "45", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
     try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
@@ -596,15 +604,33 @@ test "nightly skips workflow runs with unsafe JSON integer ids" {
     const json =
         \\{
         \\  "workflow_runs": [
-        \\    {"id":9007199254740992,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/unsafe"},
-        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\    {"id":9007199254740992,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/unsafe"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/44"}
         \\  ]
         \\}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuildFromPayload(parsed.value, "45", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "45", TEST_HEAD_SHA, "Nightly", false);
+    try std.testing.expect(!decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
+    try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
+}
+
+test "nightly skips workflow runs with malformed head shas" {
+    const json =
+        \\{
+        \\  "workflow_runs": [
+        \\    {"id":42,"name":"Nightly","event":"schedule","head_sha":"not-a-full-sha","conclusion":"success","html_url":"https://example.com/run/42"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\  ]
+        \\}
+    ;
+    var parsed = try parseRunsPayload(std.testing.allocator, json);
+    defer parsed.deinit();
+
+    const decision = decideShouldBuildFromPayload(parsed.value, "45", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
     try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
@@ -620,7 +646,7 @@ test "nightly treats malformed workflow run collections as empty history" {
         var parsed = try parseRunsPayload(std.testing.allocator, json);
         defer parsed.deinit();
 
-        const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
+        const decision = decideShouldBuildFromPayload(parsed.value, "43", TEST_HEAD_SHA, "Nightly", false);
         try std.testing.expect(decision.should_build);
         try std.testing.expectEqualStrings("new-sha", decision.reason);
         try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
@@ -638,7 +664,7 @@ test "nightly rejects oversized runs payloads at the parser boundary" {
 test "nightly rejects oversized scalar values during runs payload parsing" {
     const oversized = [_]u8{'x'} ** (MAX_RUNS_JSON_VALUE_BYTES + 1);
     const json = try std.fmt.allocPrint(std.testing.allocator,
-        \\{{"workflow_runs":[{{"id":42,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"{s}"}}]}}
+        \\{{"workflow_runs":[{{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"{s}"}}]}}
     , .{oversized[0..]});
     defer std.testing.allocator.free(json);
 
@@ -647,12 +673,12 @@ test "nightly rejects oversized scalar values during runs payload parsing" {
 
 test "nightly omits unsafe matched run URLs from API payload" {
     const json =
-        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42%zz"}]}
+        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42%zz"}]}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "43", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
     try std.testing.expectEqualStrings("", decision.matched_run_url);
@@ -670,12 +696,12 @@ test "nightly omits unsafe matched run URLs from API payload" {
 
 test "nightly omits encoded-control matched run URLs from API payload" {
     const json =
-        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"abc","conclusion":"success","html_url":"https://example.com/run/42%0aoutput=true"}]}
+        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42%0aoutput=true"}]}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
 
-    const decision = decideShouldBuildFromPayload(parsed.value, "43", "abc", "Nightly", false);
+    const decision = decideShouldBuildFromPayload(parsed.value, "43", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
     try std.testing.expectEqualStrings("", decision.matched_run_url);
