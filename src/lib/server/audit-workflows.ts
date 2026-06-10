@@ -4,6 +4,7 @@ import { isSafePositiveInteger } from '../number-safety';
 
 const DEFAULT_MAX_WORKFLOW_FILE_BYTES = 512 * 1024;
 export const MAX_WORKFLOW_REFERENCE_MATCHES = 200;
+export const MAX_WORKFLOW_REFERENCE_SCAN_MATCHES = MAX_WORKFLOW_REFERENCE_MATCHES * 4;
 export const MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH = 128;
 
 export type WorkflowActionUse = {
@@ -27,10 +28,13 @@ export function findActionUses(
 ): WorkflowActionUse[] {
   const actions: WorkflowActionUse[] = [];
   const matchLimit = normalizeMatchLimit(maxMatches);
+  const scanLimit = workflowReferenceScanLimit(matchLimit);
   const regex = /^\s*(?:-\s*)?uses:\s*['"]?([^@\s'"]+)@([^'"\s#]+)['"]?/gm;
   let match: RegExpExecArray | null;
+  let scannedMatches = 0;
 
-  while (actions.length < matchLimit && (match = regex.exec(content)) !== null) {
+  while (actions.length < matchLimit && scannedMatches < scanLimit && (match = regex.exec(content)) !== null) {
+    scannedMatches += 1;
     const target = safeWorkflowReferenceToken(match[1]);
     const ref = safeWorkflowReferenceToken(match[2]);
     if (!target || !ref) {
@@ -52,10 +56,13 @@ export function findNullbuilderWorkflowRefs(
 ): NullbuilderWorkflowRef[] {
   const references: NullbuilderWorkflowRef[] = [];
   const matchLimit = normalizeMatchLimit(maxMatches);
+  const scanLimit = workflowReferenceScanLimit(matchLimit);
   const regex = /nullclaw\/nullbuilder\/\.github\/workflows\/([^@\s'"]+)@([^'"\s#]+)/g;
   let match: RegExpExecArray | null;
+  let scannedMatches = 0;
 
-  while (references.length < matchLimit && (match = regex.exec(content)) !== null) {
+  while (references.length < matchLimit && scannedMatches < scanLimit && (match = regex.exec(content)) !== null) {
+    scannedMatches += 1;
     const workflow = safeWorkflowReferenceToken(match[1]);
     const ref = safeWorkflowReferenceToken(match[2]);
     if (!workflow || !ref) {
@@ -114,7 +121,11 @@ function normalizeByteLimit(maxBytes: number): number {
 }
 
 function normalizeMatchLimit(maxMatches: number): number {
-  return isSafePositiveInteger(maxMatches) ? maxMatches : 0;
+  return isSafePositiveInteger(maxMatches) ? Math.min(maxMatches, MAX_WORKFLOW_REFERENCE_MATCHES) : 0;
+}
+
+function workflowReferenceScanLimit(matchLimit: number): number {
+  return matchLimit === 0 ? 0 : Math.min(MAX_WORKFLOW_REFERENCE_SCAN_MATCHES, matchLimit * 4);
 }
 
 function safeWorkflowReferenceToken(value: string): string {

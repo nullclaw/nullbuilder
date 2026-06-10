@@ -6,6 +6,7 @@ import {
   findNullbuilderWorkflowRefs,
   isMutableRef,
   MAX_WORKFLOW_REFERENCE_MATCHES,
+  MAX_WORKFLOW_REFERENCE_SCAN_MATCHES,
   MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH,
   shouldRequireShaPin
 } from './audit-workflows';
@@ -60,6 +61,34 @@ test('workflow reference parsers bound noisy workflow files', () => {
     workflow: `zig-ci-${MAX_WORKFLOW_REFERENCE_MATCHES - 1}.yml`,
     ref: 'main'
   });
+
+  assert.equal(
+    findActionUses(actionContent, Number.MAX_SAFE_INTEGER).length,
+    MAX_WORKFLOW_REFERENCE_MATCHES
+  );
+  assert.equal(
+    findNullbuilderWorkflowRefs(workflowContent, Number.MAX_SAFE_INTEGER).length,
+    MAX_WORKFLOW_REFERENCE_MATCHES
+  );
+});
+
+test('workflow reference parsers cap invalid match scanning', () => {
+  const invalidActions = Array.from(
+    { length: MAX_WORKFLOW_REFERENCE_SCAN_MATCHES },
+    (_, index) => `  - uses: \x1b[31m@v${index}`
+  ).join('\n');
+  const invalidWorkflowRefs = Array.from(
+    { length: MAX_WORKFLOW_REFERENCE_SCAN_MATCHES },
+    (_, index) => `  uses: nullclaw/nullbuilder/.github/workflows/\x1b[31m@main-${index}`
+  ).join('\n');
+
+  assert.deepEqual(findActionUses(`${invalidActions}\n  - uses: owner/action@v1`), []);
+  assert.deepEqual(
+    findNullbuilderWorkflowRefs(
+      `${invalidWorkflowRefs}\n  uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@main`
+    ),
+    []
+  );
 });
 
 test('workflow reference parsers sanitize captured tokens before findings', () => {
