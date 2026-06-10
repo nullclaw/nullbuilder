@@ -4,6 +4,7 @@ import type { Cookies } from '@sveltejs/kit';
 import { AUTH_COOKIE, createCsrfToken, createSessionToken, isSessionTokenMatch, LoginRateLimiter } from './auth';
 import { readConfig } from './config';
 import {
+  MAX_WEB_ACTION_FORM_FIELDS,
   MAX_WEB_ACTION_FORM_BYTES,
   mutationAccessError,
   parseBuildPrMutationForm,
@@ -196,6 +197,20 @@ test('mutation form parsers avoid getAll allocations while validating form shape
   releaseFormData.append('targetRef', 'release/v1');
 
   assert.throws(() => parseReleaseTagMutationForm(releaseFormData), /^Error: Duplicate form field\.$/);
+});
+
+test('mutation form parsers reject oversized field counts without getAll allocations', () => {
+  const formData = formDataWithoutGetAll();
+  formData.set('csrfToken', 'token');
+  formData.set('repo', 'nullbuilder');
+  formData.set('prNumber', '17');
+  formData.set('tagName', 'build-pr-17');
+  formData.set('confirm', 'on');
+  formData.set('force', 'on');
+  assert.equal(Array.from(formData.keys()).length, MAX_WEB_ACTION_FORM_FIELDS);
+  formData.append('unexpected', 'value');
+
+  assert.throws(() => parseBuildPrMutationForm(formData), /^Error: Too many form fields\.$/);
 });
 
 test('mutationAccessError enforces enablement authentication and CSRF order', () => {
@@ -614,6 +629,39 @@ test('runBuildPrWebMutation rejects unknown form fields before executor', async 
   formData.set('repo', 'nullbuilder');
   formData.set('prNumber', '17');
   formData.set('unexpected', 'secret');
+  let executed = false;
+
+  const result = await runBuildPrWebMutation(
+    config,
+    cookies,
+    formData,
+    async () => {
+      executed = true;
+      return {};
+    },
+    String
+  );
+
+  assert.equal(executed, false);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    field: 'buildError',
+    message: 'Invalid form data.'
+  });
+});
+
+test('runBuildPrWebMutation rejects excessive form fields before executor', async () => {
+  const { config, cookies, csrfToken } = authorizedMutationContext();
+  const formData = new FormData();
+  formData.set('csrfToken', csrfToken);
+  formData.set('repo', 'nullbuilder');
+  formData.set('prNumber', '17');
+  formData.set('tagName', 'build-pr-17');
+  formData.set('confirm', 'on');
+  formData.set('force', 'on');
+  assert.equal(Array.from(formData.keys()).length, MAX_WEB_ACTION_FORM_FIELDS);
+  formData.append('unexpected', 'value');
   let executed = false;
 
   const result = await runBuildPrWebMutation(

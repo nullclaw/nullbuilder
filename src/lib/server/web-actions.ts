@@ -72,6 +72,7 @@ const UNKNOWN_FORM_FIELD_MESSAGE = 'Unknown form field.';
 const WEB_ACTION_METHOD_INVALID_MESSAGE = 'Invalid request method.';
 const WEB_ACTION_FORM_INVALID_MESSAGE = 'Invalid form body.';
 const WEB_ACTION_FORM_TOO_LARGE_MESSAGE = 'Request body is too large.';
+const TOO_MANY_FORM_FIELDS_MESSAGE = 'Too many form fields.';
 const MAX_WEB_ACTION_CONTENT_LENGTH_HEADER = 32;
 const MAX_WEB_ACTION_CONTENT_TYPE_HEADER = 128;
 export const MAX_WEB_ACTION_FORM_BYTES = 16 * 1024;
@@ -81,6 +82,16 @@ const BUILD_PR_FORM_FIELDS = ['repo', 'prNumber', 'tagName', 'confirm', 'force']
 const RELEASE_TAG_FORM_FIELDS = ['repo', 'tagName', 'targetRef', 'confirm', 'force'] as const;
 const BUILD_PR_ALLOWED_FORM_FIELDS = ['csrfToken', ...BUILD_PR_FORM_FIELDS] as const;
 const RELEASE_TAG_ALLOWED_FORM_FIELDS = ['csrfToken', ...RELEASE_TAG_FORM_FIELDS] as const;
+export const MAX_WEB_ACTION_FORM_FIELDS = Math.max(
+  LOGIN_FORM_FIELDS.length,
+  LOGOUT_FORM_FIELDS.length,
+  BUILD_PR_ALLOWED_FORM_FIELDS.length,
+  RELEASE_TAG_ALLOWED_FORM_FIELDS.length
+);
+const LOGIN_FORM_FIELD_SET = new Set<string>(LOGIN_FORM_FIELDS);
+const LOGOUT_FORM_FIELD_SET = new Set<string>(LOGOUT_FORM_FIELDS);
+const BUILD_PR_ALLOWED_FORM_FIELD_SET = new Set<string>(BUILD_PR_ALLOWED_FORM_FIELDS);
+const RELEASE_TAG_ALLOWED_FORM_FIELD_SET = new Set<string>(RELEASE_TAG_ALLOWED_FORM_FIELDS);
 
 export function runLoginWebAction(
   config: NullbuilderConfig,
@@ -96,7 +107,7 @@ export function runLoginWebAction(
     return authFailure(429, 'Too many failed login attempts. Try again later.');
   }
 
-  const form = parseAuthForm(formData, LOGIN_FORM_FIELDS, 'Invalid web token.');
+  const form = parseAuthForm(formData, LOGIN_FORM_FIELD_SET, 'Invalid web token.');
   if (!form.ok) {
     rateLimiter.recordFailure(rateLimitKey);
     return form;
@@ -198,7 +209,7 @@ export async function readWebActionFormData(request: Request): Promise<WebAction
 }
 
 export function runLogoutWebAction(config: NullbuilderConfig, cookies: Cookies, formData: FormData): WebLogoutResult {
-  const form = parseAuthForm(formData, LOGOUT_FORM_FIELDS, 'Invalid request token.');
+  const form = parseAuthForm(formData, LOGOUT_FORM_FIELD_SET, 'Invalid request token.');
   if (!form.ok) {
     return form;
   }
@@ -238,7 +249,7 @@ export function mutationAccessError(
   return null;
 }
 
-function parseAuthForm(formData: FormData, allowedFields: readonly string[], message: string): WebAuthFailure | { ok: true } {
+function parseAuthForm(formData: FormData, allowedFields: ReadonlySet<string>, message: string): WebAuthFailure | { ok: true } {
   try {
     assertFormShape(formData, allowedFields);
     return { ok: true };
@@ -316,7 +327,7 @@ export async function runReleaseTagWebMutation<T>(
 }
 
 export function parseBuildPrMutationForm(formData: FormData): BuildPrMutationForm {
-  assertFormShape(formData, BUILD_PR_ALLOWED_FORM_FIELDS);
+  assertFormShape(formData, BUILD_PR_ALLOWED_FORM_FIELD_SET);
   const tagName = trimmedFormString(singleFormValue(formData, 'tagName'));
 
   return {
@@ -329,7 +340,7 @@ export function parseBuildPrMutationForm(formData: FormData): BuildPrMutationFor
 }
 
 export function parseReleaseTagMutationForm(formData: FormData): ReleaseTagMutationForm {
-  assertFormShape(formData, RELEASE_TAG_ALLOWED_FORM_FIELDS);
+  assertFormShape(formData, RELEASE_TAG_ALLOWED_FORM_FIELD_SET);
   const targetRef = trimmedFormString(singleFormValue(formData, 'targetRef'));
 
   return {
@@ -499,12 +510,17 @@ function optionalTargetRef(value: string | undefined): string | undefined | null
   }
 }
 
-function assertFormShape(formData: FormData, allowedFields: readonly string[]): void {
-  const allowed = new Set(allowedFields);
+function assertFormShape(formData: FormData, allowedFields: ReadonlySet<string>): void {
   const seen = new Set<string>();
+  let fieldCount = 0;
 
   for (const field of formData.keys()) {
-    if (!allowed.has(field)) {
+    fieldCount += 1;
+    if (fieldCount > MAX_WEB_ACTION_FORM_FIELDS) {
+      throw new Error(TOO_MANY_FORM_FIELDS_MESSAGE);
+    }
+
+    if (!allowedFields.has(field)) {
       throw new Error(UNKNOWN_FORM_FIELD_MESSAGE);
     }
 
@@ -536,7 +552,9 @@ function singleFormValue(formData: FormData, field: string): FormDataEntryValue 
 function isInvalidFormShapeError(error: unknown): boolean {
   return (
     error instanceof Error &&
-    (error.message === DUPLICATE_FORM_FIELD_MESSAGE || error.message === UNKNOWN_FORM_FIELD_MESSAGE)
+    (error.message === DUPLICATE_FORM_FIELD_MESSAGE ||
+      error.message === UNKNOWN_FORM_FIELD_MESSAGE ||
+      error.message === TOO_MANY_FORM_FIELDS_MESSAGE)
   );
 }
 
