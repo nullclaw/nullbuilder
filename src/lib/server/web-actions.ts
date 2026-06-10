@@ -234,8 +234,12 @@ export function parsePositiveFormInteger(value: FormDataEntryValue | null): numb
 }
 
 function trimmedFormString(value: FormDataEntryValue | null): string {
-  const trimmed = formString(value).trim();
-  return trimmed.length <= MAX_MUTATION_FORM_TEXT_LENGTH ? trimmed : '';
+  const raw = formString(value);
+  if (raw.length > MAX_MUTATION_FORM_TEXT_LENGTH) {
+    return '';
+  }
+
+  return raw.trim();
 }
 
 function isChecked(value: FormDataEntryValue | null): boolean {

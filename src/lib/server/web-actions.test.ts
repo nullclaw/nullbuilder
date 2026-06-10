@@ -61,8 +61,9 @@ test('parseReleaseTagMutationForm trims optional ref and drops empty target ref'
 
 test('mutation form parsers reject oversized text fields', () => {
   const oversized = 'x'.repeat(10_000);
+  const paddedRepo = `${' '.repeat(600)}nullbuilder`;
   const buildFormData = new FormData();
-  buildFormData.set('repo', oversized);
+  buildFormData.set('repo', paddedRepo);
   buildFormData.set('prNumber', '17');
   buildFormData.set('tagName', oversized);
   buildFormData.set('confirm', 'on');
