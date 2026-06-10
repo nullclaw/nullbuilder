@@ -9,7 +9,7 @@ import { arrayBufferFromBytes, readBoundedByteStream } from './byte-stream';
 import type { NullbuilderConfig } from './config';
 import { sanitizeGitTargetRef } from './git-refs';
 import { sanitizeBuildPrTagName, sanitizeReleaseTagName } from './tags';
-import { normalizeRepoSlug, type RepoSlug } from '../repositories';
+import { findConfiguredRepoSlug, type RepoSlug } from '../repositories';
 import { parsePositiveIntegerText, readSafeTextInput } from '../text-safety';
 
 export type WebMutationOperation = 'build-pr' | 'release-tag';
@@ -471,15 +471,7 @@ function prepareReleaseTagMutationInput(
 }
 
 function configuredRepository(config: NullbuilderConfig, value: string): RepoSlug | null {
-  let repo: RepoSlug;
-  try {
-    repo = normalizeRepoSlug(value, config.owner);
-  } catch {
-    return null;
-  }
-
-  const key = repo.toLowerCase();
-  return config.repos.find((entry) => entry.toLowerCase() === key) ?? null;
+  return findConfiguredRepoSlug(config.repos, value, config.owner);
 }
 
 function optionalBuildPrTagName(value: string | undefined): string | undefined | null {

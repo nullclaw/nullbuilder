@@ -114,6 +114,28 @@ export function parseRepositoryList(
   return repos;
 }
 
+export function findConfiguredRepoSlug(
+  configuredRepos: readonly RepoSlug[],
+  value: unknown,
+  defaultOwner: unknown = DEFAULT_OWNER
+): RepoSlug | null {
+  let repo: RepoSlug;
+  try {
+    repo = normalizeRepoSlug(value, defaultOwner);
+  } catch {
+    return null;
+  }
+
+  const key = repositoryKey(repo);
+  for (const configuredRepo of configuredRepos) {
+    if (repositoryKey(configuredRepo) === key) {
+      return configuredRepo;
+    }
+  }
+
+  return null;
+}
+
 function repositoryListSource(value: unknown, fallback: readonly string[]): string {
   if (value !== undefined) {
     if (typeof value !== 'string') {
@@ -154,6 +176,10 @@ function* repositoryListEntries(source: string): Iterable<string> {
 
 function isRepositoryListSeparator(value: string): boolean {
   return REPOSITORY_LIST_SEPARATOR_PATTERN.test(value);
+}
+
+function repositoryKey(repo: RepoSlug): string {
+  return repo.toLowerCase();
 }
 
 function validateOwner(owner: string): void {

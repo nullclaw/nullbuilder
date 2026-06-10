@@ -1,4 +1,4 @@
-import { normalizeRepoSlug, type RepoSlug } from '../repositories';
+import { findConfiguredRepoSlug, normalizeRepoSlug, type RepoSlug } from '../repositories';
 import { readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
 import type { NullbuilderConfig } from './config';
@@ -182,12 +182,12 @@ export async function createReleaseTag(
 }
 
 export function assertConfiguredRepository(config: NullbuilderConfig, repo: RepoSlug): RepoSlug {
-  const allowed = new Set(config.repos.map((entry) => entry.toLowerCase()));
-  if (!allowed.has(repo.toLowerCase())) {
+  const configuredRepo = findConfiguredRepoSlug(config.repos, repo, config.owner);
+  if (!configuredRepo) {
     throw new Error(`Repository ${repo} is not in NULLBUILDER_REPOS.`);
   }
 
-  return repo;
+  return configuredRepo;
 }
 
 function assertTrustedPullRequest(

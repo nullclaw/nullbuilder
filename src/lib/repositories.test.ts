@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { normalizeOwner, normalizeRepoSlug, parseRepositoryList } from './repositories';
+import { findConfiguredRepoSlug, normalizeOwner, normalizeRepoSlug, parseRepositoryList } from './repositories';
 
 test('normalizeOwner rejects invalid owners', () => {
   assert.equal(normalizeOwner('NullClaw'), 'NullClaw');
@@ -55,6 +55,16 @@ test('parseRepositoryList deduplicates case-insensitively', () => {
     'nullclaw/nullbuilder',
     'nullclaw/nullhub'
   ]);
+});
+
+test('findConfiguredRepoSlug normalizes candidates against configured repositories', () => {
+  const repos = parseRepositoryList('NullClaw/NullBuilder nullclaw/nullhub', 'nullclaw');
+
+  assert.equal(findConfiguredRepoSlug(repos, 'nullbuilder', 'nullclaw'), 'NullClaw/NullBuilder');
+  assert.equal(findConfiguredRepoSlug(repos, 'NULLCLAW/NULLHUB', 'nullclaw'), 'nullclaw/nullhub');
+  assert.equal(findConfiguredRepoSlug(repos, 'unconfigured', 'nullclaw'), null);
+  assert.equal(findConfiguredRepoSlug(repos, 'bad\nrepo', 'nullclaw'), null);
+  assert.equal(findConfiguredRepoSlug(repos, 42, 'nullclaw'), null);
 });
 
 test('parseRepositoryList bounds configured repository input', () => {
