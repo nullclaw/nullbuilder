@@ -1,9 +1,8 @@
 import type { Cookies } from '@sveltejs/kit';
 import {
   createSessionToken,
-  isAuthenticated,
-  isCsrfTokenMatch,
   isTokenMatch,
+  resolveAuthContext,
   type LoginRateLimiter
 } from './auth';
 import type { NullbuilderConfig } from './config';
@@ -205,8 +204,9 @@ export function runLogoutWebAction(config: NullbuilderConfig, cookies: Cookies, 
   }
 
   const csrfToken = singleFormValue(formData, 'csrfToken');
+  const authContext = resolveAuthContext(cookies, config);
 
-  if (config.webToken && isAuthenticated(cookies, config) && !isCsrfTokenMatch(csrfToken, cookies, config)) {
+  if (config.webToken && authContext.authenticated && !isCsrfTokenValueMatch(csrfToken, authContext.csrfToken)) {
     return authFailure(403, 'Invalid request token.');
   }
 
@@ -225,11 +225,13 @@ export function mutationAccessError(
     return `Web mutations are disabled. Set NULLBUILDER_ENABLE_MUTATIONS=true to enable ${operation} from the UI.`;
   }
 
-  if (!config.webToken || !isAuthenticated(cookies, config)) {
+  const authContext = resolveAuthContext(cookies, config);
+
+  if (!config.webToken || !authContext.authenticated) {
     return 'Web mutations require NULLBUILDER_WEB_TOKEN authentication.';
   }
 
-  if (!isCsrfTokenMatch(csrfToken, cookies, config)) {
+  if (!isCsrfTokenValueMatch(csrfToken, authContext.csrfToken)) {
     return 'Invalid request token.';
   }
 
@@ -536,6 +538,10 @@ function isInvalidFormShapeError(error: unknown): boolean {
     error instanceof Error &&
     (error.message === DUPLICATE_FORM_FIELD_MESSAGE || error.message === UNKNOWN_FORM_FIELD_MESSAGE)
   );
+}
+
+function isCsrfTokenValueMatch(value: FormDataEntryValue | null, expected: string | null): boolean {
+  return typeof value === 'string' && Boolean(expected && isTokenMatch(value, expected));
 }
 
 function contentLengthExceedsWebActionLimit(value: string): boolean {

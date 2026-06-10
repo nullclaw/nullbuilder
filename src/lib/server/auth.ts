@@ -39,6 +39,11 @@ export type AuthCookieOptions = {
   secure: boolean;
 };
 
+export type AuthContext = {
+  authenticated: boolean;
+  csrfToken: string | null;
+};
+
 type LoginAttempt = {
   failures: number;
   resetAt: number;
@@ -155,8 +160,29 @@ export function isAuthenticated(cookies: Cookies, config: NullbuilderConfig): bo
     return !config.token;
   }
 
-  const cookie = cookies.get(AUTH_COOKIE);
-  return Boolean(cookie && isSessionTokenMatch(cookie, config.webToken));
+  return Boolean(validSessionCookie(cookies, config.webToken));
+}
+
+export function resolveAuthContext(cookies: Cookies, config: NullbuilderConfig): AuthContext {
+  if (!config.webToken) {
+    return {
+      authenticated: !config.token,
+      csrfToken: null
+    };
+  }
+
+  const session = validSessionCookie(cookies, config.webToken);
+  if (!session) {
+    return {
+      authenticated: false,
+      csrfToken: null
+    };
+  }
+
+  return {
+    authenticated: true,
+    csrfToken: createCsrfTokenForSession(session, config.webToken)
+  };
 }
 
 export function authCookieOptions(isProduction: boolean): AuthCookieOptions {
@@ -196,16 +222,7 @@ export function isSessionTokenMatch(value: string, secret: string, now = Date.no
 }
 
 export function createCsrfToken(cookies: Cookies, config: NullbuilderConfig): string | null {
-  if (!config.webToken) {
-    return null;
-  }
-
-  const session = cookies.get(AUTH_COOKIE);
-  if (!session || !isSessionTokenMatch(session, config.webToken)) {
-    return null;
-  }
-
-  return createHmac('sha256', config.webToken).update(`csrf:${session}`).digest('hex');
+  return resolveAuthContext(cookies, config).csrfToken;
 }
 
 export function isCsrfTokenMatch(value: FormDataEntryValue | null, cookies: Cookies, config: NullbuilderConfig): boolean {
@@ -271,4 +288,13 @@ function isSignatureTokenPart(value: string): boolean {
 
 function sessionSignature(issuedAt: string, secret: string): string {
   return createHmac('sha256', secret).update(issuedAt).digest('hex');
+}
+
+function validSessionCookie(cookies: Cookies, secret: string): string | null {
+  const session = cookies.get(AUTH_COOKIE);
+  return session && isSessionTokenMatch(session, secret) ? session : null;
+}
+
+function createCsrfTokenForSession(session: string, secret: string): string {
+  return createHmac('sha256', secret).update(`csrf:${session}`).digest('hex');
 }

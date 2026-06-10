@@ -19,9 +19,10 @@ test('dashboard page state blocks token-backed data until web auth is valid', ()
     authRequired: true,
     authConfigured: false,
     authenticated: false,
-    canReadData: false
+    canReadData: false,
+    csrfToken: null
   });
-  assert.deepEqual(buildDashboardPageState(config, cookies, access), {
+  assert.deepEqual(buildDashboardPageState(config, access), {
     dashboard: null,
     audit: null,
     authRequired: true,
@@ -44,7 +45,7 @@ test('dashboard page state ignores payload when access cannot read data', () => 
   });
   const cookies = cookiesWith();
   const access = resolveDashboardAccess(config, cookies);
-  const state = buildDashboardPageState(config, cookies, access, pagePayload());
+  const state = buildDashboardPageState(config, access, pagePayload());
 
   assert.equal(access.canReadData, false);
   assert.equal(state.dashboard, null);
@@ -63,7 +64,7 @@ test('dashboard page state allows anonymous data when no tokens are configured',
   const payload = pagePayload();
 
   assert.equal(access.canReadData, true);
-  assert.deepEqual(buildDashboardPageState(config, cookies, access, payload), {
+  assert.deepEqual(buildDashboardPageState(config, access, payload), {
     dashboard: payload.dashboard,
     audit: payload.audit,
     authRequired: false,
@@ -85,9 +86,10 @@ test('dashboard page state exposes mutations only for authenticated web sessions
   });
   const cookies = cookiesWith(createSessionToken('web-secret'));
   const access = resolveDashboardAccess(config, cookies);
-  const state = buildDashboardPageState(config, cookies, access, pagePayload());
+  const state = buildDashboardPageState(config, access, pagePayload());
 
   assert.equal(access.canReadData, true);
+  assert.equal(typeof access.csrfToken, 'string');
   assert.equal(state.authRequired, true);
   assert.equal(state.authConfigured, true);
   assert.equal(state.authenticated, true);
@@ -104,7 +106,7 @@ test('dashboard page state keeps csrf tied to authenticated access without paylo
   });
   const cookies = cookiesWith(createSessionToken('web-secret'));
   const access = resolveDashboardAccess(config, cookies);
-  const state = buildDashboardPageState(config, cookies, access);
+  const state = buildDashboardPageState(config, access);
 
   assert.equal(state.dashboard, null);
   assert.equal(state.audit, null);
@@ -120,7 +122,7 @@ test('dashboard page state keeps logout csrf available when mutations are disabl
   });
   const cookies = cookiesWith(createSessionToken('web-secret'));
   const access = resolveDashboardAccess(config, cookies);
-  const state = buildDashboardPageState(config, cookies, access, pagePayload());
+  const state = buildDashboardPageState(config, access, pagePayload());
 
   assert.equal(state.authenticated, true);
   assert.equal(state.webMutationsEnabled, false);

@@ -13,7 +13,8 @@ import {
   isCsrfTokenMatch,
   isSessionTokenMatch,
   isTokenMatch,
-  LoginRateLimiter
+  LoginRateLimiter,
+  resolveAuthContext
 } from './auth';
 
 function cookiesWith(value?: string): Cookies {
@@ -95,6 +96,32 @@ test('authentication requires a valid web token session when token-backed data i
 
   assert.equal(isAuthenticated(cookiesWith(undefined), config), false);
   assert.equal(isAuthenticated(cookiesWith(session), config), true);
+});
+
+test('auth context resolves authentication and csrf from one valid web session', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_WEB_TOKEN: 'web-secret'
+  });
+  const session = createSessionToken('web-secret');
+  const unauthenticated = resolveAuthContext(cookiesWith(undefined), config);
+  const authenticated = resolveAuthContext(cookiesWith(session), config);
+
+  assert.deepEqual(unauthenticated, {
+    authenticated: false,
+    csrfToken: null
+  });
+  assert.equal(authenticated.authenticated, true);
+  assert.equal(typeof authenticated.csrfToken, 'string');
+  assert.equal(authenticated.csrfToken, createCsrfToken(cookiesWith(session), config));
+
+  const anonymousConfig = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+  assert.deepEqual(resolveAuthContext(cookiesWith(undefined), anonymousConfig), {
+    authenticated: true,
+    csrfToken: null
+  });
 });
 
 test('csrf token is tied to a valid session cookie', () => {

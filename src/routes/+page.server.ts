@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
   const access = resolveDashboardAccess(config, cookies);
 
   if (!access.canReadData) {
-    return buildDashboardPageState(config, cookies, access);
+    return buildDashboardPageState(config, access);
   }
 
   const repos = config.discoverRepos ? await discoverRepositories(config) : config.repos;
@@ -44,7 +44,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
   };
   const [dashboard, audit] = await Promise.all([getDashboard(readConfigWithRepos), getAuditReport(readConfigWithRepos)]);
 
-  return buildDashboardPageState(config, cookies, access, { dashboard, audit });
+  return buildDashboardPageState(config, access, { dashboard, audit });
 };
 
 export const actions: Actions = {

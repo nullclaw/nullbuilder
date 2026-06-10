@@ -1,6 +1,6 @@
 import type { Cookies } from '@sveltejs/kit';
 import type { AuditReport } from './audit-types';
-import { createCsrfToken, isAuthenticated } from './auth';
+import { resolveAuthContext } from './auth';
 import type { NullbuilderConfig } from './config';
 import type { DashboardData } from './github-dashboard';
 import { githubOwnerWebUrl } from './github-web-urls';
@@ -10,6 +10,7 @@ export type DashboardAccessState = {
   authConfigured: boolean;
   authenticated: boolean;
   canReadData: boolean;
+  csrfToken: string | null;
 };
 
 export type DashboardPagePayload = {
@@ -32,25 +33,25 @@ export type DashboardPageState = {
 
 export function resolveDashboardAccess(config: NullbuilderConfig, cookies: Cookies): DashboardAccessState {
   const authRequired = Boolean(config.webToken || config.token);
-  const authenticated = isAuthenticated(cookies, config);
+  const authContext = resolveAuthContext(cookies, config);
 
   return {
     authRequired,
     authConfigured: Boolean(config.webToken),
-    authenticated,
-    canReadData: !authRequired || authenticated
+    authenticated: authContext.authenticated,
+    canReadData: !authRequired || authContext.authenticated,
+    csrfToken: authContext.csrfToken
   };
 }
 
 export function buildDashboardPageState(
   config: NullbuilderConfig,
-  cookies: Cookies,
   access: DashboardAccessState,
   payload?: DashboardPagePayload
 ): DashboardPageState {
   const visiblePayload = access.canReadData ? payload : undefined;
   const webMutationsAvailable = config.enableWebMutations && access.authConfigured && access.authenticated;
-  const csrfToken = access.authConfigured && access.authenticated ? createCsrfToken(cookies, config) : null;
+  const csrfToken = access.authConfigured && access.authenticated ? access.csrfToken : null;
 
   return {
     dashboard: visiblePayload?.dashboard ?? null,
