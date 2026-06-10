@@ -2,14 +2,19 @@ const std = @import("std");
 
 const terminal = @import("terminal.zig");
 
-const stdout_limit = 16 * 1024 * 1024;
-const stderr_limit = 4 * 1024 * 1024;
+const default_stdout_limit = 16 * 1024 * 1024;
+const default_stderr_limit = 4 * 1024 * 1024;
 
-pub fn run(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8) !std.process.RunResult {
+pub const OutputLimits = struct {
+    stdout: usize = default_stdout_limit,
+    stderr: usize = default_stderr_limit,
+};
+
+pub fn run(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8, limits: OutputLimits) !std.process.RunResult {
     return std.process.run(gpa, io, .{
         .argv = argv,
-        .stdout_limit = std.Io.Limit.limited(stdout_limit),
-        .stderr_limit = std.Io.Limit.limited(stderr_limit),
+        .stdout_limit = std.Io.Limit.limited(limits.stdout),
+        .stderr_limit = std.Io.Limit.limited(limits.stderr),
     });
 }
 

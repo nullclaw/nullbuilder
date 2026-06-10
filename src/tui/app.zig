@@ -79,7 +79,9 @@ fn renderDashboard(
     cli_path: []const u8,
     no_color: bool,
 ) !?u8 {
-    const result = try cli.run(gpa, io, &.{ "node", cli_path, "repos", "--json" });
+    const result = try cli.run(gpa, io, &.{ "node", cli_path, "repos", "--json" }, .{
+        .stdout = dashboard.max_json_bytes,
+    });
     defer cli.freeResult(gpa, result);
 
     if (try cli.exitCodeForFailure(out, result, &.{ 0, 2 })) |exit_code| {
@@ -103,7 +105,7 @@ fn forwardTagCommand(
     try argv.append(cli_path);
     try argv.appendSlice(args);
 
-    const result = try cli.run(gpa, io, argv.items);
+    const result = try cli.run(gpa, io, argv.items, .{});
     defer cli.freeResult(gpa, result);
 
     if (try cli.exitCodeForFailure(out, result, &.{0})) |exit_code| {

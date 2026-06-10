@@ -22,12 +22,16 @@ const work_title_width: usize = 74;
 const error_message_width: usize = 90;
 const max_recent_work_items = 8;
 
+pub const max_json_bytes = 16 * 1024 * 1024;
+
 pub fn render(
     arena: std.mem.Allocator,
     out: *std.Io.Writer,
     json: []const u8,
     no_color: bool,
 ) !void {
+    if (json.len > max_json_bytes) return error.DashboardJsonTooLarge;
+
     var parsed = try std.json.parseFromSlice(JsonValue, arena, json, .{});
     defer parsed.deinit();
 
@@ -279,6 +283,18 @@ test "render sanitizes terminal control characters from external text" {
     try expectContains(output, "success");
     try expectContains(output, "Fix red next item");
     try expectContains(output, "rate limited now");
+}
+
+test "render rejects oversized dashboard json before parsing" {
+    const json = try std.testing.allocator.alloc(u8, max_json_bytes + 1);
+    defer std.testing.allocator.free(json);
+    @memset(json, ' ');
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try std.testing.expectError(error.DashboardJsonTooLarge, render(std.testing.allocator, &out.writer, json, true));
+    try std.testing.expectEqual(@as(usize, 0), out.writer.buffered().len);
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
