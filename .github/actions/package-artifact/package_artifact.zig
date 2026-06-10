@@ -5,6 +5,7 @@ const action_paths = @import("action_paths");
 const action_values = @import("action_values");
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
+const MAX_MANIFEST_URL_BYTES = 4096;
 
 const PackageOptions = struct {
     binary_path: []const u8,
@@ -30,6 +31,10 @@ const PackageValidationError = error{
     InvalidBuiltAt,
 };
 
+const ManifestBuildError = error{
+    InvalidManifestRunUrl,
+};
+
 fn formatSha256Line(allocator: std.mem.Allocator, bytes: []const u8, name: []const u8) ![]u8 {
     var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
@@ -37,13 +42,31 @@ fn formatSha256Line(allocator: std.mem.Allocator, bytes: []const u8, name: []con
     return try std.fmt.allocPrint(allocator, "{s}  {s}\n", .{ hex_buf[0..], name });
 }
 
-fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
-    const binary_name = std.Io.Dir.path.basename(options.binary_path);
+fn formatRunUrl(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
+    if (!action_values.isHttpUrlBase(options.server_url) or
+        !action_values.isRepositorySlug(options.repository) or
+        !action_values.isDecimalId(options.run_id))
+    {
+        return ManifestBuildError.InvalidManifestRunUrl;
+    }
+
     const run_url = try std.fmt.allocPrint(allocator, "{s}/{s}/actions/runs/{s}", .{
         options.server_url,
         options.repository,
         options.run_id,
     });
+    errdefer allocator.free(run_url);
+
+    if (!action_values.isHttpUrl(run_url, MAX_MANIFEST_URL_BYTES)) {
+        return ManifestBuildError.InvalidManifestRunUrl;
+    }
+
+    return run_url;
+}
+
+fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
+    const binary_name = std.Io.Dir.path.basename(options.binary_path);
+    const run_url = try formatRunUrl(allocator, options);
     defer allocator.free(run_url);
 
     return try std.fmt.allocPrint(allocator,
@@ -298,6 +321,36 @@ test "package artifact builds parseable manifest" {
         "https://github.com/nullclaw/nullclaw/actions/runs/123",
         parsed.value.object.get("run_url").?.string,
     );
+}
+
+test "package artifact validates manifest run URL fields at the formatter boundary" {
+    const valid_options = PackageOptions{
+        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
+        .target = "linux-x86_64",
+        .zig_target = "x86_64-linux-musl",
+        .version = "nightly-20260504-abcdef0",
+        .repository = "nullclaw/nullclaw",
+        .commit = "abcdef0123456789abcdef0123456789abcdef01",
+        .run_id = "123",
+        .server_url = "https://github.com",
+        .built_at = "2026-05-04T02:23:00Z",
+    };
+
+    const run_url = try formatRunUrl(std.testing.allocator, valid_options);
+    defer std.testing.allocator.free(run_url);
+    try std.testing.expectEqualStrings("https://github.com/nullclaw/nullclaw/actions/runs/123", run_url);
+
+    var unsafe_url_options = valid_options;
+    unsafe_url_options.server_url = "https://github.com/path";
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_url_options));
+
+    var unsafe_repository_options = valid_options;
+    unsafe_repository_options.repository = "nullclaw/nullclaw/extra";
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_repository_options));
+
+    var unsafe_run_options = valid_options;
+    unsafe_run_options.run_id = "0";
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_run_options));
 }
 
 test "package artifact formats safe generated paths" {
