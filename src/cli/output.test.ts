@@ -14,6 +14,8 @@ import {
   selectDashboardJson
 } from './output';
 
+const originalArrayIterator = Array.prototype[Symbol.iterator];
+
 test('selectDashboardJson returns command-specific rows and load errors', () => {
   const dashboard = dashboardFixture();
 
@@ -274,6 +276,27 @@ test('formatDashboard does not materialize table rows past the display cap', () 
   assert.match(output, /\.\.\. 1 rows omitted; use --json for full output\./);
   assert.equal(output.includes('#1000'), true);
   assert.equal(output.includes('#1001'), false);
+});
+
+test('formatters render terminal tables without array iterators', () => {
+  const dashboard = dashboardFixture();
+  const report = auditReportFixture({ findings: [] });
+
+  Array.prototype[Symbol.iterator] = function arrayIteratorShouldNotBeCalled(): ArrayIterator<unknown> {
+    throw new Error('Array.prototype iterator should not be called.');
+  };
+
+  let dashboardOutput = '';
+  let auditOutput = '';
+  try {
+    dashboardOutput = formatDashboard('repos', dashboard);
+    auditOutput = formatAuditReport(report);
+  } finally {
+    Array.prototype[Symbol.iterator] = originalArrayIterator;
+  }
+
+  assert.match(dashboardOutput, /nullclaw\/nullbuilder/);
+  assert.match(auditOutput, /nullclaw\/nullbuilder\s+ok\s+100/);
 });
 
 test('formatters truncate by code point without splitting surrogate pairs', () => {

@@ -300,8 +300,8 @@ function formatSanitizedTable(
   const widths = columnWidths(safeRows, columns);
   const lines = [formatTableHeader(columns, widths), formatTableSeparator(widths)];
 
-  for (const row of safeRows) {
-    lines.push(formatTableRow(row, columns, widths));
+  for (let index = 0; index < safeRows.length; index += 1) {
+    lines.push(formatTableRow(safeRows[index], columns, widths));
   }
 
   if (omittedRows > 0) {
@@ -355,8 +355,8 @@ function formatTableHeader(columns: readonly string[], widths: readonly number[]
 
 function formatTableSeparator(widths: readonly number[]): string {
   let line = '';
-  for (const width of widths) {
-    line = appendTablePart(line, '-'.repeat(width));
+  for (let index = 0; index < widths.length; index += 1) {
+    line = appendTablePart(line, '-'.repeat(widths[index]));
   }
   return line;
 }
@@ -380,11 +380,12 @@ function appendTablePart(line: string, value: string): string {
 
 function columnWidths(rows: Array<Record<string, string>>, columns: readonly string[]): number[] {
   const widths: number[] = [];
-  for (const column of columns) {
-    widths.push(column.length);
+  for (let index = 0; index < columns.length; index += 1) {
+    widths.push(columns[index].length);
   }
 
-  for (const row of rows) {
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
     for (let index = 0; index < columns.length; index += 1) {
       const column = columns[index];
       const width = printableLength(row[column] ?? '');
@@ -403,7 +404,8 @@ function formatDate(value: string): string {
 
 function sanitizeRow(row: Record<string, string>, columns: readonly string[]): Record<string, string> {
   const sanitized: Record<string, string> = {};
-  for (const column of columns) {
+  for (let index = 0; index < columns.length; index += 1) {
+    const column = columns[index];
     sanitized[column] = terminalCell(row[column] ?? '');
   }
   return sanitized;
