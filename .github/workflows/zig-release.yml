@@ -199,7 +199,12 @@ jobs:
         if: startsWith(matrix.target, 'android-')
         env:
           ANDROID_NDK_VERSION: ${{ inputs.android_ndk_version }}
-        run: sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+        run: |
+          if [[ ! "${ANDROID_NDK_VERSION}" =~ ^([0-9]+)(\.[0-9]+)*$ ]]; then
+            echo "invalid Android NDK version" >&2
+            exit 1
+          fi
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
 
       - name: Export Android NDK paths
         if: startsWith(matrix.target, 'android-')
@@ -209,6 +214,10 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
           MATRIX_ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
+          if [[ ! "${ANDROID_API_LEVEL}" =~ ^[1-9][0-9]{0,2}$ ]] || [[ ! "${ANDROID_NDK_VERSION}" =~ ^([0-9]+)(\.[0-9]+)*$ ]]; then
+            echo "invalid Android SDK inputs" >&2
+            exit 1
+          fi
           if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
             echo "invalid Android matrix target" >&2
             exit 1
