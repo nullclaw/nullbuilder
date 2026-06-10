@@ -40,8 +40,8 @@ export function mapRepositorySummary(
     language: repository.language,
     isPrivate: repository.private,
     archived: repository.archived,
-    stars: repository.stargazers_count,
-    forks: repository.forks_count,
+    stars: safeNullableCount(repository.stargazers_count),
+    forks: safeNullableCount(repository.forks_count),
     openIssues: openIssues.length,
     openPulls: pullRequests.length,
     pushedAt: repository.pushed_at,
@@ -70,7 +70,7 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse): IssueSummary {
     url: issue.html_url,
     author: issue.user?.login ?? 'unknown',
     labels: mapLabels(issue.labels),
-    comments: issue.comments,
+    comments: safeCount(issue.comments),
     createdAt: issue.created_at,
     updatedAt: issue.updated_at
   };
@@ -84,7 +84,7 @@ function mapPullRequest(repo: RepoSlug, pull: GitHubPullResponse): PullRequestSu
     url: pull.html_url,
     author: pull.user?.login ?? 'unknown',
     labels: mapLabels(pull.labels ?? []),
-    comments: pull.comments ?? 0,
+    comments: safeCount(pull.comments),
     createdAt: pull.created_at,
     updatedAt: pull.updated_at,
     draft: pull.draft,
@@ -112,6 +112,14 @@ function mapLabels(labels: Array<string | { name?: string; color?: string }>): G
 
 function normalizeLabelColor(color: string | undefined): string {
   return color && LABEL_COLOR_PATTERN.test(color) ? color.toLowerCase() : DEFAULT_LABEL_COLOR;
+}
+
+function safeCount(value: number | null | undefined): number {
+  return safeNullableCount(value) ?? 0;
+}
+
+function safeNullableCount(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 function findRun(

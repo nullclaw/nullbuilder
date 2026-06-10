@@ -76,6 +76,33 @@ test('mapRepositorySummary maps GitHub payloads and filters PR-backed issues', (
   assert.equal(summary.latestRuns.nightly?.name, 'Workflow');
 });
 
+test('mapRepositorySummary normalizes unsafe GitHub counters', () => {
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository({
+      stargazers_count: Number.MAX_SAFE_INTEGER + 1,
+      forks_count: -1
+    }),
+    [
+      issue({
+        comments: 1.5
+      })
+    ],
+    [
+      pull({
+        comments: Number.MAX_SAFE_INTEGER + 1
+      })
+    ],
+    [],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.stars, null);
+  assert.equal(summary.forks, null);
+  assert.equal(summary.issues[0].comments, 0);
+  assert.equal(summary.pullRequests[0].comments, 0);
+});
+
 test('buildDashboard summarizes loaded error and failing repositories', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder,broken',
