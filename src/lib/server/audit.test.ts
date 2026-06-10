@@ -31,6 +31,13 @@ test('getAuditReport normalizes repository and workflow URLs from GitHub payload
 
     if (path === '/repos/nullclaw/nullbuilder/contents/.github/workflows') {
       return [
+        null,
+        'not-a-content-item',
+        {
+          name: 'partial.yml',
+          type: 'file',
+          html_url: 'https://github.example.test/nullclaw/nullbuilder/blob/main/.github/workflows/partial.yml'
+        },
         {
           name: 'ci.yml',
           path: '.github/workflows/ci.yml',
@@ -95,10 +102,11 @@ jobs:
   const repository = report.repositories[0];
   const triggerFinding = report.findings.find((finding) => finding.title === 'Workflow uses pull_request_target');
 
+  assert.equal(repository.status, 'ok');
   assert.equal(repository.url, repositoryUrl);
   assert.equal(triggerFinding?.url, `${repositoryUrl}/actions`);
   assert.equal(report.findings.every((finding) => finding.url?.startsWith(repositoryUrl)), true);
-  assert.equal(requests.some((path) => path.includes('unsafe') || path.includes('nested')), false);
+  assert.equal(requests.some((path) => path.includes('unsafe') || path.includes('nested') || path.includes('partial')), false);
   assert.equal(JSON.stringify(report).includes('secret'), false);
 });
 

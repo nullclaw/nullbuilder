@@ -184,13 +184,22 @@ async function loadWorkflowFiles(
   ).filter((file): file is WorkflowFile => file !== null);
 }
 
-function safeWorkflowDirectoryItem(item: GitHubContentItem): Pick<GitHubContentItem, 'name' | 'path' | 'html_url'> | null {
-  if (item.type !== 'file') {
+function safeWorkflowDirectoryItem(item: unknown): Pick<GitHubContentItem, 'name' | 'path' | 'html_url'> | null {
+  if (!item || typeof item !== 'object') {
     return null;
   }
 
-  const name = readSafeTextInput(item.name, { maxLength: MAX_WORKFLOW_FILE_NAME_LENGTH });
-  const path = readSafeTextInput(item.path, { maxLength: MAX_WORKFLOW_FILE_PATH_LENGTH });
+  const contentItem = item as Record<string, unknown>;
+  if (contentItem.type !== 'file') {
+    return null;
+  }
+
+  if (typeof contentItem.name !== 'string' || typeof contentItem.path !== 'string') {
+    return null;
+  }
+
+  const name = readSafeTextInput(contentItem.name, { maxLength: MAX_WORKFLOW_FILE_NAME_LENGTH });
+  const path = readSafeTextInput(contentItem.path, { maxLength: MAX_WORKFLOW_FILE_PATH_LENGTH });
   if (!name || !path || !/^[^/\\]+\.ya?ml$/i.test(name)) {
     return null;
   }
@@ -202,7 +211,7 @@ function safeWorkflowDirectoryItem(item: GitHubContentItem): Pick<GitHubContentI
   return {
     name,
     path,
-    html_url: item.html_url
+    html_url: typeof contentItem.html_url === 'string' ? contentItem.html_url : ''
   };
 }
 
