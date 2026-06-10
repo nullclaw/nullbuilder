@@ -6,10 +6,13 @@ import {
   buildDashboard,
   makeErrorRepository,
   mapRepositorySummary,
+  MAX_DASHBOARD_TEXT_FIELD_LENGTH,
   MAX_DASHBOARD_WORK_LIST_ITEMS,
   MAX_LABELS_PER_WORK_ITEM,
   MAX_LABEL_NAME_LENGTH,
   MAX_REPOSITORY_WORK_ITEMS,
+  MAX_TIMESTAMP_TEXT_LENGTH,
+  MAX_WORK_ITEM_TITLE_LENGTH,
   type GitHubIssueResponse,
   type GitHubPullResponse,
   type GitHubRepositoryResponse,
@@ -133,6 +136,75 @@ test('mapRepositorySummary bounds and sanitizes labels from GitHub payloads', ()
     { name: 'x'.repeat(MAX_LABEL_NAME_LENGTH), color: 'd0d7de' }
   ]);
   assert.equal(summary.issues[0].labels.at(-1)?.name, `label-${MAX_LABELS_PER_WORK_ITEM - 5}`);
+});
+
+test('mapRepositorySummary bounds and sanitizes display strings from GitHub payloads', () => {
+  const longTitle = 'x'.repeat(MAX_WORK_ITEM_TITLE_LENGTH + 10);
+  const longSha = 'a'.repeat(MAX_DASHBOARD_TEXT_FIELD_LENGTH + 10);
+  const longTimestamp = `${'2026-06-09T00:00:00Z'.padEnd(MAX_TIMESTAMP_TEXT_LENGTH + 10, 'x')}\nignored`;
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository({
+      name: ' repo\x1b[31m\nname ',
+      full_name: ' nullclaw\x1b[31m/nullbuilder\n ',
+      description: '\x1b[31m\n\t',
+      default_branch: ' main\nbranch ',
+      language: ' Zig\x1b[2K ',
+      pushed_at: longTimestamp,
+      updated_at: longTimestamp,
+      owner: { login: ' owner\nlogin ' }
+    }),
+    [
+      issue({
+        title: longTitle,
+        user: { login: '\x1b[31m\n' },
+        created_at: longTimestamp,
+        updated_at: longTimestamp
+      })
+    ],
+    [
+      pull({
+        title: '\x1b[31m\n',
+        base: { ref: ' base\nbranch ' },
+        head: { ref: ' feature\x1b[31mbranch ', sha: longSha, repo: { full_name: REPO } }
+      })
+    ],
+    [
+      workflowRun({
+        name: ' CI\nworkflow ',
+        path: '.github/workflows/ci.yml\nextra',
+        display_title: '\x1b[31m\n',
+        status: 'completed',
+        conclusion: 'failure\nlater',
+        head_branch: ' main\nbranch ',
+        event: 'workflow_dispatch\nnow',
+        created_at: longTimestamp,
+        updated_at: longTimestamp
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.owner, 'owner login');
+  assert.equal(summary.name, 'repo name');
+  assert.equal(summary.fullName, 'nullclaw/nullbuilder');
+  assert.equal(summary.description, '');
+  assert.equal(summary.defaultBranch, 'main branch');
+  assert.equal(summary.language, 'Zig');
+  assert.equal(summary.issues[0].title, 'x'.repeat(MAX_WORK_ITEM_TITLE_LENGTH));
+  assert.equal(summary.issues[0].author, 'unknown');
+  assert.equal(summary.pullRequests[0].title, 'Untitled PR');
+  assert.equal(summary.pullRequests[0].baseBranch, 'base branch');
+  assert.equal(summary.pullRequests[0].headBranch, 'featurebranch');
+  assert.equal(summary.pullRequests[0].headSha.length, MAX_DASHBOARD_TEXT_FIELD_LENGTH);
+  assert.equal(summary.latestRuns.ci?.name, 'CI workflow');
+  assert.equal(summary.latestRuns.ci?.displayTitle, 'Workflow');
+  assert.equal(summary.latestRuns.ci?.conclusion, 'failure later');
+  assert.equal(summary.latestRuns.ci?.branch, 'main branch');
+  assert.equal(summary.latestRuns.ci?.event, 'workflow_dispatch now');
+  assert.equal(summary.updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
+  assert.equal(summary.issues[0].updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
+  assert.equal(summary.latestRuns.ci?.updatedAt.length, MAX_TIMESTAMP_TEXT_LENGTH);
 });
 
 test('mapRepositorySummary skips invalid issue and pull request numbers', () => {

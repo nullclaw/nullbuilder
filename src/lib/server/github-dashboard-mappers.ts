@@ -16,6 +16,9 @@ import type {
 
 const DEFAULT_LABEL_COLOR = 'd0d7de';
 const LABEL_COLOR_PATTERN = /^[0-9a-f]{6}$/i;
+export const MAX_DASHBOARD_TEXT_FIELD_LENGTH = 256;
+export const MAX_WORK_ITEM_TITLE_LENGTH = 512;
+export const MAX_TIMESTAMP_TEXT_LENGTH = 64;
 export const MAX_LABELS_PER_WORK_ITEM = 20;
 export const MAX_LABEL_NAME_LENGTH = 64;
 export const MAX_REPOSITORY_WORK_ITEMS = 100;
@@ -30,24 +33,25 @@ export function mapRepositorySummary(
 ): RepositorySummary {
   const openIssues = mapIssueSummaries(repo, issues);
   const pullRequests = mapPullRequestSummaries(repo, pulls);
+  const [fallbackOwner, fallbackName] = repo.split('/');
 
   return {
     slug: repo,
-    owner: repository.owner.login,
-    name: repository.name,
-    fullName: repository.full_name,
+    owner: safeDashboardText(repository.owner.login, fallbackOwner),
+    name: safeDashboardText(repository.name, fallbackName),
+    fullName: safeDashboardText(repository.full_name, repo),
     url: repository.html_url,
-    description: repository.description ?? '',
-    defaultBranch: repository.default_branch,
-    language: repository.language,
+    description: safeDashboardText(repository.description ?? '', ''),
+    defaultBranch: safeDashboardText(repository.default_branch, 'unknown'),
+    language: safeOptionalDashboardText(repository.language),
     isPrivate: repository.private,
     archived: repository.archived,
     stars: safeNullableCount(repository.stargazers_count),
     forks: safeNullableCount(repository.forks_count),
     openIssues: openIssues.total,
     openPulls: pullRequests.total,
-    pushedAt: repository.pushed_at,
-    updatedAt: repository.updated_at,
+    pushedAt: safeOptionalTimestamp(repository.pushed_at),
+    updatedAt: safeTimestamp(repository.updated_at),
     issues: openIssues.items,
     pullRequests: pullRequests.items,
     starGrowth,
@@ -169,13 +173,13 @@ function mapIssue(repo: RepoSlug, issue: GitHubIssueResponse): IssueSummary | nu
   return {
     repo,
     number,
-    title: issue.title,
+    title: safeWorkItemTitle(issue.title, 'Untitled issue'),
     url: issue.html_url,
-    author: issue.user?.login ?? 'unknown',
+    author: safeDashboardText(issue.user?.login ?? '', 'unknown'),
     labels: mapLabels(issue.labels),
     comments: safeCount(issue.comments),
-    createdAt: issue.created_at,
-    updatedAt: issue.updated_at
+    createdAt: safeTimestamp(issue.created_at),
+    updatedAt: safeTimestamp(issue.updated_at)
   };
 }
 
@@ -188,17 +192,17 @@ function mapPullRequest(repo: RepoSlug, pull: GitHubPullResponse): PullRequestSu
   return {
     repo,
     number,
-    title: pull.title,
+    title: safeWorkItemTitle(pull.title, 'Untitled PR'),
     url: pull.html_url,
-    author: pull.user?.login ?? 'unknown',
+    author: safeDashboardText(pull.user?.login ?? '', 'unknown'),
     labels: mapLabels(pull.labels ?? []),
     comments: safeCount(pull.comments),
-    createdAt: pull.created_at,
-    updatedAt: pull.updated_at,
+    createdAt: safeTimestamp(pull.created_at),
+    updatedAt: safeTimestamp(pull.updated_at),
     draft: pull.draft,
-    baseBranch: pull.base.ref,
-    headBranch: pull.head.ref,
-    headSha: pull.head.sha
+    baseBranch: safeDashboardText(pull.base.ref, 'unknown'),
+    headBranch: safeDashboardText(pull.head.ref, 'unknown'),
+    headSha: safeDashboardText(pull.head.sha, 'unknown')
   };
 }
 
@@ -233,6 +237,35 @@ function safeLabelName(value: string | undefined): string {
     fallback: 'label',
     trim: true
   });
+}
+
+function safeDashboardText(
+  value: string | null | undefined,
+  fallback: string,
+  maxLength = MAX_DASHBOARD_TEXT_FIELD_LENGTH
+): string {
+  return sanitizeText(value ?? '', {
+    maxLength,
+    fallback,
+    trim: true
+  });
+}
+
+function safeOptionalDashboardText(value: string | null | undefined): string | null {
+  const safe = safeDashboardText(value, '');
+  return safe ? safe : null;
+}
+
+function safeWorkItemTitle(value: string, fallback: string): string {
+  return safeDashboardText(value, fallback, MAX_WORK_ITEM_TITLE_LENGTH);
+}
+
+function safeTimestamp(value: string): string {
+  return safeDashboardText(value, '', MAX_TIMESTAMP_TEXT_LENGTH);
+}
+
+function safeOptionalTimestamp(value: string | null): string | null {
+  return value === null ? null : safeTimestamp(value);
 }
 
 function normalizeLabelColor(color: string | undefined): string {
@@ -272,8 +305,8 @@ function findRun(
 ): GitHubWorkflowRunResponse | null {
   return (
     runs.find((run) => {
-      const name = (run.name ?? '').toLowerCase();
-      const path = (run.path ?? '').toLowerCase();
+      const name = safeDashboardText(run.name ?? '', '').toLowerCase();
+      const path = safeDashboardText(run.path ?? '', '').toLowerCase();
       return (
         nameKeywords.some((keyword) => name.includes(keyword)) ||
         pathKeywords.some((keyword) => path.endsWith(keyword) || path.includes(`/${keyword}`))
@@ -289,15 +322,15 @@ function mapRun(run: GitHubWorkflowRunResponse | null): WorkflowRunSummary | nul
 
   return {
     id: run.id,
-    name: run.name ?? 'Workflow',
-    path: run.path ?? '',
-    displayTitle: run.display_title,
-    status: run.status,
-    conclusion: run.conclusion,
+    name: safeDashboardText(run.name ?? '', 'Workflow'),
+    path: safeDashboardText(run.path ?? '', ''),
+    displayTitle: safeDashboardText(run.display_title, 'Workflow'),
+    status: safeDashboardText(run.status, 'unknown'),
+    conclusion: run.conclusion === null ? null : safeDashboardText(run.conclusion, 'unknown'),
     url: run.html_url,
-    branch: run.head_branch,
-    event: run.event,
-    createdAt: run.created_at,
-    updatedAt: run.updated_at
+    branch: safeDashboardText(run.head_branch, 'unknown'),
+    event: safeDashboardText(run.event, 'unknown'),
+    createdAt: safeTimestamp(run.created_at),
+    updatedAt: safeTimestamp(run.updated_at)
   };
 }
