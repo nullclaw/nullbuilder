@@ -24,21 +24,33 @@ pub const SanitizedText = struct {
 };
 
 pub fn sanitizeMaybeAlloc(allocator: std.mem.Allocator, value: []const u8, options: SanitizeOptions) !SanitizedText {
-    if (isSafe(value, options)) {
-        return .{ .value = value };
-    }
+    const unsafe_index = firstUnsafeControlIndex(value, options) orelse return .{ .value = value };
 
     return .{
-        .value = try sanitizeAlloc(allocator, value, options),
+        .value = try sanitizeAllocFrom(allocator, value, options, unsafe_index),
         .allocated = true,
     };
 }
 
 pub fn sanitizeAlloc(allocator: std.mem.Allocator, value: []const u8, options: SanitizeOptions) ![]u8 {
+    return sanitizeAllocFrom(allocator, value, options, 0);
+}
+
+fn sanitizeAllocFrom(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    options: SanitizeOptions,
+    start_index: usize,
+) ![]u8 {
     var sanitized = std.array_list.Managed(u8).init(allocator);
     errdefer sanitized.deinit();
+    try sanitized.ensureTotalCapacity(value.len);
 
-    var index: usize = 0;
+    if (start_index > 0) {
+        try sanitized.appendSlice(value[0..start_index]);
+    }
+
+    var index: usize = start_index;
     var buffer: [4]u8 = undefined;
     while (index < value.len) {
         if (nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
@@ -100,6 +112,10 @@ pub fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
 }
 
 pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
+    return firstUnsafeControlIndex(value, options) != null;
+}
+
+fn firstUnsafeControlIndex(value: []const u8, options: SanitizeOptions) ?usize {
     var index: usize = 0;
     while (index < value.len) {
         const byte = value[index];
@@ -109,16 +125,12 @@ pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
             text_safety.isInvalidUtf8SequenceStart(value, index) or
             isUnsafeTerminalControlByte(byte, options))
         {
-            return true;
+            return index;
         }
         index += text_safety.utf8SequenceLength(value, index);
     }
 
-    return false;
-}
-
-fn isSafe(value: []const u8, options: SanitizeOptions) bool {
-    return !hasUnsafeControl(value, options);
+    return null;
 }
 
 fn nextSanitizedSlice(value: []const u8, index: *usize, options: SanitizeOptions, buffer: *[4]u8) ?[]const u8 {
@@ -224,11 +236,18 @@ test "terminal sanitizer borrows already safe text" {
 }
 
 test "terminal sanitizer allocates only when text changes" {
-    const safe = try sanitizeMaybeAlloc(std.testing.allocator, "bad\x1b[31mred\x1b[0m", .{});
+    const safe = try sanitizeMaybeAlloc(
+        std.testing.allocator,
+        "safe-prefix-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82-bad\x1b[31mred\x1b[0m",
+        .{},
+    );
     defer safe.deinit(std.testing.allocator);
 
     try std.testing.expect(safe.allocated);
-    try std.testing.expectEqualStrings("badred", safe.value);
+    try std.testing.expectEqualStrings(
+        "safe-prefix-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82-badred",
+        safe.value,
+    );
 }
 
 test "terminal sanitizer replaces malformed UTF-8 bytes" {
