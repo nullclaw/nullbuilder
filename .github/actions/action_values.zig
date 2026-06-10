@@ -3,6 +3,7 @@ const std = @import("std");
 const max_decimal_id_digits = "18446744073709551615".len;
 const max_host_bytes = 253;
 const max_host_label_bytes = 63;
+const max_repo_segment_bytes = 100;
 
 pub fn isDecimalId(value: []const u8) bool {
     if (value.len == 0 or value.len > max_decimal_id_digits) return false;
@@ -154,7 +155,8 @@ fn isSafeOwnerSegment(value: []const u8) bool {
 }
 
 fn isSafeRepoSegment(value: []const u8) bool {
-    if (value.len == 0) return false;
+    if (value.len == 0 or value.len > max_repo_segment_bytes) return false;
+    if (endsWithAsciiIgnoreCase(value, ".git")) return false;
 
     var previous_dot = false;
     for (value, 0..) |byte, index| {
@@ -166,6 +168,17 @@ fn isSafeRepoSegment(value: []const u8) bool {
         if (index == 0 and !is_alpha and !is_digit) return false;
         if (byte == '.' and previous_dot) return false;
         previous_dot = byte == '.';
+    }
+
+    return true;
+}
+
+fn endsWithAsciiIgnoreCase(value: []const u8, suffix: []const u8) bool {
+    if (value.len < suffix.len) return false;
+    const tail = value[value.len - suffix.len ..];
+
+    for (tail, suffix) |left_byte, right_byte| {
+        if (std.ascii.toLower(left_byte) != std.ascii.toLower(right_byte)) return false;
     }
 
     return true;
@@ -204,6 +217,9 @@ test "action values validate repository slugs" {
     try std.testing.expect(!isRepositorySlug("nullclaw-/nullbuilder"));
     try std.testing.expect(!isRepositorySlug("abcdefghijklmnopqrstuvwxyzabcdefghijklmn/nullbuilder"));
     try std.testing.expect(!isRepositorySlug("nullclaw/.hidden"));
+    try std.testing.expect(!isRepositorySlug("nullclaw/" ++ ("a" ** 101)));
+    try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.git"));
+    try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.GIT"));
 }
 
 test "action values validate URL bases and metadata" {
