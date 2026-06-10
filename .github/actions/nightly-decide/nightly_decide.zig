@@ -1,11 +1,12 @@
 const std = @import("std");
 
 const action_args = @import("action_args");
+const action_json = @import("action_json");
 const action_paths = @import("action_paths");
 const action_values = @import("action_values");
 
-const JsonValue = std.json.Value;
-const JsonObject = std.json.ObjectMap;
+const JsonValue = action_json.JsonValue;
+const JsonObject = action_json.JsonObject;
 
 const MAX_RUNS_JSON_BYTES = 2 * 1024 * 1024;
 const MAX_OUTPUT_VALUE_BYTES = 4096;
@@ -14,8 +15,6 @@ const MAX_WORKFLOW_RUNS_TO_SCAN = 100;
 const MAX_RUN_EVENT_BYTES = 64;
 const MAX_RUN_CONCLUSION_BYTES = 64;
 const MAX_RUN_HEAD_SHA_BYTES = 64;
-const MAX_SAFE_JSON_INTEGER: u64 = 9_007_199_254_740_991;
-const empty_json_values = [_]JsonValue{};
 
 const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
 
@@ -102,7 +101,7 @@ fn decideShouldBuildFromPayload(
 
     const current_id = parseCurrentRunId(current_run_id);
 
-    for (boundedWorkflowRunValues(workflowRunValues(payload))) |value| {
+    for (workflowRunValues(payload)) |value| {
         const run = runFromValue(value) orelse continue;
         if (matchingSuccessfulRun(run, current_id, head_sha, workflow_name)) {
             return skipDecision(run);
@@ -147,72 +146,24 @@ fn boundedWorkflowRuns(runs: []const Run) []const Run {
 }
 
 fn workflowRunValues(payload: JsonValue) []const JsonValue {
-    const root = switch (payload) {
-        .object => |object| object,
-        else => return emptyJsonValues(),
-    };
-    const runs = root.get("workflow_runs") orelse return emptyJsonValues();
-
-    return switch (runs) {
-        .array => |array| array.items,
-        else => emptyJsonValues(),
-    };
-}
-
-fn boundedWorkflowRunValues(values: []const JsonValue) []const JsonValue {
-    return values[0..@min(values.len, MAX_WORKFLOW_RUNS_TO_SCAN)];
+    const root = action_json.objectValue(payload) orelse return action_json.emptyValues();
+    return action_json.boundedArrayField(root, "workflow_runs", MAX_WORKFLOW_RUNS_TO_SCAN) orelse action_json.emptyValues();
 }
 
 fn runFromValue(value: JsonValue) ?Run {
-    return switch (value) {
-        .object => |object| runFromObject(object),
-        else => null,
-    };
+    const object = action_json.objectValue(value) orelse return null;
+    return runFromObject(object);
 }
 
 fn runFromObject(object: JsonObject) Run {
     return .{
-        .id = safePositiveIntegerField(object, "id"),
-        .name = safeStringField(object, "name", MAX_WORKFLOW_NAME_BYTES),
-        .event = safeStringField(object, "event", MAX_RUN_EVENT_BYTES),
-        .head_sha = safeStringField(object, "head_sha", MAX_RUN_HEAD_SHA_BYTES),
-        .conclusion = optionalSafeStringField(object, "conclusion", MAX_RUN_CONCLUSION_BYTES),
-        .html_url = safeStringField(object, "html_url", MAX_OUTPUT_VALUE_BYTES),
+        .id = action_json.safePositiveIntegerField(object, "id"),
+        .name = action_json.safeTextField(object, "name", "", MAX_WORKFLOW_NAME_BYTES),
+        .event = action_json.safeTextField(object, "event", "", MAX_RUN_EVENT_BYTES),
+        .head_sha = action_json.safeTextField(object, "head_sha", "", MAX_RUN_HEAD_SHA_BYTES),
+        .conclusion = action_json.optionalSafeTextField(object, "conclusion", MAX_RUN_CONCLUSION_BYTES),
+        .html_url = action_json.safeTextField(object, "html_url", "", MAX_OUTPUT_VALUE_BYTES),
     };
-}
-
-fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 {
-    const value = object.get(field_name) orelse return 0;
-    return switch (value) {
-        .integer => |integer| safePositiveJsonInteger(integer),
-        else => 0,
-    };
-}
-
-fn safePositiveJsonInteger(integer: i64) u64 {
-    if (integer <= 0) return 0;
-    const unsigned = std.math.cast(u64, integer) orelse return 0;
-    return if (unsigned <= MAX_SAFE_JSON_INTEGER) unsigned else 0;
-}
-
-fn safeStringField(object: JsonObject, field_name: []const u8, max_len: usize) []const u8 {
-    const value = object.get(field_name) orelse return "";
-    return switch (value) {
-        .string => |string| if (action_values.isSafeActionOutputValue(string, max_len)) string else "",
-        else => "",
-    };
-}
-
-fn optionalSafeStringField(object: JsonObject, field_name: []const u8, max_len: usize) ?[]const u8 {
-    const value = object.get(field_name) orelse return null;
-    return switch (value) {
-        .string => |string| if (action_values.isSafeActionOutputValue(string, max_len)) string else null,
-        else => null,
-    };
-}
-
-fn emptyJsonValues() []const JsonValue {
-    return empty_json_values[0..];
 }
 
 fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void {

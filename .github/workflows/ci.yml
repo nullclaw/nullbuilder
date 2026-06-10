@@ -52,9 +52,12 @@ jobs:
         run: >-
           zig test
           --dep action_args
+          --dep action_json
           --dep action_paths
           --dep action_values
           -Mroot=.github/actions/nightly-decide/nightly_decide.zig
+          --dep action_values
+          -Maction_json=.github/actions/action_json.zig
           --dep action_text
           -Maction_args=.github/actions/action_args.zig
           -Maction_paths=.github/actions/action_paths.zig
@@ -66,9 +69,12 @@ jobs:
         run: >-
           zig test
           --dep action_args
+          --dep action_json
           --dep action_paths
           --dep action_values
           -Mroot=.github/actions/package-artifact/package_artifact.zig
+          --dep action_values
+          -Maction_json=.github/actions/action_json.zig
           --dep action_text
           -Maction_args=.github/actions/action_args.zig
           -Maction_paths=.github/actions/action_paths.zig

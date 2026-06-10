@@ -30,8 +30,9 @@ test('composite action Zig commands declare module dependencies explicitly', () 
       }
     }
 
-    assertDependencies(modules, 'root', ['action_args', 'action_paths', 'action_values']);
+    assertDependencies(modules, 'root', ['action_args', 'action_json', 'action_paths', 'action_values']);
     assertDependencies(modules, 'action_args', ['action_text']);
+    assertDependencies(modules, 'action_json', ['action_values']);
     assertDependencies(modules, 'action_values', ['action_text']);
     assertDependencies(modules, 'action_text', ['text_safety']);
   }

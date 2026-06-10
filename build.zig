@@ -10,6 +10,7 @@ const ZigBuildOptions = struct {
 
 const SharedActionModules = struct {
     args: *std.Build.Module,
+    json: *std.Build.Module,
     paths: *std.Build.Module,
     text: *std.Build.Module,
     values: *std.Build.Module,
@@ -58,15 +59,20 @@ pub fn build(b: *std.Build) void {
 
     const action_text_module = createModule(b, options, ".github/actions/action_text.zig");
     action_text_module.addImport("text_safety", text_safety_module);
+    const action_values_module = createModule(b, options, ".github/actions/action_values.zig");
+    action_values_module.addImport("action_text", action_text_module);
+    const action_json_module = createModule(b, options, ".github/actions/action_json.zig");
+    action_json_module.addImport("action_values", action_values_module);
     const action_modules = SharedActionModules{
         .args = createModule(b, options, ".github/actions/action_args.zig"),
+        .json = action_json_module,
         .paths = createModule(b, options, ".github/actions/action_paths.zig"),
         .text = action_text_module,
-        .values = createModule(b, options, ".github/actions/action_values.zig"),
+        .values = action_values_module,
     };
     action_modules.args.addImport("action_text", action_modules.text);
-    action_modules.values.addImport("action_text", action_modules.text);
     addModuleTest(b, test_step, action_modules.args);
+    addModuleTest(b, test_step, action_modules.json);
     addModuleTest(b, test_step, action_modules.paths);
     addModuleTest(b, test_step, action_modules.text);
     addModuleTest(b, test_step, action_modules.values);
@@ -104,6 +110,7 @@ fn createActionModule(
 ) *std.Build.Module {
     const module = createModule(b, options, root_source_file);
     module.addImport("action_args", action_modules.args);
+    module.addImport("action_json", action_modules.json);
     module.addImport("action_paths", action_modules.paths);
     module.addImport("action_values", action_modules.values);
     return module;
