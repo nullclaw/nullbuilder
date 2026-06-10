@@ -57,7 +57,10 @@ export function buildAuditTotals(
   const averageScore =
     loadedRepositories.length === 0
       ? 0
-      : Math.round(loadedRepositories.reduce((total, repo) => total + repo.score, 0) / loadedRepositories.length);
+      : Math.round(
+          loadedRepositories.reduce((total, repo) => total + normalizeScore(repo.score), 0) /
+            loadedRepositories.length
+        );
 
   return {
     repositories: repositories.length,
@@ -69,4 +72,8 @@ export function buildAuditTotals(
     findings: findings.length,
     averageScore
   };
+}
+
+function normalizeScore(value: number): number {
+  return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
 }

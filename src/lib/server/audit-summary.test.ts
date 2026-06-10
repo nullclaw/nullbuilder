@@ -74,6 +74,13 @@ test('buildAuditTotals summarizes loaded errored and average score', () => {
   assert.equal(buildAuditTotals([repository('error', 0)], []).averageScore, 0);
 });
 
+test('buildAuditTotals clamps unsafe repository scores before averaging', () => {
+  assert.equal(
+    buildAuditTotals([repository('ok', 150), repository('ok', -25), repository('ok', Number.NaN)], []).averageScore,
+    33
+  );
+});
+
 function finding(
   severity: AuditSeverity,
   repo: RepoSlug = 'nullclaw/nullbuilder',
