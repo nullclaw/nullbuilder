@@ -51,6 +51,57 @@ test('buildChildArgs rejects unsafe forwarded arguments before spawning', () => 
   assert.equal(buildChildArgs(paths, Array.from({ length: 129 }, (_, index) => `arg-${index}`), true), null);
 });
 
+test('buildChildArgs rejects hostile forwarded argument array traps', () => {
+  const paths = {
+    bundledCli: '/repo/dist/cli/nullbuilder.js',
+    sourceCli: '/repo/src/cli/nullbuilder.ts'
+  };
+  const hostileLength = new Proxy(['repos'], {
+    get(target, property, receiver) {
+      if (property === 'length') {
+        throw new Error('secret length trap');
+      }
+
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const hostileItem = new Proxy(['repos'], {
+    get(target, property, receiver) {
+      if (property === '0') {
+        throw new Error('secret item trap');
+      }
+
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  assert.equal(buildChildArgs(paths, hostileLength, true), null);
+  assert.equal(buildChildArgs(paths, hostileItem, true), null);
+});
+
+test('buildChildArgs copies forwarded args before prefixing', () => {
+  const paths = {
+    bundledCli: '/repo/dist/cli/nullbuilder.js',
+    sourceCli: '/repo/src/cli/nullbuilder.ts'
+  };
+  let argReads = 0;
+  const args = new Proxy(['repos', '--json'], {
+    get(target, property, receiver) {
+      if (property === '0' || property === '1') {
+        argReads += 1;
+        if (argReads > 2) {
+          throw new Error('forwarded args should not be read after validation');
+        }
+      }
+
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  assert.deepEqual(buildChildArgs(paths, args, true), ['/repo/dist/cli/nullbuilder.js', 'repos', '--json']);
+  assert.equal(argReads, 2);
+});
+
 test('buildChildArgs avoids user-controlled forwarded argument iterators', () => {
   const paths = {
     bundledCli: '/repo/dist/cli/nullbuilder.js',
@@ -243,6 +294,47 @@ test('runLauncher rejects invalid argv without spawning', () => {
   assert.equal(status, 2);
   assert.equal(spawned, false);
   assert.equal(stderr.value, 'Invalid command arguments.\n');
+});
+
+test('runLauncher rejects hostile argv traps without spawning', () => {
+  for (const argv of [
+    new Proxy(['node', 'bin/nullbuilder.js', 'repos'], {
+      get(target, property, receiver) {
+        if (property === 'length') {
+          throw new Error('secret argv length');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    }),
+    new Proxy(['node', 'bin/nullbuilder.js', 'repos'], {
+      get(target, property, receiver) {
+        if (property === '2') {
+          throw new Error('secret argv item');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    })
+  ]) {
+    const stderr = writableBuffer();
+    let spawned = false;
+    const status = runLauncher({
+      argv,
+      moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+      exists: () => true,
+      stderr,
+      spawn: () => {
+        spawned = true;
+        return { status: 0 };
+      }
+    });
+
+    assert.equal(status, 2);
+    assert.equal(spawned, false);
+    assert.equal(stderr.value, 'Invalid command arguments.\n');
+    assert.doesNotMatch(stderr.value, /secret/u);
+  }
 });
 
 test('runLauncher rejects unsafe launcher environment without spawning', () => {

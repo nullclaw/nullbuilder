@@ -22,13 +22,14 @@ export function resolveLauncherPaths(moduleUrl) {
 }
 
 export function buildChildArgs(paths, userArgs, bundledExists = existsSync(paths.bundledCli)) {
-  if (!isSafeChildCliPath(paths.bundledCli) || !isSafeChildCliPath(paths.sourceCli) || !isSafeForwardedArgs(userArgs)) {
+  const forwardedArgs = readSafeForwardedArgs(userArgs);
+  if (!isSafeChildCliPath(paths.bundledCli) || !isSafeChildCliPath(paths.sourceCli) || forwardedArgs === null) {
     return null;
   }
 
   return bundledExists
-    ? prefixedArgs([paths.bundledCli], userArgs)
-    : prefixedArgs(['--import', 'tsx', paths.sourceCli], userArgs);
+    ? prefixedArgs([paths.bundledCli], forwardedArgs)
+    : prefixedArgs(['--import', 'tsx', paths.sourceCli], forwardedArgs);
 }
 
 export function runLauncher({
@@ -67,20 +68,27 @@ export function runLauncher({
   return result.status ?? 1;
 }
 
-function isSafeForwardedArgs(args) {
-  if (!Array.isArray(args)) {
-    return false;
+function readSafeForwardedArgs(args) {
+  const length = readRuntimeArrayLength(args);
+  if (length === null) {
+    return null;
   }
 
-  if (args.length > MAX_FORWARDED_ARG_COUNT) {
-    return false;
+  if (length > MAX_FORWARDED_ARG_COUNT) {
+    return null;
   }
 
+  const forwardedArgs = [];
   let totalBytes = 0;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
+  for (let index = 0; index < length; index += 1) {
+    const entry = readRuntimeArrayItem(args, index);
+    if (!entry.ok) {
+      return null;
+    }
+
+    const arg = entry.value;
     if (typeof arg !== 'string') {
-      return false;
+      return null;
     }
 
     const bytes = Buffer.byteLength(arg);
@@ -89,30 +97,71 @@ function isSafeForwardedArgs(args) {
       bytes > MAX_FORWARDED_ARG_BYTES ||
       !fitsTotalByteBudget(totalBytes, bytes, MAX_FORWARDED_ARGS_TOTAL_BYTES)
     ) {
-      return false;
+      return null;
     }
 
     if (CONTROL_CHARACTER_PATTERN.test(arg) || BIDI_FORMAT_CONTROL_PATTERN.test(arg) || hasLoneSurrogate(arg)) {
-      return false;
+      return null;
     }
 
+    forwardedArgs[forwardedArgs.length] = arg;
     totalBytes += bytes;
   }
 
-  return true;
+  return forwardedArgs;
 }
 
 function readArgTail(args, start) {
-  if (!Array.isArray(args)) {
+  const length = readRuntimeArrayLength(args);
+  if (length === null || !Number.isSafeInteger(start) || start < 0) {
+    return null;
+  }
+
+  const tailLength = Math.max(length - start, 0);
+  if (tailLength > MAX_FORWARDED_ARG_COUNT) {
     return null;
   }
 
   const tail = [];
-  for (let index = start; index < args.length; index += 1) {
-    tail[tail.length] = args[index];
+  for (let index = start; index < length; index += 1) {
+    const entry = readRuntimeArrayItem(args, index);
+    if (!entry.ok) {
+      return null;
+    }
+
+    tail[tail.length] = entry.value;
   }
 
   return tail;
+}
+
+function readRuntimeArrayLength(value) {
+  if (!isRuntimeArray(value)) {
+    return null;
+  }
+
+  try {
+    const length = value.length;
+    return Number.isSafeInteger(length) && length >= 0 ? length : null;
+  } catch {
+    return null;
+  }
+}
+
+function readRuntimeArrayItem(values, index) {
+  try {
+    return { ok: true, value: values[index] };
+  } catch {
+    return { ok: false, value: null };
+  }
+}
+
+function isRuntimeArray(value) {
+  try {
+    return Array.isArray(value);
+  } catch {
+    return false;
+  }
 }
 
 function prefixedArgs(prefix, userArgs) {
