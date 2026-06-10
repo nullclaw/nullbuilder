@@ -356,11 +356,7 @@ async function toGitHubApiError(response: Response): Promise<GitHubApiError> {
 }
 
 async function readResponseJson<T>(response: Response): Promise<T> {
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return parseGitHubResponseJson<T>(await readBoundedResponseText(response, GITHUB_JSON_RESPONSE_MAX_BYTES));
+  return readLimitedResponseJson<T>(response, GITHUB_JSON_RESPONSE_MAX_BYTES);
 }
 
 function parseGitHubResponseJson<T>(body: string): T {
@@ -373,7 +369,7 @@ function parseGitHubResponseJson<T>(body: string): T {
 
 async function readErrorDetail(response: Response): Promise<string> {
   try {
-    const body: unknown = JSON.parse(await readBoundedResponseText(response, GITHUB_ERROR_RESPONSE_MAX_BYTES));
+    const body = await readLimitedResponseJson<unknown>(response, GITHUB_ERROR_RESPONSE_MAX_BYTES);
     if (!isGitHubErrorPayload(body)) {
       return '';
     }
@@ -383,6 +379,14 @@ async function readErrorDetail(response: Response): Promise<string> {
   } catch {
     return '';
   }
+}
+
+async function readLimitedResponseJson<T>(response: Response, maxBytes: number): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return parseGitHubResponseJson<T>(await readBoundedResponseText(response, maxBytes));
 }
 
 async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string> {

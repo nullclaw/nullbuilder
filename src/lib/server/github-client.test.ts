@@ -1432,6 +1432,29 @@ test('githubRequest ignores non-string GitHub error messages', async () => {
   );
 });
 
+test('githubRequest ignores malformed GitHub error detail JSON', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://malformed-error-detail.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () =>
+    new Response('{"message":"private upstream detail",', {
+      status: 500,
+      statusText: 'Server Error'
+    })) as typeof fetch;
+
+  await assert.rejects(
+    githubRequest(config, '/repos/nullclaw/nullbuilder'),
+    (error: unknown) =>
+      error instanceof GitHubApiError &&
+      error.status === 500 &&
+      error.message === 'GitHub 500 Server Error' &&
+      !error.message.includes('private upstream detail')
+  );
+});
+
 test('githubRequest rejects unsafe GitHub error detail text', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
