@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import {
   collectRecentWorkItems,
   compareByUpdatedAtDesc,
@@ -12,6 +12,62 @@ import {
 type TestWorkItem = WorkItemWithUpdatedAt & {
   id: number;
 };
+
+const originalArrayPush = Array.prototype.push;
+const originalArraySplice = Array.prototype.splice;
+
+afterEach(() => {
+  restoreArrayMutationMethods();
+});
+
+function restoreArrayMutationMethods(): void {
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value: originalArrayPush
+  });
+  Object.defineProperty(Array.prototype, 'splice', {
+    configurable: true,
+    writable: true,
+    value: originalArraySplice
+  });
+}
+
+function withGuardedArrayMutationMethods<T>(callback: () => T): {
+  result: T;
+  pushCalls: number;
+  spliceCalls: number;
+} {
+  let pushCalls = 0;
+  let spliceCalls = 0;
+
+  Object.defineProperty(Array.prototype, 'push', {
+    configurable: true,
+    writable: true,
+    value() {
+      pushCalls += 1;
+      throw new Error('Array.prototype.push should not be called');
+    }
+  });
+  Object.defineProperty(Array.prototype, 'splice', {
+    configurable: true,
+    writable: true,
+    value() {
+      spliceCalls += 1;
+      throw new Error('Array.prototype.splice should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      pushCalls,
+      spliceCalls
+    };
+  } finally {
+    restoreArrayMutationMethods();
+  }
+}
 
 test('RecentWorkItemCollector keeps the newest bounded rows with stable timestamp ties', () => {
   const collector = new RecentWorkItemCollector<TestWorkItem>(3);
@@ -61,6 +117,23 @@ test('recent work item collectors avoid user-controlled array iterators', () => 
   );
 
   assert.deepEqual(collectRecentWorkItems(items, 2).map(({ id }) => id), [2, 1]);
+});
+
+test('recent work item collectors avoid global array mutation hooks', () => {
+  const items = [
+    workItem(1, '2026-06-09T00:00:00Z'),
+    workItem(2, '2026-06-09T00:03:00Z'),
+    workItem(3, '2026-06-09T00:02:00Z'),
+    workItem(4, '2026-06-09T00:04:00Z')
+  ];
+
+  const { result, pushCalls, spliceCalls } = withGuardedArrayMutationMethods(() =>
+    collectRecentWorkItems(items, 3)
+  );
+
+  assert.equal(pushCalls, 0);
+  assert.equal(spliceCalls, 0);
+  assert.deepEqual(result.map(({ id }) => id), [4, 2, 3]);
 });
 
 test('recent work item helpers reject unsafe limits', () => {

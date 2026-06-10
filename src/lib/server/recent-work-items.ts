@@ -43,7 +43,7 @@ export class RecentWorkItemCollector<T extends WorkItemWithUpdatedAt> {
   items(): T[] {
     const items: T[] = [];
     for (let index = 0; index < this.rankedItems.length; index += 1) {
-      items.push(this.rankedItems[index].item);
+      items[index] = this.rankedItems[index].item;
     }
 
     return items;
@@ -105,7 +105,21 @@ function insertRecentWorkItem<T extends WorkItemWithUpdatedAt>(
     }
   }
 
-  items.splice(lower, 0, item);
+  insertRankedWorkItemAt(items, lower, item, maxItems);
+}
+
+function insertRankedWorkItemAt<T extends WorkItemWithUpdatedAt>(
+  items: RankedRecentWorkItem<T>[],
+  index: number,
+  item: RankedRecentWorkItem<T>,
+  maxItems: number
+): void {
+  const nextLength = Math.min(items.length + 1, maxItems);
+  for (let shiftIndex = nextLength - 1; shiftIndex > index; shiftIndex -= 1) {
+    items[shiftIndex] = items[shiftIndex - 1];
+  }
+
+  items[index] = item;
   if (items.length > maxItems) {
     items.length = maxItems;
   }
