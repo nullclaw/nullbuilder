@@ -59,8 +59,8 @@
       <span>
         {buildPrResultMessage(form.buildResult)}
       </span>
-      <a href={form.buildResult.tagUrl} target="_blank" rel="noreferrer">Open</a>
-      <a href={form.buildResult.workflowUrl} target="_blank" rel="noreferrer">Runs</a>
+      <a href={form.buildResult.tagUrl} target="_blank" rel="noopener noreferrer">Open</a>
+      <a href={form.buildResult.workflowUrl} target="_blank" rel="noopener noreferrer">Runs</a>
     </div>
   {/if}
 
@@ -129,8 +129,8 @@
       <span>
         {releaseResultMessage(form.releaseResult)}
       </span>
-      <a href={form.releaseResult.tagUrl} target="_blank" rel="noreferrer">Open</a>
-      <a href={form.releaseResult.workflowUrl} target="_blank" rel="noreferrer">Runs</a>
+      <a href={form.releaseResult.tagUrl} target="_blank" rel="noopener noreferrer">Open</a>
+      <a href={form.releaseResult.workflowUrl} target="_blank" rel="noopener noreferrer">Runs</a>
     </div>
   {/if}
 

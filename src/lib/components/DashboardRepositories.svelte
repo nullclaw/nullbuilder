@@ -30,7 +30,13 @@
           <h2>{repo.name}</h2>
           <p>{repo.description || repo.fullName}</p>
         </div>
-        <a class="repo-link" href={repo.url} target="_blank" rel="noreferrer" aria-label="Open {repo.fullName}">
+        <a
+          class="repo-link"
+          href={repo.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open {repo.fullName}"
+        >
           <ExternalLink size={17} />
         </a>
       </header>
@@ -53,7 +59,7 @@
             class={workflowRunClass(repo.latestRuns.ci)}
             href={repo.latestRuns.ci?.url ?? repo.url}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
           >
             <CheckCircle2 size={15} />
             <span>CI</span>
@@ -63,7 +69,7 @@
             class={workflowRunClass(repo.latestRuns.nightly)}
             href={repo.latestRuns.nightly?.url ?? repo.url}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
           >
             <RefreshCw size={15} />
             <span>Nightly</span>
@@ -73,7 +79,7 @@
             class={workflowRunClass(repo.latestRuns.release)}
             href={repo.latestRuns.release?.url ?? repo.url}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
           >
             <Tags size={15} />
             <span>Release</span>

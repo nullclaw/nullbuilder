@@ -25,7 +25,7 @@
     <span class:ok={authenticated || hasToken} class="token-state">
       {tokenState}
     </span>
-    <a class="icon-button" href={ownerUrl} target="_blank" rel="noreferrer">
+    <a class="icon-button" href={ownerUrl} target="_blank" rel="noopener noreferrer">
       <ExternalLink size={17} />
       <span>GitHub</span>
     </a>

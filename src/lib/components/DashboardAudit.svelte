@@ -26,7 +26,13 @@
 
     <div class="audit-table">
       {#each repositories as repo}
-        <a class:error={repo.status === 'error'} class="audit-row" href={repo.url} target="_blank" rel="noreferrer">
+        <a
+          class:error={repo.status === 'error'}
+          class="audit-row"
+          href={repo.url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <ShieldCheck size={16} />
           <span class="audit-repo">{repo.repo}</span>
           <strong>{repo.score}</strong>
@@ -43,7 +49,7 @@
           class="audit-finding {finding.severity}"
           href={finding.url ?? repositoryUrls.get(finding.repo) ?? '#audit'}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
         >
           <AlertTriangle size={16} />
           <span class="finding-severity">{finding.severity}</span>
