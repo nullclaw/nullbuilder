@@ -4,15 +4,12 @@ import type { NullbuilderConfig } from './config';
 import { githubRequest } from './github-client';
 import type { StarGrowthSummary } from './github-dashboard-types';
 import { safeNonNegativeInteger } from '../number-safety';
+import { readBoundedArray, readObjectRecord } from '../record-safety';
 
 export const STAR_PAGE_SIZE = 100;
 const MAX_STAR_PAGES_TO_SCAN = 10;
 const MAX_STARGAZER_TIMESTAMP_LENGTH = 64;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-type GitHubStargazerResponse = {
-  starred_at?: string;
-};
 
 export async function getStarGrowth(
   config: NullbuilderConfig,
@@ -74,7 +71,7 @@ async function fetchStarGrowth(
     let pageHasRecentStars = false;
 
     for (const star of stargazers) {
-      const age = starAgeMs(star.starred_at, now);
+      const age = starAgeMs(readObjectRecord(star)?.starred_at, now);
       if (age === null) {
         continue;
       }
@@ -114,8 +111,8 @@ function starAgeMs(starredAt: unknown, now: number): number | null {
   return age >= 0 ? age : null;
 }
 
-function safeStargazerPage(value: unknown): GitHubStargazerResponse[] {
-  return Array.isArray(value) ? value.slice(0, STAR_PAGE_SIZE) : [];
+function safeStargazerPage(value: unknown): unknown[] {
+  return readBoundedArray(value, STAR_PAGE_SIZE);
 }
 
 function safeCurrentStars(value: number): number | null {

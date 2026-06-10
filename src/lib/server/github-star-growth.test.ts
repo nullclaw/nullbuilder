@@ -113,7 +113,9 @@ test('getStarGrowth rejects unsafe and non-UTC stargazer timestamps', async () =
       { starred_at: '2026-06-03' },
       { starred_at: '2026-06-04T00:00:00+00:00' },
       { starred_at: '2026-02-29T00:00:00Z' },
-      { starred_at: 123 }
+      { starred_at: 123 },
+      null,
+      '2026-06-08T00:00:00Z'
     ])) as typeof fetch;
 
   assert.deepEqual(await getStarGrowth(config, REPO, 1, now), {

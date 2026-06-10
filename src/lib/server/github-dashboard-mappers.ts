@@ -1,6 +1,6 @@
 import type { RepoSlug } from '../repositories';
 import { safeUtcTimestampText } from '../date-safety';
-import { readObjectRecord } from '../record-safety';
+import { readArray, readBoundedArray, readObjectRecord } from '../record-safety';
 import { sanitizeText } from '../text-safety';
 import type {
   GitHubLabel,
@@ -45,8 +45,8 @@ export function mapRepositorySummary(
   webBaseUrl = 'https://github.com'
 ): RepositorySummary {
   const urlContext = githubRepositoryUrlContext(webBaseUrl, repo, safeString(repository.html_url));
-  const openIssues = mapIssueSummaries(repo, safeArray(issues), urlContext);
-  const pullRequests = mapPullRequestSummaries(repo, safeArray(pulls), urlContext);
+  const openIssues = mapIssueSummaries(repo, readArray(issues), urlContext);
+  const pullRequests = mapPullRequestSummaries(repo, readArray(pulls), urlContext);
   const [fallbackOwner, fallbackName] = repo.split('/');
 
   return {
@@ -69,7 +69,7 @@ export function mapRepositorySummary(
     issues: openIssues.items,
     pullRequests: pullRequests.items,
     starGrowth,
-    latestRuns: mapLatestRunsForRepository(safeArray(workflowRuns), urlContext),
+    latestRuns: mapLatestRunsForRepository(readArray(workflowRuns), urlContext),
     status: 'ok'
   };
 }
@@ -124,7 +124,7 @@ function collectBoundedWorkItems<Input, Output extends IssueSummary | PullReques
 }
 
 export function mapLatestRuns(runs: unknown): RepositoryLatestRuns {
-  return mapLatestRunsForRepository(safeArray(runs), EMPTY_GITHUB_WEB_URL_CONTEXT);
+  return mapLatestRunsForRepository(readArray(runs), EMPTY_GITHUB_WEB_URL_CONTEXT);
 }
 
 function mapLatestRunsForRepository(
@@ -207,17 +207,12 @@ function mapPullRequest(
 }
 
 function mapLabels(labels: unknown): GitHubLabel[] {
-  if (!Array.isArray(labels)) {
-    return [];
-  }
-
   const mapped: GitHubLabel[] = [];
 
-  const scanCount = Math.min(labels.length, MAX_LABELS_TO_SCAN);
-
-  for (let index = 0; index < scanCount && mapped.length < MAX_LABELS_PER_WORK_ITEM; index += 1) {
-    const label = labels[index];
-
+  for (const label of readBoundedArray(labels, MAX_LABELS_TO_SCAN)) {
+    if (mapped.length >= MAX_LABELS_PER_WORK_ITEM) {
+      break;
+    }
     if (typeof label === 'string') {
       mapped.push({
         name: safeLabelName(label),
@@ -313,10 +308,9 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
     nightly: null,
     release: null
   };
-  const runCount = Math.min(runs.length, MAX_WORKFLOW_RUNS_PER_REPOSITORY);
 
-  for (let index = 0; index < runCount; index += 1) {
-    const runObject = readObjectRecord(runs[index]);
+  for (const run of readBoundedArray(runs, MAX_WORKFLOW_RUNS_PER_REPOSITORY)) {
+    const runObject = readObjectRecord(run);
     if (!runObject) {
       continue;
     }
@@ -378,10 +372,6 @@ function mapRun(value: unknown, urlContext: GitHubWebUrlContext): WorkflowRunSum
     createdAt: safeTimestamp(run.created_at),
     updatedAt: safeTimestamp(run.updated_at)
   };
-}
-
-function safeArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function safeObjectText(value: unknown, key: string, fallback: string): string {
