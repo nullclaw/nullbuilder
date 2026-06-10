@@ -193,6 +193,46 @@ test('githubRequest reuses fresh cached GET responses', async () => {
   assert.deepEqual(requests, ['https://cache.example.test/repos/nullclaw/nullbuilder']);
 });
 
+test('githubRequest keeps cached responses isolated by GitHub token', async () => {
+  const baseEnv = {
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://token-cache.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  };
+  const firstConfig = readConfig({
+    ...baseEnv,
+    NULLBUILDER_GITHUB_TOKEN: 'github-token-a'
+  });
+  const secondConfig = readConfig({
+    ...baseEnv,
+    NULLBUILDER_GITHUB_TOKEN: 'github-token-b'
+  });
+  const requests: Array<{ url: string; authorization: string | null }> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      authorization: new Headers(init?.headers).get('Authorization')
+    });
+    return new Response(JSON.stringify({ id: requests.length }));
+  }) as typeof fetch;
+
+  assert.deepEqual(await githubRequest<{ id: number }>(firstConfig, '/repos/nullclaw/nullbuilder'), { id: 1 });
+  assert.deepEqual(await githubRequest<{ id: number }>(secondConfig, '/repos/nullclaw/nullbuilder'), { id: 2 });
+  assert.deepEqual(await githubRequest<{ id: number }>(firstConfig, '/repos/nullclaw/nullbuilder'), { id: 1 });
+
+  assert.deepEqual(requests, [
+    {
+      url: 'https://token-cache.example.test/repos/nullclaw/nullbuilder',
+      authorization: 'Bearer github-token-a'
+    },
+    {
+      url: 'https://token-cache.example.test/repos/nullclaw/nullbuilder',
+      authorization: 'Bearer github-token-b'
+    }
+  ]);
+});
+
 test('githubRequest shares in-flight cacheable GET responses', async () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',

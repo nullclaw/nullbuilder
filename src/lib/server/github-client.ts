@@ -470,7 +470,7 @@ export function publicErrorMessage(error: unknown): string {
 }
 
 function cacheKey(config: NullbuilderConfig, url: string, accept: string): string {
-  const tokenKey = config.token ? createHash('sha256').update(config.token).digest('hex').slice(0, 12) : 'anonymous';
+  const tokenKey = config.token ? createHash('sha256').update(config.token).digest('hex') : 'anonymous';
   return `${config.apiBaseUrl}|${tokenKey}|${accept}|${url}`;
 }
 
