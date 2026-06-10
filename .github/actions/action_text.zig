@@ -6,8 +6,6 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
     var written: usize = 0;
     var index: usize = 0;
     while (index < value.len) {
-        if (written >= buffer.len) break;
-
         const byte = value[index];
         if (byte == ascii_escape) {
             index = skipAnsiEscape(value, index);
@@ -15,13 +13,27 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
         }
 
         if (isUtf8C1Control(value, index)) {
+            if (written >= buffer.len) break;
             buffer[written] = ' ';
             index += 2;
-        } else {
-            buffer[written] = if (isControlByte(byte)) ' ' else byte;
-            index += 1;
+            written += 1;
+            continue;
         }
-        written += 1;
+
+        if (isControlByte(byte)) {
+            if (written >= buffer.len) break;
+            buffer[written] = ' ';
+            index += 1;
+            written += 1;
+            continue;
+        }
+
+        const sequence_len = utf8SequenceLength(value, index);
+        if (sequence_len > buffer.len - written) break;
+
+        @memcpy(buffer[written..][0..sequence_len], value[index..][0..sequence_len]);
+        written += sequence_len;
+        index += sequence_len;
     }
 
     return buffer[0..written];
@@ -48,6 +60,30 @@ pub fn isControlByte(byte: u8) bool {
 
 pub fn isUtf8C1Control(value: []const u8, index: usize) bool {
     return value[index] == 0xc2 and index + 1 < value.len and value[index + 1] >= 0x80 and value[index + 1] <= 0x9f;
+}
+
+fn utf8SequenceLength(value: []const u8, index: usize) usize {
+    const byte = value[index];
+    if (byte < 0x80) return 1;
+
+    const expected_len: usize = if (byte & 0b1110_0000 == 0b1100_0000)
+        2
+    else if (byte & 0b1111_0000 == 0b1110_0000)
+        3
+    else if (byte & 0b1111_1000 == 0b1111_0000)
+        4
+    else
+        return 1;
+
+    if (index + expected_len > value.len) return 1;
+    for (value[index + 1 .. index + expected_len]) |continuation| {
+        if (!isUtf8ContinuationByte(continuation)) return 1;
+    }
+    return expected_len;
+}
+
+fn isUtf8ContinuationByte(byte: u8) bool {
+    return byte & 0b1100_0000 == 0b1000_0000;
 }
 
 fn skipAnsiEscape(value: []const u8, start: usize) usize {
@@ -107,6 +143,16 @@ test "action text sanitizes diagnostic tokens without echoing controls" {
 
     var short_buffer: [4]u8 = undefined;
     try std.testing.expectEqualStrings("abcd", sanitizeDiagnosticToken("abcdef", &short_buffer));
+}
+
+test "action text bounds diagnostic tokens without splitting UTF-8 sequences" {
+    const text = "repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82";
+
+    var partial_buffer: [6]u8 = undefined;
+    try std.testing.expectEqualStrings("repo-", sanitizeDiagnosticToken(text, &partial_buffer));
+
+    var complete_buffer: [7]u8 = undefined;
+    try std.testing.expectEqualStrings("repo-\xd0\xbf", sanitizeDiagnosticToken(text, &complete_buffer));
 }
 
 test "action text keeps URL authority ASCII control checks explicit" {
