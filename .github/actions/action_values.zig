@@ -225,6 +225,15 @@ const HostPort = struct {
     port: ?[]const u8 = null,
 };
 
+const AuthorityForm = enum {
+    bracketed_host,
+    plain_host,
+
+    fn fromAuthority(authority: []const u8) AuthorityForm {
+        return if (std.mem.startsWith(u8, authority, "[")) .bracketed_host else .plain_host;
+    }
+};
+
 fn isHttpAuthority(authority: []const u8) bool {
     if (authority.len == 0) return false;
 
@@ -260,19 +269,26 @@ fn isAllowedHttpAuthority(scheme: HttpScheme, authority: []const u8) bool {
 }
 
 fn splitHostPort(authority: []const u8) ?HostPort {
-    if (std.mem.startsWith(u8, authority, "[")) {
-        const close = std.mem.indexOfScalar(u8, authority, ']') orelse return null;
-        const host = authority[0 .. close + 1];
-        const tail = authority[close + 1 ..];
+    return switch (AuthorityForm.fromAuthority(authority)) {
+        .bracketed_host => splitBracketedHostPort(authority),
+        .plain_host => splitPlainHostPort(authority),
+    };
+}
 
-        if (tail.len == 0) return .{ .host = host };
-        if (tail[0] != ':') return null;
-        return .{
-            .host = host,
-            .port = tail[1..],
-        };
-    }
+fn splitBracketedHostPort(authority: []const u8) ?HostPort {
+    const close = std.mem.indexOfScalar(u8, authority, ']') orelse return null;
+    const host = authority[0 .. close + 1];
+    const tail = authority[close + 1 ..];
 
+    if (tail.len == 0) return .{ .host = host };
+    if (tail[0] != ':') return null;
+    return .{
+        .host = host,
+        .port = tail[1..],
+    };
+}
+
+fn splitPlainHostPort(authority: []const u8) ?HostPort {
     const separator = std.mem.lastIndexOfScalar(u8, authority, ':') orelse return .{ .host = authority };
     const host = authority[0..separator];
     if (std.mem.indexOfScalar(u8, host, ':') != null) return null;
@@ -706,6 +722,31 @@ test "action values classify HTTP hosts and exact GitHub authority" {
     try std.testing.expect(!isGitHubDotComAuthority("GitHub.com"));
     try std.testing.expect(!isGitHubDotComAuthority("github.com:443"));
     try std.testing.expect(!isGitHubDotComAuthority("github.com.evil.example"));
+}
+
+test "action values split HTTP authority forms explicitly" {
+    try std.testing.expectEqual(AuthorityForm.plain_host, AuthorityForm.fromAuthority("github.com:443"));
+    try std.testing.expectEqual(AuthorityForm.bracketed_host, AuthorityForm.fromAuthority("[::1]:8080"));
+
+    const plain = splitHostPort("github.com:443") orelse return error.ExpectedAuthority;
+    try std.testing.expectEqualStrings("github.com", plain.host);
+    try std.testing.expectEqualStrings("443", plain.port.?);
+
+    const plain_without_port = splitHostPort("github.com") orelse return error.ExpectedAuthority;
+    try std.testing.expectEqualStrings("github.com", plain_without_port.host);
+    try std.testing.expect(plain_without_port.port == null);
+
+    const bracketed = splitHostPort("[::1]:8080") orelse return error.ExpectedAuthority;
+    try std.testing.expectEqualStrings("[::1]", bracketed.host);
+    try std.testing.expectEqualStrings("8080", bracketed.port.?);
+
+    const bracketed_without_port = splitHostPort("[::1]") orelse return error.ExpectedAuthority;
+    try std.testing.expectEqualStrings("[::1]", bracketed_without_port.host);
+    try std.testing.expect(bracketed_without_port.port == null);
+
+    try std.testing.expect(splitHostPort("[::1") == null);
+    try std.testing.expect(splitHostPort("[::1]evil") == null);
+    try std.testing.expect(splitHostPort("github.com:443:evil") == null);
 }
 
 test "action values validate metadata tokens" {
