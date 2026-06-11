@@ -12,11 +12,18 @@ const MAX_STARGAZER_TIMESTAMP_LENGTH = 64;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_NOW = Date.now.bind(Date) as typeof Date.now;
 
+type StarGrowthJsonParser = (body: string) => unknown;
+
+export type StarGrowthOptions = {
+  now?: unknown;
+  jsonParser?: StarGrowthJsonParser;
+};
+
 export async function getStarGrowth(
   config: NullbuilderConfig,
   repo: RepoSlug,
   currentStars: number,
-  now: unknown = DATE_NOW()
+  options: StarGrowthOptions = {}
 ): Promise<StarGrowthSummary> {
   const current = safeCurrentStars(currentStars);
   if (current === null) {
@@ -31,13 +38,14 @@ export async function getStarGrowth(
     };
   }
 
+  const now = options.now === undefined ? DATE_NOW() : options.now;
   const nowMs = safeClockMillis(now);
   if (nowMs === null) {
     return unknownStarGrowth(current);
   }
 
   try {
-    return await fetchStarGrowth(config, repo, current, nowMs);
+    return await fetchStarGrowth(config, repo, current, nowMs, options.jsonParser);
   } catch {
     return unknownStarGrowth(current);
   }
@@ -47,7 +55,8 @@ async function fetchStarGrowth(
   config: NullbuilderConfig,
   repo: RepoSlug,
   currentStars: number,
-  now: number
+  now: number,
+  jsonParser: StarGrowthJsonParser | undefined
 ): Promise<StarGrowthSummary> {
   const lastPage = Math.max(1, Math.ceil(currentStars / STAR_PAGE_SIZE));
   let last7Days = 0;
@@ -62,7 +71,8 @@ async function fetchStarGrowth(
       config,
       `/repos/${repo}/stargazers?per_page=${STAR_PAGE_SIZE}&page=${page}`,
       {
-        accept: 'application/vnd.github.star+json'
+        accept: 'application/vnd.github.star+json',
+        jsonParser
       }
     );
     const stargazers = safeStargazerPage(stargazersResponse);

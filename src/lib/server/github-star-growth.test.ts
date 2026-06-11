@@ -6,14 +6,12 @@ import { getStarGrowth, STAR_PAGE_SIZE } from './github-star-growth';
 
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
-const originalJsonParse = JSON.parse;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const REPO = 'nullclaw/nullbuilder' as RepoSlug;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
-  JSON.parse = originalJsonParse;
   Array.prototype[Symbol.iterator] = originalArrayIterator;
 });
 
@@ -43,7 +41,7 @@ test('getStarGrowth scans recent stargazer pages and stops at old pages', async 
     return jsonResponse([{ starred_at: '2026-04-01T00:00:00Z' }]);
   }) as typeof fetch;
 
-  const growth = await getStarGrowth(config, REPO, 250, now);
+  const growth = await getStarGrowth(config, REPO, 250, { now });
 
   assert.deepEqual(growth, {
     current: 250,
@@ -116,12 +114,17 @@ test('getStarGrowth treats unsafe clocks as unknown deltas without fetching', as
     return jsonResponse([{ starred_at: '2026-06-08T00:00:00Z' }]);
   }) as typeof fetch;
 
-  assert.deepEqual(await getStarGrowth(config, REPO, 12, Number.MAX_SAFE_INTEGER + 1), {
+  assert.deepEqual(await getStarGrowth(config, REPO, 12, { now: Number.MAX_SAFE_INTEGER + 1 }), {
     current: 12,
     last7Days: null,
     last30Days: null
   });
-  assert.deepEqual(await getStarGrowth(config, REPO, 12, Number.NaN), {
+  assert.deepEqual(await getStarGrowth(config, REPO, 12, { now: Number.NaN }), {
+    current: 12,
+    last7Days: null,
+    last30Days: null
+  });
+  assert.deepEqual(await getStarGrowth(config, REPO, 12, { now: null }), {
     current: 12,
     last7Days: null,
     last30Days: null
@@ -171,7 +174,7 @@ test('getStarGrowth rejects unsafe and non-UTC stargazer timestamps', async () =
       '2026-06-08T00:00:00Z'
     ])) as typeof fetch;
 
-  assert.deepEqual(await getStarGrowth(config, REPO, 1, now), {
+  assert.deepEqual(await getStarGrowth(config, REPO, 1, { now }), {
     current: 1,
     last7Days: 1,
     last30Days: 1
@@ -193,7 +196,7 @@ test('getStarGrowth bounds oversized stargazer pages to the API page size', asyn
       }))
     )) as typeof fetch;
 
-  assert.deepEqual(await getStarGrowth(config, REPO, STAR_PAGE_SIZE, now), {
+  assert.deepEqual(await getStarGrowth(config, REPO, STAR_PAGE_SIZE, { now }), {
     current: STAR_PAGE_SIZE,
     last7Days: STAR_PAGE_SIZE,
     last30Days: STAR_PAGE_SIZE
@@ -211,6 +214,11 @@ test('getStarGrowth avoids global array iterators when scanning stargazer pages'
   const throwingIterator: typeof originalArrayIterator = function iteratorShouldNotBeCalled() {
     throw new Error('Array.prototype iterator should not be called');
   };
+  const jsonParser = (body: string): unknown => {
+    const parsed: unknown = JSON.parse(body);
+    Array.prototype[Symbol.iterator] = throwingIterator;
+    return parsed;
+  };
   let growth: unknown;
 
   globalThis.fetch = (async () =>
@@ -219,16 +227,9 @@ test('getStarGrowth avoids global array iterators when scanning stargazer pages'
         'Content-Type': 'application/json'
       }
     })) as typeof fetch;
-  JSON.parse = ((text, reviver) => {
-    const parsed: unknown = originalJsonParse(text, reviver);
-    Array.prototype[Symbol.iterator] = throwingIterator;
-    return parsed;
-  }) as typeof JSON.parse;
-
   try {
-    growth = await getStarGrowth(config, REPO, 1, now);
+    growth = await getStarGrowth(config, REPO, 1, { now, jsonParser });
   } finally {
-    JSON.parse = originalJsonParse;
     Array.prototype[Symbol.iterator] = originalArrayIterator;
   }
 
