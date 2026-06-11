@@ -233,20 +233,36 @@ fn hasWindowsDrivePrefix(value: []const u8) bool {
 }
 
 fn isSafeForwardedArgs(args: []const []const u8) bool {
-    return arg_safety.isSafeArgVector(args, .{
+    return classifyForwardedArgs(args).accepts();
+}
+
+fn classifyForwardedArgs(args: []const []const u8) arg_safety.ArgVectorValidation {
+    return arg_safety.classifyArgVector(args, forwardedArgPolicy(), hasArgumentControl);
+}
+
+fn forwardedArgPolicy() arg_safety.ArgVectorPolicy {
+    return .{
         .max_count = max_forwarded_arg_count,
         .max_arg_bytes = max_forwarded_arg_bytes,
         .max_total_bytes = max_forwarded_args_total_bytes,
         .allow_empty_vector = false,
-    }, hasArgumentControl);
+    };
 }
 
 fn isSafeAppArgs(args: []const []const u8) bool {
-    return arg_safety.isSafeArgVector(args, .{
+    return classifyAppArgs(args).accepts();
+}
+
+fn classifyAppArgs(args: []const []const u8) arg_safety.ArgVectorValidation {
+    return arg_safety.classifyArgVector(args, appArgPolicy(), hasArgumentControl);
+}
+
+fn appArgPolicy() arg_safety.ArgVectorPolicy {
+    return .{
         .max_count = max_app_arg_count,
         .max_arg_bytes = max_app_arg_bytes,
         .max_total_bytes = max_app_args_total_bytes,
-    }, hasArgumentControl);
+    };
 }
 
 fn hasArgumentControl(value: []const u8) bool {
@@ -545,6 +561,23 @@ test "forwarded tag arguments are bounded before spawning node" {
     try std.testing.expect(!isSafeForwardedArgs(&.{ "build-pr", "bad\xc2\x85repo" }));
 }
 
+test "forwarded tag argument validation classifies rejection reasons" {
+    const max_arg = [_]u8{'a'} ** max_forwarded_arg_bytes;
+    const oversized_arg = [_]u8{'a'} ** (max_forwarded_arg_bytes + 1);
+    const too_much_total = [_][]const u8{max_arg[0..]} ** 17;
+    const too_many_args = [_][]const u8{"--flag"} ** (max_forwarded_arg_count + 1);
+
+    try expectForwardedArgsValidation(.safe, &.{ "build-pr", "nullclaw/nullbuilder", "--pr", "7" });
+    try expectForwardedArgsValidation(.empty_vector, &.{});
+    try expectForwardedArgsValidation(.empty_arg, &.{ "build-pr", "" });
+    try expectForwardedArgsValidation(.too_many_args, too_many_args[0..]);
+    try expectForwardedArgsValidation(.arg_too_large, &.{ "build-pr", oversized_arg[0..] });
+    try expectForwardedArgsValidation(.total_bytes_exceeded, too_much_total[0..]);
+    try expectForwardedArgsValidation(.unsafe_text, &.{ "build-pr", "bad\nrepo" });
+
+    try std.testing.expectEqual(arg_safety.ArgPolicyValidation.safe, arg_safety.classifyArgVectorPolicy(forwardedArgPolicy()));
+}
+
 test "node cli argv uses caller owned bounded storage" {
     var buffer: [max_node_cli_arg_count][]const u8 = undefined;
     const argv = buildNodeCliArgv(&buffer, "./bin/nullbuilder.js", &.{
@@ -585,6 +618,23 @@ test "top-level app arguments are bounded before command classification" {
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\ncommand" }));
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\xc2\x85command" }));
     try std.testing.expect(!isSafeAppArgs(&.{ "nullbuilder-tui", "bad\xe2\x80\xaecommand" }));
+}
+
+test "top-level app argument validation classifies rejection reasons" {
+    const max_arg = [_]u8{'a'} ** max_app_arg_bytes;
+    const oversized_arg = [_]u8{'a'} ** (max_app_arg_bytes + 1);
+    const too_much_total = [_][]const u8{max_arg[0..]} ** 18;
+    const too_many_args = [_][]const u8{"--flag"} ** (max_app_arg_count + 1);
+
+    try expectAppArgsValidation(.safe, &.{});
+    try expectAppArgsValidation(.safe, &.{ "nullbuilder-tui", "--help" });
+    try expectAppArgsValidation(.empty_arg, &.{ "nullbuilder-tui", "" });
+    try expectAppArgsValidation(.too_many_args, too_many_args[0..]);
+    try expectAppArgsValidation(.arg_too_large, &.{ "nullbuilder-tui", oversized_arg[0..] });
+    try expectAppArgsValidation(.total_bytes_exceeded, too_much_total[0..]);
+    try expectAppArgsValidation(.unsafe_text, &.{ "nullbuilder-tui", "bad\ncommand" });
+
+    try std.testing.expectEqual(arg_safety.ArgPolicyValidation.safe, arg_safety.classifyArgVectorPolicy(appArgPolicy()));
 }
 
 test "help command returns before validating node cli path" {
@@ -640,4 +690,18 @@ test "run rejects unsafe top-level arguments before command handling" {
 
     try std.testing.expectEqual(@as(?u8, 2), exit_code);
     try std.testing.expectEqualStrings("invalid command arguments\n", out.writer.buffered());
+}
+
+fn expectForwardedArgsValidation(
+    expected: arg_safety.ArgVectorValidation,
+    args: []const []const u8,
+) !void {
+    try std.testing.expectEqual(expected, classifyForwardedArgs(args));
+}
+
+fn expectAppArgsValidation(
+    expected: arg_safety.ArgVectorValidation,
+    args: []const []const u8,
+) !void {
+    try std.testing.expectEqual(expected, classifyAppArgs(args));
 }
