@@ -11,14 +11,41 @@ pub const ArgVectorPolicy = struct {
     allow_empty_vector: bool = true,
     allow_empty_args: bool = false,
 
-    fn isSafe(self: ArgVectorPolicy) bool {
-        return self.max_count > 0 and
-            self.max_count <= max_supported_arg_count and
-            self.max_arg_bytes > 0 and
-            self.max_arg_bytes <= max_supported_arg_bytes and
-            self.max_total_bytes > 0 and
-            self.max_total_bytes <= max_supported_args_total_bytes and
-            self.max_arg_bytes <= self.max_total_bytes;
+    fn normalized(self: ArgVectorPolicy) ?ValidatedArgVectorPolicy {
+        if (self.max_count == 0 or self.max_count > max_supported_arg_count) return null;
+        if (self.max_arg_bytes == 0 or self.max_arg_bytes > max_supported_arg_bytes) return null;
+        if (self.max_total_bytes == 0 or self.max_total_bytes > max_supported_args_total_bytes) return null;
+        if (self.max_arg_bytes > self.max_total_bytes) return null;
+
+        return .{
+            .max_count = self.max_count,
+            .max_arg_bytes = self.max_arg_bytes,
+            .max_total_bytes = self.max_total_bytes,
+            .allow_empty_vector = self.allow_empty_vector,
+            .allow_empty_args = self.allow_empty_args,
+        };
+    }
+};
+
+const ValidatedArgVectorPolicy = struct {
+    max_count: usize,
+    max_arg_bytes: usize,
+    max_total_bytes: usize,
+    allow_empty_vector: bool,
+    allow_empty_args: bool,
+
+    fn acceptsVectorLength(self: ValidatedArgVectorPolicy, length: usize) bool {
+        if (!self.allow_empty_vector and length == 0) return false;
+        return length <= self.max_count;
+    }
+
+    fn acceptsArg(self: ValidatedArgVectorPolicy, arg: []const u8) bool {
+        if (!self.allow_empty_args and arg.len == 0) return false;
+        return arg.len <= self.max_arg_bytes;
+    }
+
+    fn fitsTotalByteBudget(self: ValidatedArgVectorPolicy, used_bytes: usize, next_bytes: usize) bool {
+        return argFitsTotalByteBudget(used_bytes, next_bytes, self.max_total_bytes);
     }
 };
 
@@ -27,15 +54,13 @@ pub fn isSafeArgVector(
     policy: ArgVectorPolicy,
     comptime has_unsafe_text: fn ([]const u8) bool,
 ) bool {
-    if (!policy.isSafe()) return false;
-    if (!policy.allow_empty_vector and args.len == 0) return false;
-    if (args.len > policy.max_count) return false;
+    const safe_policy = policy.normalized() orelse return false;
+    if (!safe_policy.acceptsVectorLength(args.len)) return false;
 
     var total_bytes: usize = 0;
     for (args) |arg| {
-        if (!policy.allow_empty_args and arg.len == 0) return false;
-        if (arg.len > policy.max_arg_bytes) return false;
-        if (!fitsTotalByteBudget(total_bytes, arg.len, policy.max_total_bytes)) return false;
+        if (!safe_policy.acceptsArg(arg)) return false;
+        if (!safe_policy.fitsTotalByteBudget(total_bytes, arg.len)) return false;
         if (has_unsafe_text(arg)) return false;
         total_bytes += arg.len;
     }
@@ -44,6 +69,10 @@ pub fn isSafeArgVector(
 }
 
 fn fitsTotalByteBudget(used_bytes: usize, next_bytes: usize, max_total_bytes: usize) bool {
+    return argFitsTotalByteBudget(used_bytes, next_bytes, max_total_bytes);
+}
+
+fn argFitsTotalByteBudget(used_bytes: usize, next_bytes: usize, max_total_bytes: usize) bool {
     if (used_bytes > max_total_bytes) return false;
     return next_bytes <= max_total_bytes - used_bytes;
 }
@@ -58,6 +87,13 @@ fn testHasNoUnsafeText(_: []const u8) bool {
 
 fn testUnexpectedUnsafeText(_: []const u8) bool {
     @panic("unsafe text callback should not run for invalid policies");
+}
+
+var test_counted_unsafe_text_calls: usize = 0;
+
+fn testCountedNoUnsafeText(_: []const u8) bool {
+    test_counted_unsafe_text_calls += 1;
+    return false;
 }
 
 test "arg safety bounds vector count and bytes" {
@@ -129,6 +165,46 @@ test "arg safety rejects unsafe policies before scanning arguments" {
         .max_arg_bytes = 9,
         .max_total_bytes = 8,
     }, testUnexpectedUnsafeText));
+}
+
+test "arg safety rejects invalid vector shape before scanning argument text" {
+    try std.testing.expect(!isSafeArgVector(&.{}, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+        .allow_empty_vector = false,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = 0,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{ "one", "two", "three", "four" }, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 16,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{""}, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"abcde"}, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText));
+}
+
+test "arg safety rejects total byte overflow before scanning the overflowing argument" {
+    test_counted_unsafe_text_calls = 0;
+
+    try std.testing.expect(!isSafeArgVector(&.{ "abcd", "efgh", "i" }, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    }, testCountedNoUnsafeText));
+    try std.testing.expectEqual(@as(usize, 2), test_counted_unsafe_text_calls);
 }
 
 test "arg safety rejects empty vectors and empty arguments when required" {
