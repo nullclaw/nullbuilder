@@ -1,5 +1,8 @@
 export const MAX_CLI_ARGS = 128;
 
+const ARRAY_IS_ARRAY = Array.isArray.bind(Array) as typeof Array.isArray;
+const NUMBER_IS_SAFE_INTEGER = Number.isSafeInteger.bind(Number) as typeof Number.isSafeInteger;
+
 export type CliArgVectorOptions = {
   start?: number;
   maxArgs?: number;
@@ -37,16 +40,16 @@ export function readCliArgVector(value: unknown, options: CliArgVectorOptions = 
 }
 
 function normalizeStart(value: number): number {
-  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  return NUMBER_IS_SAFE_INTEGER(value) && value >= 0 ? value : 0;
 }
 
 function normalizeMaxArgs(value: number): number {
-  return Number.isSafeInteger(value) && value >= 0 && value <= MAX_CLI_ARGS ? value : MAX_CLI_ARGS;
+  return NUMBER_IS_SAFE_INTEGER(value) && value >= 0 && value <= MAX_CLI_ARGS ? value : MAX_CLI_ARGS;
 }
 
 function readRuntimeArray(value: unknown): readonly unknown[] | null {
   try {
-    return Array.isArray(value) ? value : null;
+    return ARRAY_IS_ARRAY(value) ? value : null;
   } catch {
     return null;
   }
@@ -55,7 +58,7 @@ function readRuntimeArray(value: unknown): readonly unknown[] | null {
 function readRuntimeArrayLength(value: readonly unknown[]): number | null {
   try {
     const length = value.length;
-    return Number.isSafeInteger(length) && length >= 0 ? length : null;
+    return NUMBER_IS_SAFE_INTEGER(length) && length >= 0 ? length : null;
   } catch {
     return null;
   }

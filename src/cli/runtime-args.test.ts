@@ -2,6 +2,9 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { MAX_CLI_ARGS, readCliArgVector } from './runtime-args';
 
+const originalArrayIsArray = Array.isArray;
+const originalNumber = Number;
+
 test('readCliArgVector copies bounded string arrays', () => {
   assert.deepEqual(readCliArgVector(['repos', '--json']), ['repos', '--json']);
   assert.deepEqual(readCliArgVector(['node', 'nullbuilder', 'repos'], { start: 2 }), ['repos']);
@@ -94,4 +97,35 @@ test('readCliArgVector rejects hostile runtime argument traps', () => {
       return true;
     });
   }
+});
+
+test('readCliArgVector uses captured runtime intrinsics', () => {
+  let args: string[] = [];
+
+  try {
+    globalThis.Number = new Proxy(originalNumber, {
+      get(target, property, receiver) {
+        if (property === 'isSafeInteger') {
+          throw new Error('Number.isSafeInteger should not be read');
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+      apply(): never {
+        throw new Error('Number constructor should not be called');
+      },
+      construct(): never {
+        throw new Error('Number constructor should not be called');
+      }
+    }) as NumberConstructor;
+    Array.isArray = function isArrayShouldNotBeCalled(_arg: unknown): _arg is unknown[] {
+      throw new Error('Array.isArray should not be called');
+    };
+
+    args = readCliArgVector(['node', 'nullbuilder', 'repos'], { start: 2, maxArgs: 8 });
+  } finally {
+    globalThis.Number = originalNumber;
+    Array.isArray = originalArrayIsArray;
+  }
+
+  assert.deepEqual(args, ['repos']);
 });
