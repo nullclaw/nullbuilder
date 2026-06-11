@@ -1,6 +1,13 @@
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { Buffer } from 'node:buffer';
+import { afterEach, test } from 'node:test';
 import { buildChildArgs, resolveLauncherPaths, runLauncher } from './nullbuilder-launcher.js';
+
+const originalBufferByteLength = Buffer.byteLength;
+
+afterEach(() => {
+  Buffer.byteLength = originalBufferByteLength;
+});
 
 test('resolveLauncherPaths derives bundled and source cli paths from module url', () => {
   const paths = resolveLauncherPaths(new URL('./nullbuilder-launcher.js', import.meta.url).href);
@@ -167,6 +174,23 @@ test('buildChildArgs avoids global array push hooks', () => {
 
   assert.equal(pushCalls, 0);
   assert.deepEqual(childArgs, ['--import', 'tsx', '/repo/src/cli/nullbuilder.ts', 'repos', '--json']);
+});
+
+test('buildChildArgs uses captured buffer byte length checks', () => {
+  const paths = {
+    bundledCli: '/repo/dist/cli/nullbuilder.js',
+    sourceCli: '/repo/src/cli/nullbuilder.ts'
+  };
+
+  Buffer.byteLength = () => {
+    throw new Error('Buffer.byteLength should not be called');
+  };
+
+  assert.deepEqual(buildChildArgs(paths, ['repos', '--json'], true), [
+    '/repo/dist/cli/nullbuilder.js',
+    'repos',
+    '--json'
+  ]);
 });
 
 test('buildChildArgs rejects unsafe cli paths before spawning', () => {

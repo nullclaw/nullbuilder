@@ -10,6 +10,7 @@ const MAX_FORWARDED_ARGS_TOTAL_BYTES = 128 * 1024;
 const MAX_SPAWN_BOUNDARY_BYTES = 4096;
 const BIDI_FORMAT_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
+const BUFFER_BYTE_LENGTH = Buffer.byteLength.bind(Buffer);
 
 export function resolveLauncherPaths(moduleUrl) {
   const root = resolve(dirname(fileURLToPath(moduleUrl)), '..');
@@ -190,7 +191,7 @@ function readSafeForwardedArgs(args) {
       return null;
     }
 
-    const bytes = Buffer.byteLength(arg);
+    const bytes = BUFFER_BYTE_LENGTH(arg);
     if (
       bytes === 0 ||
       bytes > MAX_FORWARDED_ARG_BYTES ||
@@ -300,7 +301,7 @@ function isSafeSpawnBoundaryText(value) {
     return false;
   }
 
-  if (Buffer.byteLength(value) > MAX_SPAWN_BOUNDARY_BYTES) {
+  if (BUFFER_BYTE_LENGTH(value) > MAX_SPAWN_BOUNDARY_BYTES) {
     return false;
   }
 
