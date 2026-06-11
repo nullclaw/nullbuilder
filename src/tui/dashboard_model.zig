@@ -162,6 +162,20 @@ pub const WorkItem = struct {
     title: []const u8,
 };
 
+const WorkItemRow = union(enum) {
+    safe: WorkItem,
+    non_object,
+    invalid_number: dashboard_json.BoundedPositiveIntegerField,
+    invalid_title: dashboard_json.TextField,
+
+    fn valueOrNull(self: WorkItemRow) ?WorkItem {
+        return switch (self) {
+            .safe => |item| item,
+            else => null,
+        };
+    }
+};
+
 pub const WorkItemIterator = struct {
     repositories: RepositoryIterator,
     kind: WorkKind,
@@ -250,20 +264,32 @@ fn repositoryFromObject(repo: JsonObject) ?Repository {
 }
 
 fn workItemFromValue(value: JsonValue, repo_slug: []const u8) ?WorkItem {
-    const work = dashboard_json.objectValue(value) orelse return null;
-    return workItemFromObject(work, repo_slug);
+    return classifyWorkItemValue(value, repo_slug).valueOrNull();
 }
 
-fn workItemFromObject(work: JsonObject, repo_slug: []const u8) ?WorkItem {
-    const number = dashboard_json.boundedIntField(work, "number", max_work_item_number);
-    if (number == 0) return null;
-    const title = dashboard_json.requiredSafeTextField(work, "title", max_work_title_len) orelse return null;
+fn classifyWorkItemValue(value: JsonValue, repo_slug: []const u8) WorkItemRow {
+    const work = dashboard_json.objectValue(value) orelse return .non_object;
+    return classifyWorkItemObject(work, repo_slug);
+}
 
-    return .{
-        .repo = repo_slug,
-        .number = number,
-        .title = title,
+fn classifyWorkItemObject(work: JsonObject, repo_slug: []const u8) WorkItemRow {
+    const number = dashboard_json.classifyBoundedIntField(work, "number", max_work_item_number);
+    const safe_number = switch (number) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_number = number },
     };
+
+    const title = dashboard_json.classifyRequiredSafeTextField(work, "title", max_work_title_len);
+    const safe_title = switch (title) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_title = title },
+    };
+
+    return .{ .safe = .{
+        .repo = repo_slug,
+        .number = safe_number,
+        .title = safe_title,
+    } };
 }
 
 fn loadErrorFromValue(value: JsonValue) ?LoadError {
@@ -704,6 +730,44 @@ test "dashboard model rejects control-bearing external text fields" {
     try std.testing.expectEqual(null, errors.next());
 }
 
+test "dashboard model classifies work item rows before iterator fallback" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": {"number": 7, "title": "Fix build"},
+        \\  "nonObject": "invalid",
+        \\  "missingNumber": {"title": "Missing number"},
+        \\  "zeroNumber": {"number": 0, "title": "Zero"},
+        \\  "stringNumber": {"number": "8", "title": "String number"},
+        \\  "hugeNumber": {"number": 1000000000, "title": "Huge number"},
+        \\  "missingTitle": {"number": 8},
+        \\  "emptyTitle": {"number": 9, "title": ""},
+        \\  "controlTitle": {"number": 10, "title": "Bad\nTitle"}
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+    const safe = classifyWorkItemValue(object.get("safe").?, "nullclaw/alpha");
+    switch (safe) {
+        .safe => |item| {
+            try std.testing.expectEqualStrings("nullclaw/alpha", item.repo);
+            try std.testing.expectEqual(@as(u64, 7), item.number);
+            try std.testing.expectEqualStrings("Fix build", item.title);
+        },
+        else => return error.ExpectedWorkItem,
+    }
+    try std.testing.expect(safe.valueOrNull() != null);
+
+    try expectWorkItemRowTag(.non_object, object.get("nonObject").?);
+    try expectWorkItemInvalidNumber(.missing, object.get("missingNumber").?);
+    try expectWorkItemInvalidNumber(.non_positive, object.get("zeroNumber").?);
+    try expectWorkItemInvalidNumber(.non_integer, object.get("stringNumber").?);
+    try expectWorkItemInvalidNumber(.above_bound, object.get("hugeNumber").?);
+    try expectWorkItemInvalidTitle(.missing, object.get("missingTitle").?);
+    try expectWorkItemInvalidTitle(.empty, object.get("emptyTitle").?);
+    try expectWorkItemInvalidTitle(.sanitizable_content, object.get("controlTitle").?);
+}
+
 test "work item iterator skips invalid rows across repositories" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
@@ -774,4 +838,28 @@ test "work item iterator binds item repos to the parent repository slug" {
     try std.testing.expectEqualStrings("Missing nested repo", second.title);
 
     try std.testing.expectEqual(null, issues.next());
+}
+
+fn expectWorkItemRowTag(expected: std.meta.Tag(WorkItemRow), value: JsonValue) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyWorkItemValue(value, "nullclaw/alpha")));
+}
+
+fn expectWorkItemInvalidNumber(
+    expected: std.meta.Tag(dashboard_json.BoundedPositiveIntegerField),
+    value: JsonValue,
+) !void {
+    switch (classifyWorkItemValue(value, "nullclaw/alpha")) {
+        .invalid_number => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidWorkItemNumber,
+    }
+}
+
+fn expectWorkItemInvalidTitle(
+    expected: std.meta.Tag(dashboard_json.TextField),
+    value: JsonValue,
+) !void {
+    switch (classifyWorkItemValue(value, "nullclaw/alpha")) {
+        .invalid_title => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidWorkItemTitle,
+    }
 }
