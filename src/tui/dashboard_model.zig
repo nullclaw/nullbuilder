@@ -102,6 +102,20 @@ pub const Totals = struct {
 pub const WorkKind = enum {
     issues,
     pull_requests,
+
+    pub fn emptyLabel(self: WorkKind) []const u8 {
+        return switch (self) {
+            .issues => "open issues",
+            .pull_requests => "open pull requests",
+        };
+    }
+
+    fn items(self: WorkKind, repo: Repository) []const JsonValue {
+        return switch (self) {
+            .issues => repo.issues,
+            .pull_requests => repo.pull_requests,
+        };
+    }
 };
 
 pub const WorkItem = struct {
@@ -141,7 +155,7 @@ pub const WorkItemIterator = struct {
     fn loadNextRepository(self: *WorkItemIterator) bool {
         const repo = self.repositories.nextLoaded() orelse return false;
         self.current_repo_slug = repo.slug;
-        self.current_items = workItems(repo, self.kind);
+        self.current_items = self.kind.items(repo);
         self.item_index = 0;
         return true;
     }
@@ -207,13 +221,6 @@ fn repositoryStatus(repo: JsonObject) []const u8 {
     if (std.mem.eql(u8, status, ok_status)) return ok_status;
     if (std.mem.eql(u8, status, error_status)) return error_status;
     return error_status;
-}
-
-fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
-    return switch (kind) {
-        .issues => repo.issues,
-        .pull_requests => repo.pull_requests,
-    };
 }
 
 fn workItemFromValue(value: JsonValue, repo_slug: []const u8) ?WorkItem {
@@ -355,6 +362,11 @@ test "dashboard total addition clamps without overflowing" {
         dashboard_json.max_safe_json_integer,
         saturatingSafeIntegerAdd(dashboard_json.max_safe_json_integer - 1, 10),
     );
+}
+
+test "work kinds define their empty-state labels" {
+    try std.testing.expectEqualStrings("open issues", WorkKind.issues.emptyLabel());
+    try std.testing.expectEqualStrings("open pull requests", WorkKind.pull_requests.emptyLabel());
 }
 
 test "dashboard totals ignore repositories without safe slugs" {

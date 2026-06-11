@@ -87,8 +87,8 @@ pub fn render(
 
     try out.writeAll("\nRecent work\n");
     try out.writeAll("-----------\n");
-    try printWorkItems(arena, out, dashboard, .issues, "open issues");
-    try printWorkItems(arena, out, dashboard, .pull_requests, "open pull requests");
+    try printWorkItems(arena, out, dashboard, .issues);
+    try printWorkItems(arena, out, dashboard, .pull_requests);
 
     try printLoadErrors(arena, out, dashboard);
 }
@@ -108,7 +108,6 @@ fn printWorkItems(
     out: *std.Io.Writer,
     dashboard: Dashboard,
     kind: WorkKind,
-    label: []const u8,
 ) !void {
     var printed: usize = 0;
     var items = dashboard_model.WorkItemIterator.init(dashboard, kind);
@@ -132,7 +131,7 @@ fn printWorkItems(
     }
 
     if (printed == 0) {
-        try out.print("  no {s}\n", .{label});
+        try out.print("  no {s}\n", .{kind.emptyLabel()});
     }
 }
 
