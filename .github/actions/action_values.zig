@@ -97,6 +97,24 @@ pub const FullHexShaValidation = union(enum) {
     }
 };
 
+pub const MetadataTokenValidation = union(enum) {
+    safe,
+    empty,
+    oversized,
+    sanitizable_content: usize,
+    invalid_character: usize,
+    invalid_start: usize,
+    repeated_dot: usize,
+    invalid_end: usize,
+
+    pub fn accepts(self: MetadataTokenValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+};
+
 const KnownHostLiteral = enum {
     github_dot_com,
     localhost,
@@ -589,7 +607,16 @@ fn hexValue(byte: u8) ?u8 {
 }
 
 pub fn isSafeMetadataToken(value: []const u8, max_len: usize) bool {
-    if (!isSafeSingleLineText(value, max_len)) return false;
+    return classifySafeMetadataToken(value, max_len).accepts();
+}
+
+pub fn classifySafeMetadataToken(value: []const u8, max_len: usize) MetadataTokenValidation {
+    switch (text_safety.classifyNonEmptyTextWithoutControl(value, max_len)) {
+        .safe => {},
+        .empty => return .empty,
+        .oversized => return .oversized,
+        .sanitizable_content => |index| return .{ .sanitizable_content = index },
+    }
 
     var previous_dot = false;
     for (value, 0..) |byte, index| {
@@ -597,14 +624,17 @@ pub fn isSafeMetadataToken(value: []const u8, max_len: usize) bool {
         const is_digit = std.ascii.isDigit(byte);
         const is_safe_symbol = byte == '.' or byte == '_' or byte == '-' or byte == '+';
 
-        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
-        if (index == 0 and !is_alpha and !is_digit) return false;
-        if (byte == '.' and previous_dot) return false;
+        if (!is_alpha and !is_digit and !is_safe_symbol) return .{ .invalid_character = index };
+        if (index == 0 and !is_alpha and !is_digit) return .{ .invalid_start = index };
+        if (byte == '.' and previous_dot) return .{ .repeated_dot = index };
         previous_dot = byte == '.';
     }
 
     const last = value[value.len - 1];
-    return std.ascii.isAlphabetic(last) or std.ascii.isDigit(last);
+    return if (std.ascii.isAlphabetic(last) or std.ascii.isDigit(last))
+        .safe
+    else
+        .{ .invalid_end = value.len - 1 };
 }
 
 pub fn isUtcTimestamp(value: []const u8) bool {
@@ -936,6 +966,52 @@ test "action values validate metadata tokens" {
     try std.testing.expect(!isSafeMetadataToken("bad\"value", 128));
     try std.testing.expect(!isSafeMetadataToken("bad/value", 128));
     try std.testing.expect(!isSafeMetadataToken("too-long", 3));
+}
+
+test "action values classify metadata tokens" {
+    try expectMetadataTokenValidation(.safe, "nightly-20260504-abcdef0", 128);
+    try expectMetadataTokenValidation(.safe, "x86_64-linux-musl", 128);
+    try expectMetadataTokenValidation(.safe, "baseline+v7a", 128);
+    try expectMetadataTokenValidation(.empty, "", 128);
+    try expectMetadataTokenValidation(.oversized, "too-long", 3);
+    try expectMetadataTokenIndex(.sanitizable_content, "bad\nvalue", 128, 3);
+    try expectMetadataTokenIndex(.invalid_start, ".hidden", 128, 0);
+    try expectMetadataTokenIndex(.invalid_start, "-leading-dash", 128, 0);
+    try expectMetadataTokenIndex(.invalid_end, "trailing.", 128, 8);
+    try expectMetadataTokenIndex(.repeated_dot, "double..dot", 128, 7);
+    try expectMetadataTokenIndex(.invalid_character, "bad/value", 128, 3);
+    try expectMetadataTokenIndex(.invalid_character, "bad\"value", 128, 3);
+
+    try std.testing.expect((MetadataTokenValidation{ .safe = {} }).accepts());
+    try std.testing.expect(!(MetadataTokenValidation{ .empty = {} }).accepts());
+    try std.testing.expect(!(MetadataTokenValidation{ .invalid_character = 3 }).accepts());
+}
+
+fn expectMetadataTokenValidation(
+    expected: std.meta.Tag(MetadataTokenValidation),
+    value: []const u8,
+    max_len: usize,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifySafeMetadataToken(value, max_len)));
+}
+
+fn expectMetadataTokenIndex(
+    expected: std.meta.Tag(MetadataTokenValidation),
+    value: []const u8,
+    max_len: usize,
+    expected_index: usize,
+) !void {
+    const actual = classifySafeMetadataToken(value, max_len);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .sanitizable_content => |index| index,
+        .invalid_character => |index| index,
+        .invalid_start => |index| index,
+        .repeated_dot => |index| index,
+        .invalid_end => |index| index,
+        else => return error.ExpectedMetadataTokenIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
 }
 
 test "action values validate UTC timestamps" {
