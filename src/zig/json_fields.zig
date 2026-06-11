@@ -14,9 +14,7 @@ pub const ParseLimits = struct {
     max_value_bytes: usize,
 
     fn normalized(self: ParseLimits) ?ValidatedParseLimits {
-        if (self.max_bytes == 0 or self.max_bytes > max_supported_json_bytes) return null;
-        if (self.max_value_bytes == 0 or self.max_value_bytes > max_supported_json_value_bytes) return null;
-        if (self.max_value_bytes > self.max_bytes) return null;
+        if (classifyParseLimits(self) != .safe) return null;
 
         return .{
             .max_bytes = self.max_bytes,
@@ -25,13 +23,23 @@ pub const ParseLimits = struct {
     }
 };
 
+pub const ParseRequestValidation = enum {
+    safe,
+    zero_max_bytes,
+    max_bytes_unsupported,
+    zero_max_value_bytes,
+    max_value_bytes_unsupported,
+    value_limit_exceeds_payload_limit,
+    payload_too_large,
+
+    pub fn accepts(self: ParseRequestValidation) bool {
+        return self == .safe;
+    }
+};
+
 const ValidatedParseLimits = struct {
     max_bytes: usize,
     max_value_bytes: usize,
-
-    fn acceptsPayload(self: ValidatedParseLimits, json_bytes: []const u8) bool {
-        return json_bytes.len <= self.max_bytes;
-    }
 };
 
 const empty_json_values = [_]JsonValue{};
@@ -45,11 +53,33 @@ pub fn parseBoundedValue(
     json_bytes: []const u8,
     limits: ParseLimits,
 ) !std.json.Parsed(JsonValue) {
-    const safe_limits = limits.normalized() orelse return error.InvalidJsonParseLimits;
-    if (!safe_limits.acceptsPayload(json_bytes)) return error.JsonTooLarge;
+    const validation = classifyParseRequest(json_bytes, limits);
+    switch (validation) {
+        .safe => {},
+        .payload_too_large => return error.JsonTooLarge,
+        else => return error.InvalidJsonParseLimits,
+    }
+
+    const safe_limits = limits.normalized().?;
     return std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{
         .max_value_len = safe_limits.max_value_bytes,
     });
+}
+
+pub fn classifyParseRequest(json_bytes: []const u8, limits: ParseLimits) ParseRequestValidation {
+    const limit_validation = classifyParseLimits(limits);
+    if (limit_validation != .safe) return limit_validation;
+    if (json_bytes.len > limits.max_bytes) return .payload_too_large;
+    return .safe;
+}
+
+fn classifyParseLimits(limits: ParseLimits) ParseRequestValidation {
+    if (limits.max_bytes == 0) return .zero_max_bytes;
+    if (limits.max_bytes > max_supported_json_bytes) return .max_bytes_unsupported;
+    if (limits.max_value_bytes == 0) return .zero_max_value_bytes;
+    if (limits.max_value_bytes > max_supported_json_value_bytes) return .max_value_bytes_unsupported;
+    if (limits.max_value_bytes > limits.max_bytes) return .value_limit_exceeds_payload_limit;
+    return .safe;
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {
@@ -176,6 +206,49 @@ test "json fields parse helper bounds payloads and scalar values" {
         .max_bytes = 64,
         .max_value_bytes = 4,
     }));
+}
+
+test "json fields classify bounded parse requests" {
+    try expectParseRequestValidation(.safe, "{\"name\":\"ok\"}", .{
+        .max_bytes = 64,
+        .max_value_bytes = 16,
+    });
+    try expectParseRequestValidation(.payload_too_large, "{}", .{
+        .max_bytes = 1,
+        .max_value_bytes = 1,
+    });
+    try expectParseRequestValidation(.zero_max_bytes, "not-json", .{
+        .max_bytes = 0,
+        .max_value_bytes = 1,
+    });
+    try expectParseRequestValidation(.max_bytes_unsupported, "not-json", .{
+        .max_bytes = max_supported_json_bytes + 1,
+        .max_value_bytes = 1,
+    });
+    try expectParseRequestValidation(.zero_max_value_bytes, "not-json", .{
+        .max_bytes = 64,
+        .max_value_bytes = 0,
+    });
+    try expectParseRequestValidation(.max_value_bytes_unsupported, "not-json", .{
+        .max_bytes = max_supported_json_bytes,
+        .max_value_bytes = max_supported_json_value_bytes + 1,
+    });
+    try expectParseRequestValidation(.value_limit_exceeds_payload_limit, "not-json", .{
+        .max_bytes = 16,
+        .max_value_bytes = 17,
+    });
+
+    try std.testing.expect(ParseRequestValidation.safe.accepts());
+    try std.testing.expect(!ParseRequestValidation.payload_too_large.accepts());
+    try std.testing.expect(!ParseRequestValidation.zero_max_bytes.accepts());
+}
+
+fn expectParseRequestValidation(
+    expected: ParseRequestValidation,
+    json_bytes: []const u8,
+    limits: ParseLimits,
+) !void {
+    try std.testing.expectEqual(expected, classifyParseRequest(json_bytes, limits));
 }
 
 test "json fields reject unsafe parse limit policies before parsing" {
