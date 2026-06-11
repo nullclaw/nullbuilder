@@ -248,6 +248,8 @@ fn validateGeneratedOutputPaths(binary_path: []const u8, sha_path: []const u8, m
 }
 
 fn ensureGeneratedOutputPathIsNew(io: std.Io, dir: std.Io.Dir, path: []const u8) !void {
+    try validateGeneratedPath(path);
+
     _ = dir.statFile(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return,
         else => return err,
@@ -262,6 +264,8 @@ fn ensureGeneratedOutputsAreNew(io: std.Io, dir: std.Io.Dir, output_plan: Packag
 }
 
 fn writeNewGeneratedFile(io: std.Io, dir: std.Io.Dir, path: []const u8, data: []const u8) !void {
+    try validateGeneratedPath(path);
+
     try dir.writeFile(io, .{
         .sub_path = path,
         .data = data,
@@ -795,6 +799,27 @@ test "package artifact preflights generated outputs before writing" {
         .data = "existing manifest",
     });
     try std.testing.expectError(error.PathAlreadyExists, ensureGeneratedOutputsAreNew(std.testing.io, tmp.dir, output_plan));
+}
+
+test "package artifact rejects unsafe generated paths at filesystem boundaries" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    for ([_][]const u8{
+        "../artifact.bin.sha256",
+        "/tmp/artifact.bin.sha256",
+        "nightly-artifacts//artifact.bin.sha256",
+        "C:\\temp\\artifact.bin.sha256",
+    }) |path| {
+        try std.testing.expectError(
+            error.InvalidGeneratedPath,
+            ensureGeneratedOutputPathIsNew(std.testing.io, tmp.dir, path),
+        );
+        try std.testing.expectError(
+            error.InvalidGeneratedPath,
+            writeNewGeneratedFile(std.testing.io, tmp.dir, path, "data"),
+        );
+    }
 }
 
 test "package artifact writes generated outputs with exclusive creation" {
