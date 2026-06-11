@@ -63,6 +63,18 @@ pub fn setFlagOnce(slot: *bool, flag: []const u8) error{InvalidArguments}!void {
     slot.* = true;
 }
 
+pub fn registeredOptionFromArg(
+    comptime Option: type,
+    options: []const Option,
+    arg: []const u8,
+) ?Option {
+    for (options) |option| {
+        if (std.mem.eql(u8, arg, option.flag())) return option;
+    }
+
+    return null;
+}
+
 pub fn required(value: ?[]const u8, flag: []const u8) ![]const u8 {
     return value orelse {
         printDiagnostic("missing required option: {s}\n", flag);
@@ -222,6 +234,25 @@ test "boolean flags reject duplicate options" {
     try std.testing.expect(enabled);
     try std.testing.expectError(error.InvalidArguments, setFlagOnce(&enabled, "--force"));
     try std.testing.expect(enabled);
+}
+
+test "registered option lookup dispatches by canonical flags" {
+    const TestOption = enum {
+        alpha,
+        force,
+
+        pub fn flag(self: @This()) []const u8 {
+            return switch (self) {
+                .alpha => "--alpha",
+                .force => "--force",
+            };
+        }
+    };
+    const options = [_]TestOption{ .alpha, .force };
+
+    try std.testing.expectEqual(TestOption.alpha, registeredOptionFromArg(TestOption, options[0..], "--alpha").?);
+    try std.testing.expectEqual(TestOption.force, registeredOptionFromArg(TestOption, options[0..], "--force").?);
+    try std.testing.expectEqual(@as(?TestOption, null), registeredOptionFromArg(TestOption, options[0..], "--unknown"));
 }
 
 test "diagnostic tokens replace controls and bound output" {

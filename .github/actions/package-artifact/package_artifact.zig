@@ -46,14 +46,10 @@ const PackageOption = enum {
     built_at,
 
     fn fromArg(arg: []const u8) ?PackageOption {
-        for (package_options) |option| {
-            if (std.mem.eql(u8, arg, option.flag())) return option;
-        }
-
-        return null;
+        return action_args.registeredOptionFromArg(PackageOption, package_options[0..], arg);
     }
 
-    fn flag(self: PackageOption) []const u8 {
+    pub fn flag(self: PackageOption) []const u8 {
         return switch (self) {
             .binary => "--binary",
             .target => "--target",

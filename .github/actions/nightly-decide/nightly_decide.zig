@@ -83,6 +83,70 @@ const DecideValidationError = error{
     InvalidWorkflowName,
 };
 
+const DecideOption = enum {
+    runs_json,
+    current_run_id,
+    head_sha,
+    workflow_name,
+    force,
+
+    fn fromArg(arg: []const u8) ?DecideOption {
+        return action_args.registeredOptionFromArg(DecideOption, decide_options[0..], arg);
+    }
+
+    pub fn flag(self: DecideOption) []const u8 {
+        return switch (self) {
+            .runs_json => "--runs-json",
+            .current_run_id => "--current-run-id",
+            .head_sha => "--head-sha",
+            .workflow_name => "--workflow-name",
+            .force => "--force",
+        };
+    }
+};
+
+const decide_options = [_]DecideOption{
+    .runs_json,
+    .current_run_id,
+    .head_sha,
+    .workflow_name,
+    .force,
+};
+
+const DecideOptionValues = struct {
+    runs_json_path: ?[]const u8 = null,
+    current_run_id: ?[]const u8 = null,
+    head_sha: ?[]const u8 = null,
+    workflow_name: ?[]const u8 = null,
+    force: bool = false,
+
+    fn take(
+        self: *DecideOptionValues,
+        iterator: *std.process.Args.Iterator,
+        allocator: std.mem.Allocator,
+        option: DecideOption,
+    ) !void {
+        const flag = option.flag();
+        switch (option) {
+            .runs_json => try action_args.takeValueOnce(iterator, allocator, &self.runs_json_path, flag),
+            .current_run_id => try action_args.takeValueOnce(iterator, allocator, &self.current_run_id, flag),
+            .head_sha => try action_args.takeValueOnce(iterator, allocator, &self.head_sha, flag),
+            .workflow_name => try action_args.takeValueOnce(iterator, allocator, &self.workflow_name, flag),
+            .force => try action_args.setFlagOnce(&self.force, flag),
+        }
+    }
+
+    fn build(self: DecideOptionValues) !DecideOptions {
+        return .{
+            .runs_json_path = try action_args.required(self.runs_json_path, DecideOption.runs_json.flag()),
+            .current_run_id = try action_args.required(self.current_run_id, DecideOption.current_run_id.flag()),
+            .head_sha = try action_args.required(self.head_sha, DecideOption.head_sha.flag()),
+            .workflow_name = self.workflow_name orelse "",
+            .force = self.force,
+        };
+    }
+};
+
 fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
     if (!action_paths.isSafeRelativePath(options.runs_json_path)) return error.InvalidRunsJsonPath;
     if (!action_values.isDecimalId(options.current_run_id)) return error.InvalidCurrentRunId;
@@ -297,36 +361,15 @@ fn printUsage(io: std.Io) !u8 {
 }
 
 fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator) !DecideOptions {
-    var runs_json_path: ?[]const u8 = null;
-    var current_run_id: ?[]const u8 = null;
-    var head_sha: ?[]const u8 = null;
-    var workflow_name: ?[]const u8 = null;
-    var force = false;
+    var values = DecideOptionValues{};
     var option_count: usize = 0;
 
     while (try action_args.nextOption(iterator, &option_count)) |arg| {
-        if (std.mem.eql(u8, arg, "--runs-json")) {
-            try action_args.takeValueOnce(iterator, allocator, &runs_json_path, arg);
-        } else if (std.mem.eql(u8, arg, "--current-run-id")) {
-            try action_args.takeValueOnce(iterator, allocator, &current_run_id, arg);
-        } else if (std.mem.eql(u8, arg, "--head-sha")) {
-            try action_args.takeValueOnce(iterator, allocator, &head_sha, arg);
-        } else if (std.mem.eql(u8, arg, "--workflow-name")) {
-            try action_args.takeValueOnce(iterator, allocator, &workflow_name, arg);
-        } else if (std.mem.eql(u8, arg, "--force")) {
-            try action_args.setFlagOnce(&force, arg);
-        } else {
-            return action_args.unexpectedOption(arg);
-        }
+        const option = DecideOption.fromArg(arg) orelse return action_args.unexpectedOption(arg);
+        try values.take(iterator, allocator, option);
     }
 
-    return .{
-        .runs_json_path = try action_args.required(runs_json_path, "--runs-json"),
-        .current_run_id = try action_args.required(current_run_id, "--current-run-id"),
-        .head_sha = try action_args.required(head_sha, "--head-sha"),
-        .workflow_name = workflow_name orelse "",
-        .force = force,
-    };
+    return values.build();
 }
 
 fn runDecide(io: std.Io, allocator: std.mem.Allocator, options: DecideOptions) !void {
@@ -645,6 +688,42 @@ test "nightly decision output rejects zero matched run ids" {
 
     try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
     try std.testing.expectEqualStrings("", out.writer.buffered());
+}
+
+test "nightly option registry maps parser flags" {
+    try std.testing.expectEqual(@as(usize, 5), decide_options.len);
+    for (decide_options) |option| {
+        try std.testing.expectEqual(option, DecideOption.fromArg(option.flag()).?);
+    }
+
+    try std.testing.expectEqual(@as(?DecideOption, null), DecideOption.fromArg("--unknown"));
+}
+
+test "nightly parses registered options" {
+    const argv = [_][*:0]const u8{
+        "nightly_decide",
+        "--runs-json",
+        "previous-nightly-runs.json",
+        "--current-run-id",
+        "42",
+        "--head-sha",
+        TEST_HEAD_SHA,
+        "--workflow-name",
+        "Nightly",
+        "--force",
+    };
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+    _ = iterator.next();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    const options = try parseArgs(&iterator, arena_state.allocator());
+    try std.testing.expectEqualStrings("previous-nightly-runs.json", options.runs_json_path);
+    try std.testing.expectEqualStrings("42", options.current_run_id);
+    try std.testing.expectEqualStrings(TEST_HEAD_SHA, options.head_sha);
+    try std.testing.expectEqualStrings("Nightly", options.workflow_name);
+    try std.testing.expect(options.force);
 }
 
 test "nightly rejects duplicate options" {
