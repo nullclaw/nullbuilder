@@ -10,7 +10,10 @@ const MAX_FORWARDED_ARGS_TOTAL_BYTES = 128 * 1024;
 const MAX_SPAWN_BOUNDARY_BYTES = 4096;
 const BIDI_FORMAT_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
+const ARRAY_IS_ARRAY = Array.isArray.bind(Array);
 const BUFFER_BYTE_LENGTH = Buffer.byteLength.bind(Buffer);
+const NUMBER_IS_SAFE_INTEGER = Number.isSafeInteger.bind(Number);
+const MATH_MAX = Math.max.bind(Math);
 
 export function resolveLauncherPaths(moduleUrl) {
   const root = resolve(dirname(fileURLToPath(moduleUrl)), '..');
@@ -165,7 +168,7 @@ function readChildStatus(result) {
 }
 
 function isExitStatus(value) {
-  return Number.isSafeInteger(value) && value >= 0 && value <= 255;
+  return NUMBER_IS_SAFE_INTEGER(value) && value >= 0 && value <= 255;
 }
 
 function readSafeForwardedArgs(args) {
@@ -213,11 +216,11 @@ function readSafeForwardedArgs(args) {
 
 function readArgTail(args, start) {
   const length = readRuntimeArrayLength(args);
-  if (length === null || !Number.isSafeInteger(start) || start < 0) {
+  if (length === null || !NUMBER_IS_SAFE_INTEGER(start) || start < 0) {
     return null;
   }
 
-  const tailLength = Math.max(length - start, 0);
+  const tailLength = MATH_MAX(length - start, 0);
   if (tailLength > MAX_FORWARDED_ARG_COUNT) {
     return null;
   }
@@ -242,7 +245,7 @@ function readRuntimeArrayLength(value) {
 
   try {
     const length = value.length;
-    return Number.isSafeInteger(length) && length >= 0 ? length : null;
+    return NUMBER_IS_SAFE_INTEGER(length) && length >= 0 ? length : null;
   } catch {
     return null;
   }
@@ -258,7 +261,7 @@ function readRuntimeArrayItem(values, index) {
 
 function isRuntimeArray(value) {
   try {
-    return Array.isArray(value);
+    return ARRAY_IS_ARRAY(value);
   } catch {
     return false;
   }
@@ -277,7 +280,7 @@ function prefixedArgs(prefix, userArgs) {
 }
 
 function fitsTotalByteBudget(usedBytes, nextBytes, maxBytes) {
-  if (!Number.isSafeInteger(usedBytes) || !Number.isSafeInteger(nextBytes) || !Number.isSafeInteger(maxBytes)) {
+  if (!NUMBER_IS_SAFE_INTEGER(usedBytes) || !NUMBER_IS_SAFE_INTEGER(nextBytes) || !NUMBER_IS_SAFE_INTEGER(maxBytes)) {
     return false;
   }
 

@@ -3,10 +3,16 @@ import { Buffer } from 'node:buffer';
 import { afterEach, test } from 'node:test';
 import { buildChildArgs, resolveLauncherPaths, runLauncher } from './nullbuilder-launcher.js';
 
+const originalArrayIsArray = Array.isArray;
 const originalBufferByteLength = Buffer.byteLength;
+const originalMathMax = Math.max;
+const originalNumberIsSafeInteger = Number.isSafeInteger;
 
 afterEach(() => {
+  Array.isArray = originalArrayIsArray;
   Buffer.byteLength = originalBufferByteLength;
+  Math.max = originalMathMax;
+  Number.isSafeInteger = originalNumberIsSafeInteger;
 });
 
 test('resolveLauncherPaths derives bundled and source cli paths from module url', () => {
@@ -191,6 +197,51 @@ test('buildChildArgs uses captured buffer byte length checks', () => {
     'repos',
     '--json'
   ]);
+});
+
+test('launcher helpers use captured runtime intrinsics', () => {
+  const paths = {
+    bundledCli: '/repo/dist/cli/nullbuilder.js',
+    sourceCli: '/repo/src/cli/nullbuilder.ts'
+  };
+  const spawned = [];
+  let childArgs;
+  let status;
+
+  Array.isArray = () => {
+    throw new Error('Array.isArray should not be called');
+  };
+  Math.max = () => {
+    throw new Error('Math.max should not be called');
+  };
+  Number.isSafeInteger = () => {
+    throw new Error('Number.isSafeInteger should not be called');
+  };
+
+  try {
+    childArgs = buildChildArgs(paths, ['repos', '--json'], true);
+    status = runLauncher({
+      argv: ['node', 'bin/nullbuilder.js', 'repos'],
+      cwd: '/worktree',
+      execPath: '/usr/bin/node',
+      moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+      exists: () => true,
+      stderr: writableBuffer(),
+      spawn: (execPath, args, options) => {
+        spawned[spawned.length] = { execPath, args, options };
+        return { status: 0 };
+      }
+    });
+  } finally {
+    Array.isArray = originalArrayIsArray;
+    Math.max = originalMathMax;
+    Number.isSafeInteger = originalNumberIsSafeInteger;
+  }
+
+  assert.deepEqual(childArgs, ['/repo/dist/cli/nullbuilder.js', 'repos', '--json']);
+  assert.equal(status, 0);
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].args.at(-1), 'repos');
 });
 
 test('buildChildArgs rejects unsafe cli paths before spawning', () => {
