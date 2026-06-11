@@ -9,6 +9,15 @@ import {
 } from './url-safety';
 
 const originalNumberParseInt = Number.parseInt;
+const originalUrl = globalThis.URL;
+
+function restoreGlobalUrl(): void {
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: originalUrl
+  });
+}
 
 test('readSafeUrlText rejects raw and encoded text controls', () => {
   assert.equal(
@@ -86,6 +95,29 @@ test('safeHttpUrlText accepts HTTPS and canonical loopback-only HTTP URLs', () =
     null
   ]) {
     assert.equal(safeHttpUrlText(value, { maxLength: 2048 }), null);
+  }
+});
+
+test('safeHttpUrlText parses with captured URL constructor', () => {
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: class URLShouldNotBeCalled {
+      constructor() {
+        throw new Error('global URL constructor should not be called');
+      }
+    }
+  });
+
+  try {
+    assert.equal(
+      safeHttpUrlText('https://github.example.test/nullclaw/nullbuilder/actions', {
+        maxLength: 2048
+      }),
+      'https://github.example.test/nullclaw/nullbuilder/actions'
+    );
+  } finally {
+    restoreGlobalUrl();
   }
 });
 
