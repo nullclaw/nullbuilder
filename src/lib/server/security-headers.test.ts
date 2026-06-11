@@ -34,6 +34,28 @@ test('security headers apply without array iterators', () => {
   assert.equal(headers.get('X-Frame-Options'), 'DENY');
 });
 
+test('security header policy cannot be mutated by callers', () => {
+  const entries = securityHeaderEntries();
+
+  assert.throws(() => {
+    (entries as unknown as Array<[string, string]>).push(['X-Allowed-By-Mistake', '1']);
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0] as unknown as [string, string])[1] = "default-src 'self'";
+  }, TypeError);
+
+  const headers = new Headers();
+
+  applySecurityHeaders(headers);
+
+  assert.equal(headers.get('X-Allowed-By-Mistake'), null);
+  assert.equal(
+    headers.get('Content-Security-Policy'),
+    "base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
+  );
+});
+
 test('security header policy is valid single-line header text', () => {
   const names = new Set<string>();
 
