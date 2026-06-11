@@ -43,7 +43,7 @@ pub fn nextSanitizedSlice(
     const start = index.*;
     switch (nextSanitizedSegment(value, start, options)) {
         .keep => |sequence_len| {
-            index.* += sequence_len;
+            index.* = keepRunEnd(value, start + sequence_len, options);
             return value[start..index.*];
         },
         .replace => |sequence_len| {
@@ -56,6 +56,18 @@ pub fn nextSanitizedSlice(
             return null;
         },
     }
+}
+
+fn keepRunEnd(value: []const u8, start: usize, options: SanitizeOptions) usize {
+    var index = start;
+    while (index < value.len) {
+        switch (nextSanitizedSegment(value, index, options)) {
+            .keep => |sequence_len| index += sequence_len,
+            .replace, .skip => return index,
+        }
+    }
+
+    return index;
 }
 
 fn nextSanitizedSegment(value: []const u8, index: usize, options: SanitizeOptions) SanitizedSegment {
@@ -106,13 +118,33 @@ pub fn sanitizeIntoBuffer(value: []const u8, buffer: []u8, options: SanitizeOpti
 
     while (index < value.len) {
         const slice = nextSanitizedSlice(value, &index, options, &slice_buffer) orelse continue;
-        if (slice.len > buffer.len - written) break;
+        if (slice.len > buffer.len - written) {
+            const prefix = clipUtf8(slice, buffer.len - written);
+            @memcpy(buffer[written..][0..prefix.len], prefix);
+            written += prefix.len;
+            break;
+        }
 
         @memcpy(buffer[written..][0..slice.len], slice);
         written += slice.len;
     }
 
     return buffer[0..written];
+}
+
+pub fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
+    if (max_len == 0) return "";
+
+    const limit = @min(value.len, max_len);
+    var end: usize = 0;
+    while (end < limit) {
+        const sequence_len = utf8SequenceLength(value, end);
+        if (sequence_len == 1 and value[end] >= 0x80) break;
+        if (sequence_len > limit - end) break;
+        end += sequence_len;
+    }
+
+    return value[0..end];
 }
 
 pub fn isControlByte(byte: u8) bool {
@@ -377,26 +409,16 @@ test "text safety emits sanitized slices from one shared scanner" {
     var index: usize = 0;
     const value = "ok\nbad\x1b[31mred\x1b[0m\xc2\x85raw\x85done";
 
-    try std.testing.expectEqualStrings("o", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("k", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("ok", nextSanitizedSlice(value, &index, .{}, &buffer).?);
     try std.testing.expectEqualStrings(" ", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("b", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("a", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("d", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("bad", nextSanitizedSlice(value, &index, .{}, &buffer).?);
     try std.testing.expect(nextSanitizedSlice(value, &index, .{}, &buffer) == null);
-    try std.testing.expectEqualStrings("r", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("e", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("d", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("red", nextSanitizedSlice(value, &index, .{}, &buffer).?);
     try std.testing.expect(nextSanitizedSlice(value, &index, .{}, &buffer) == null);
     try std.testing.expectEqualStrings(" ", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("r", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("a", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("w", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("raw", nextSanitizedSlice(value, &index, .{}, &buffer).?);
     try std.testing.expectEqualStrings(" ", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("d", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("o", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("n", nextSanitizedSlice(value, &index, .{}, &buffer).?);
-    try std.testing.expectEqualStrings("e", nextSanitizedSlice(value, &index, .{}, &buffer).?);
+    try std.testing.expectEqualStrings("done", nextSanitizedSlice(value, &index, .{}, &buffer).?);
     try std.testing.expectEqual(value.len, index);
 }
 
@@ -406,8 +428,8 @@ test "text safety shared scanner can preserve newlines" {
 
     var buffer: [4]u8 = undefined;
     var index: usize = 2;
-    try std.testing.expectEqualStrings("\n", nextSanitizedSlice("ok\nbad", &index, .{ .preserve_newlines = true }, &buffer).?);
-    try std.testing.expectEqual(@as(usize, 3), index);
+    try std.testing.expectEqualStrings("\nbad", nextSanitizedSlice("ok\nbad", &index, .{ .preserve_newlines = true }, &buffer).?);
+    try std.testing.expectEqual(@as(usize, 6), index);
 }
 
 test "text safety shared scanner flags skipped control sequences" {

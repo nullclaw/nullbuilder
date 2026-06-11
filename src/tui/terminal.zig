@@ -87,6 +87,8 @@ pub fn writeSafeBudgeted(out: *std.Io.Writer, value: []const u8, budget: *Output
     while (index < value.len) {
         if (text_safety.nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
             if (budget.remaining == 0 or slice.len > budget.remaining) {
+                const prefix = clipUtf8(slice, budget.remaining);
+                if (prefix.len > 0) try out.writeAll(prefix);
                 try out.writeAll(truncated_output_suffix);
                 budget.remaining = 0;
                 budget.truncated = true;
@@ -102,18 +104,7 @@ pub fn writeSafeBudgeted(out: *std.Io.Writer, value: []const u8, budget: *Output
 }
 
 pub fn clipUtf8(value: []const u8, max_len: usize) []const u8 {
-    if (max_len == 0) return "";
-
-    const limit = @min(value.len, max_len);
-    var end: usize = 0;
-    while (end < limit) {
-        const sequence_len = text_safety.utf8SequenceLength(value, end);
-        if (sequence_len == 1 and value[end] >= 0x80) break;
-        if (sequence_len > limit - end) break;
-        end += sequence_len;
-    }
-
-    return value[0..end];
+    return text_safety.clipUtf8(value, max_len);
 }
 
 pub fn hasUnsafeControl(value: []const u8, options: SanitizeOptions) bool {
@@ -297,6 +288,16 @@ test "bounded terminal writer limits sanitized output" {
     try std.testing.expect(truncated);
     try std.testing.expectEqualStrings("abcd" ++ truncated_output_suffix, out.writer.buffered());
     try std.testing.expect(std.mem.indexOfScalar(u8, out.writer.buffered(), ascii_escape) == null);
+}
+
+test "bounded terminal writer clips safe runs before truncating" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const truncated = try writeSafeBounded(&out.writer, "abcdef", 4, .{});
+
+    try std.testing.expect(truncated);
+    try std.testing.expectEqualStrings("abcd" ++ truncated_output_suffix, out.writer.buffered());
 }
 
 test "bounded terminal writer handles zero and exact limits explicitly" {
