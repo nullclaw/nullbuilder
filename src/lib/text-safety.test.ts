@@ -11,6 +11,7 @@ import {
 } from './text-safety';
 
 const originalStringIterator = String.prototype[Symbol.iterator];
+const originalNumberParseInt = Number.parseInt;
 
 test('readSafeTextInput rejects oversized and control-bearing input', () => {
   assert.equal(readSafeTextInput(' nullbuilder ', { trim: true }), 'nullbuilder');
@@ -35,12 +36,28 @@ test('readSafeTextInput rejects malformed runtime values without throwing type e
 test('parsePositiveIntegerText accepts only safe positive base-10 integers', () => {
   assert.equal(parsePositiveIntegerText('1'), 1);
   assert.equal(parsePositiveIntegerText('42'), 42);
+  assert.equal(parsePositiveIntegerText(Number.MAX_SAFE_INTEGER.toString()), Number.MAX_SAFE_INTEGER);
   assert.equal(parsePositiveIntegerText('0'), null);
   assert.equal(parsePositiveIntegerText('01'), null);
   assert.equal(parsePositiveIntegerText(' 42 '), null);
   assert.equal(parsePositiveIntegerText('1.5'), null);
   assert.equal(parsePositiveIntegerText('9007199254740992'), null);
   assert.equal(parsePositiveIntegerText('1'.repeat(100_000)), null);
+});
+
+test('parsePositiveIntegerText uses checked decimal parsing', () => {
+  Number.parseInt = function parseIntShouldNotBeCalled(): never {
+    throw new Error('Number.parseInt should not be called');
+  };
+
+  try {
+    assert.equal(parsePositiveIntegerText('9007199254740991'), Number.MAX_SAFE_INTEGER);
+    assert.equal(parsePositiveIntegerText('9007199254740992'), null);
+    assert.equal(parsePositiveIntegerText('42'), 42);
+    assert.equal(parsePositiveIntegerText('042'), null);
+  } finally {
+    Number.parseInt = originalNumberParseInt;
+  }
 });
 
 test('parsePositiveIntegerText rejects malformed runtime values without throwing type errors', () => {

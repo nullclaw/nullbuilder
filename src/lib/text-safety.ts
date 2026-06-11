@@ -6,7 +6,8 @@ const BIDI_FORMAT_CONTROL_TEST_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
 const CONTROL_CHARACTER_TEST_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 const POSITIVE_INTEGER_TEXT_PATTERN = /^[1-9]\d*$/;
-const MAX_SAFE_INTEGER_DIGITS = Number.MAX_SAFE_INTEGER.toString().length;
+const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
+const MAX_SAFE_INTEGER_DIGITS = MAX_SAFE_INTEGER.toString().length;
 
 export const TERMINAL_TRUNCATION_SUFFIX = '...';
 export const MAX_TEXT_SAFETY_LENGTH = 8192;
@@ -46,12 +47,24 @@ export function parsePositiveIntegerText(value: unknown): number | null {
     return null;
   }
 
+  return parseSafePositiveIntegerText(value);
+}
+
+function parseSafePositiveIntegerText(value: string): number | null {
   if (value.length > MAX_SAFE_INTEGER_DIGITS || !POSITIVE_INTEGER_TEXT_PATTERN.test(value)) {
     return null;
   }
 
-  const parsed = Number.parseInt(value, 10);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  let parsed = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const digit = value.charCodeAt(index) - 48;
+    parsed = parsed * 10 + digit;
+    if (parsed > MAX_SAFE_INTEGER) {
+      return null;
+    }
+  }
+
+  return parsed;
 }
 
 export function sanitizeText(value: string, options: SafeTextOptions): string {
