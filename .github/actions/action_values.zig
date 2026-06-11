@@ -230,7 +230,58 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
         index += 1;
     }
 
-    return true;
+    return !hasUnsafeHttpUrlPathSyntax(value);
+}
+
+fn hasUnsafeHttpUrlPathSyntax(value: []const u8) bool {
+    if (value.len == 0 or value[0] != '/') return false;
+
+    const path_end = std.mem.indexOfScalar(u8, value, '?') orelse value.len;
+    const path = value[0..path_end];
+    var segment_start: usize = 1;
+
+    for (path[1..], 1..) |byte, index| {
+        if (byte != '/') continue;
+        if (isUnsafeHttpPathSegment(path[segment_start..index])) return true;
+        segment_start = index + 1;
+    }
+
+    return isUnsafeHttpPathSegment(path[segment_start..]);
+}
+
+fn isUnsafeHttpPathSegment(segment: []const u8) bool {
+    if (segment.len == 0) return true;
+    return isDotHttpPathSegment(segment);
+}
+
+fn isDotHttpPathSegment(segment: []const u8) bool {
+    var dots: usize = 0;
+    var index: usize = 0;
+
+    while (index < segment.len) {
+        if (segment[index] == '.') {
+            dots += 1;
+            index += 1;
+            continue;
+        }
+
+        if (isEncodedDot(segment, index)) {
+            dots += 1;
+            index += 3;
+            continue;
+        }
+
+        return false;
+    }
+
+    return dots == 1 or dots == 2;
+}
+
+fn isEncodedDot(value: []const u8, index: usize) bool {
+    return index + 2 < value.len and
+        value[index] == '%' and
+        value[index + 1] == '2' and
+        std.ascii.toLower(value[index + 2]) == 'e';
 }
 
 fn isSafePercentEncodedByte(value: []const u8, index: usize) bool {
@@ -512,6 +563,11 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123#summary", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123?check_suite_focus=true#summary", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123?name=check%20suite#step%2D1", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions//runs/123", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/./runs/123", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/../runs/123", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/%2e/runs/123", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com/actions/%2E%2e/runs/123", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%2", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%zz", 256));
