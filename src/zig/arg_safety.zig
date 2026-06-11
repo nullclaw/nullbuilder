@@ -11,7 +11,7 @@ pub const ArgVectorPolicy = struct {
 pub fn isSafeArgVector(
     args: []const []const u8,
     policy: ArgVectorPolicy,
-    has_unsafe_text: *const fn ([]const u8) bool,
+    comptime has_unsafe_text: fn ([]const u8) bool,
 ) bool {
     if (!policy.allow_empty_vector and args.len == 0) return false;
     if (args.len > policy.max_count) return false;
