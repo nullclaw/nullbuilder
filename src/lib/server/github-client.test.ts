@@ -35,6 +35,7 @@ const originalArrayPush = Array.prototype.push;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalMapKeys = Map.prototype.keys;
 const originalMapIterator = Map.prototype[Symbol.iterator];
+const originalTextDecoderDecode = TextDecoder.prototype.decode;
 const headersEntriesIterator = Headers.prototype.entries.call(new Headers());
 const headersEntriesIteratorPrototype = Object.getPrototypeOf(headersEntriesIterator) as {
   next: typeof headersEntriesIterator.next;
@@ -51,6 +52,7 @@ afterEach(() => {
   Array.prototype[Symbol.iterator] = originalArrayIterator;
   restoreMapIteration();
   restoreHeadersEntriesIteratorNext();
+  restoreTextDecoderDecode();
 });
 
 function restoreArrayPush(): void {
@@ -102,6 +104,14 @@ function restoreHeadersEntriesIteratorNext(): void {
     configurable: true,
     writable: true,
     value: originalHeadersEntriesIteratorNext
+  });
+}
+
+function restoreTextDecoderDecode(): void {
+  Object.defineProperty(TextDecoder.prototype, 'decode', {
+    configurable: true,
+    writable: true,
+    value: originalTextDecoderDecode
   });
 }
 
@@ -1401,6 +1411,25 @@ test('githubRequest rejects malformed UTF-8 JSON responses before parsing', asyn
     githubRequest(config, '/repos/nullclaw/nullbuilder'),
     (error: unknown) => error instanceof Error && error.message === 'GitHub response body is not valid UTF-8.'
   );
+});
+
+test('githubRequest decodes responses with captured UTF-8 decoder', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://captured-utf8-decoder.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () => new Response(new TextEncoder().encode('{"ok":true}'))) as typeof fetch;
+  Object.defineProperty(TextDecoder.prototype, 'decode', {
+    configurable: true,
+    writable: true,
+    value() {
+      throw new Error('TextDecoder.prototype.decode should not be called');
+    }
+  });
+
+  assert.deepEqual(await githubRequest(config, '/repos/nullclaw/nullbuilder'), { ok: true });
 });
 
 test('githubRequest rejects malformed JSON responses with a generic parse error', async () => {

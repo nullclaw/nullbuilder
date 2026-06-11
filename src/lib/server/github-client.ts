@@ -66,6 +66,8 @@ const HEADERS_ENTRIES_NEXT = Object.getPrototypeOf(HEADERS_ENTRIES.call(new Head
   Headers['entries']
 >['next'];
 const STRUCTURED_CLONE = globalThis.structuredClone;
+const UTF8_RESPONSE_DECODER = new TextDecoder('utf-8', { fatal: true });
+const UTF8_RESPONSE_DECODE = UTF8_RESPONSE_DECODER.decode.bind(UTF8_RESPONSE_DECODER) as TextDecoder['decode'];
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 
 export type GitHubPublicValidationMessagePolicy = Readonly<{
@@ -537,7 +539,7 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
 
 function decodeUtf8Response(bytes: Uint8Array): string {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return UTF8_RESPONSE_DECODE(bytes);
   } catch {
     throw new Error('GitHub response body is not valid UTF-8.');
   }
