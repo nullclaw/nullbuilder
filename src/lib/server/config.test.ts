@@ -93,6 +93,17 @@ test('readConfig allows plaintext URLs only for loopback development origins', (
   }
 });
 
+test('readConfig preserves safe base URL paths', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://github.enterprise.test/api/v3/',
+    NULLBUILDER_GITHUB_WEB_URL: 'https://github.enterprise.test/github/'
+  });
+
+  assert.equal(config.apiBaseUrl, 'https://github.enterprise.test/api/v3');
+  assert.equal(config.webBaseUrl, 'https://github.enterprise.test/github');
+});
+
 test('readConfig parses booleans and integers from bounded explicit env values only', () => {
   const config = readConfig({
     NULLBUILDER_REPOS: 'nullbuilder',
@@ -287,6 +298,50 @@ test('readConfig rejects invalid configured owners and URLs', () => {
         error instanceof Error &&
         error.message === `Invalid URL for ${name}.` &&
         !error.message.includes('secret')
+    );
+  }
+
+  for (const [name, env, secret] of [
+    [
+      'NULLBUILDER_GITHUB_API_URL',
+      {
+        NULLBUILDER_GITHUB_API_URL: 'https:api.github.com/api/v3'
+      },
+      'api.github.com'
+    ],
+    [
+      'NULLBUILDER_GITHUB_API_URL',
+      {
+        NULLBUILDER_GITHUB_API_URL: 'https://api.github.com/api/../secret-v3'
+      },
+      'secret-v3'
+    ],
+    [
+      'NULLBUILDER_GITHUB_API_URL',
+      {
+        NULLBUILDER_GITHUB_API_URL: 'https://api.github.com/api/%2e%2e/secret-v3'
+      },
+      'secret-v3'
+    ],
+    [
+      'NULLBUILDER_GITHUB_WEB_URL',
+      {
+        NULLBUILDER_GITHUB_WEB_URL: 'https://github.example.test/github/%2E/secret-web'
+      },
+      'secret-web'
+    ],
+    [
+      'NULLBUILDER_GITHUB_WEB_URL',
+      {
+        NULLBUILDER_GITHUB_WEB_URL: 'https://github.example.test/github//secret-web'
+      },
+      'secret-web'
+    ]
+  ] as const) {
+    assert.throws(
+      () => readConfig(env),
+      (error: unknown) =>
+        error instanceof Error && error.message === `Invalid URL for ${name}.` && !error.message.includes(secret)
     );
   }
 });

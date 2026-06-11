@@ -101,6 +101,14 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
     throw new Error(`Invalid URL for ${name}.`);
   }
 
+  if ((url.protocol === 'https:' || url.protocol === 'http:') && !hasExplicitHttpUrlScheme(raw)) {
+    throw new Error(`Invalid URL for ${name}.`);
+  }
+
+  if (hasUnsafeBaseUrlPathSyntax(raw)) {
+    throw new Error(`Invalid URL for ${name}.`);
+  }
+
   if (url.protocol !== 'https:' && (url.protocol !== 'http:' || !isCanonicalLoopbackHttpUrl(raw))) {
     throw new Error(`Invalid URL protocol for ${name}.`);
   }
@@ -114,6 +122,100 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
   }
 
   return url.toString().replace(/\/$/, '');
+}
+
+function hasExplicitHttpUrlScheme(value: string): boolean {
+  const separator = value.indexOf('://');
+  if (separator <= 0) {
+    return false;
+  }
+
+  const scheme = value.slice(0, separator).toLowerCase();
+  return scheme === 'https' || scheme === 'http';
+}
+
+function hasUnsafeBaseUrlPathSyntax(value: string): boolean {
+  const path = rawUrlPath(value);
+  if (!path) {
+    return false;
+  }
+
+  let segmentStart = 1;
+  for (let index = 1; index <= path.length; index += 1) {
+    if (index < path.length && path[index] !== '/') {
+      continue;
+    }
+
+    const segment = path.slice(segmentStart, index);
+    const isTrailingEmptySegment = index === path.length && segment.length === 0;
+    if (segment.length === 0 && !isTrailingEmptySegment) {
+      return true;
+    }
+
+    if (isDotUrlPathSegment(segment)) {
+      return true;
+    }
+
+    segmentStart = index + 1;
+  }
+
+  return false;
+}
+
+function rawUrlPath(value: string): string {
+  const authorityStart = value.indexOf('://');
+  if (authorityStart === -1) {
+    return '';
+  }
+
+  const pathStart = value.indexOf('/', authorityStart + '://'.length);
+  if (pathStart === -1) {
+    return '';
+  }
+
+  let pathEnd = value.length;
+  const queryStart = value.indexOf('?', pathStart);
+  if (queryStart !== -1) {
+    pathEnd = Math.min(pathEnd, queryStart);
+  }
+
+  const hashStart = value.indexOf('#', pathStart);
+  if (hashStart !== -1) {
+    pathEnd = Math.min(pathEnd, hashStart);
+  }
+
+  return value.slice(pathStart, pathEnd);
+}
+
+function isDotUrlPathSegment(segment: string): boolean {
+  let dots = 0;
+
+  for (let index = 0; index < segment.length; ) {
+    if (segment[index] === '.') {
+      dots += 1;
+      index += 1;
+      continue;
+    }
+
+    if (isEncodedDot(segment, index)) {
+      dots += 1;
+      index += 3;
+      continue;
+    }
+
+    return false;
+  }
+
+  return dots === 1 || dots === 2;
+}
+
+function isEncodedDot(value: string, index: number): boolean {
+  return (
+    value[index] === '%' &&
+    value[index + 1] === '2' &&
+    value[index + 2] !== undefined &&
+    value[index + 2].toLowerCase() === 'e'
+  );
 }
 
 function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
