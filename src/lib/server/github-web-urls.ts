@@ -5,6 +5,7 @@ import { encodeGitHubPathSegment } from './github-url-encoding';
 const DEFAULT_GITHUB_WEB_BASE_URL = 'https://github.com';
 
 export const MAX_GITHUB_WEB_URL_LENGTH = 2048;
+const URL_CONSTRUCTOR = globalThis.URL;
 
 export type GitHubWebUrlContext = {
   repositoryUrl: string;
@@ -37,7 +38,7 @@ export function githubRepositoryUrlContext(
   repositoryHtmlUrl = ''
 ): GitHubWebUrlContext {
   const repositoryUrlFallback = githubRepositoryWebUrl(webBaseUrl, repo);
-  const fallbackUrl = new URL(repositoryUrlFallback);
+  const fallbackUrl = new URL_CONSTRUCTOR(repositoryUrlFallback);
   const repositoryOrigin = fallbackUrl.origin;
   const repositoryPathPrefix = fallbackUrl.pathname;
   const repositoryUrl = safeGitHubRepositoryRootUrl(
@@ -78,7 +79,7 @@ function safeGitHubRepositoryRootUrl(
     return fallback;
   }
 
-  const url = new URL(safeValue);
+  const url = new URL_CONSTRUCTOR(safeValue);
   const pathMatchesRepositoryRoot = url.pathname === allowedPathPrefix || url.pathname === `${allowedPathPrefix}/`;
   if (!pathMatchesRepositoryRoot || url.search !== '' || url.hash !== '') {
     return fallback;
@@ -93,7 +94,7 @@ function safeGitHubWebUrlText(value: unknown, allowedOrigin: string, allowedPath
 
   let url: URL;
   try {
-    url = new URL(safeValue);
+    url = new URL_CONSTRUCTOR(safeValue);
   } catch {
     return null;
   }
@@ -113,7 +114,7 @@ function normalizedGitHubWebBaseUrl(webBaseUrl: string): string {
 
   let url: URL;
   try {
-    url = new URL(safeBaseUrl);
+    url = new URL_CONSTRUCTOR(safeBaseUrl);
   } catch {
     return DEFAULT_GITHUB_WEB_BASE_URL;
   }

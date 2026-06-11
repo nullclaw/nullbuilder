@@ -13,6 +13,15 @@ import {
 } from './github-web-urls';
 
 const REPO = 'nullclaw/nullbuilder' as RepoSlug;
+const originalUrl = globalThis.URL;
+
+function restoreGlobalUrl(): void {
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: originalUrl
+  });
+}
 
 test('github web URL helpers build repository owner and mutation URLs', () => {
   const context = githubRepositoryUrlContext('https://github.example.test/', REPO);
@@ -60,6 +69,36 @@ test('github web URL helpers normalize unsafe configured bases before composing 
     assert.equal(repositoryUrl.includes(secret), false);
     assert.equal(ownerUrl.includes(secret), false);
     assert.equal(context.repositoryUrl.includes(secret), false);
+  }
+});
+
+test('github web URL helpers parse with captured URL constructor', () => {
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: class URLShouldNotBeCalled {
+      constructor() {
+        throw new Error('global URL constructor should not be called');
+      }
+    }
+  });
+
+  try {
+    const context = githubRepositoryUrlContext(
+      'https://github.example.test/',
+      REPO,
+      'https://github.example.test/nullclaw/nullbuilder/'
+    );
+
+    assert.equal(
+      githubRepositoryWebUrl('https://github.example.test/', REPO),
+      'https://github.example.test/nullclaw/nullbuilder'
+    );
+    assert.equal(context.repositoryUrl, 'https://github.example.test/nullclaw/nullbuilder');
+    assert.equal(context.repositoryOrigin, 'https://github.example.test');
+    assert.equal(context.repositoryPathPrefix, '/nullclaw/nullbuilder');
+  } finally {
+    restoreGlobalUrl();
   }
 });
 
