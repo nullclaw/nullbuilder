@@ -38,6 +38,17 @@ export function settleStarted<T1, T2>(
 export function settleStarted<T1, T2, T3, T4>(
   reads: readonly [Promise<T1>, Promise<T2>, Promise<T3>, Promise<T4>]
 ): Promise<[T1, T2, T3, T4]>;
+export function settleStarted<T1, T2, T3, T4, T5, T6, T7>(
+  reads: readonly [
+    Promise<T1>,
+    Promise<T2>,
+    Promise<T3>,
+    Promise<T4>,
+    Promise<T5>,
+    Promise<T6>,
+    Promise<T7>
+  ]
+): Promise<[T1, T2, T3, T4, T5, T6, T7]>;
 export function settleStarted<T>(reads: readonly Promise<T>[]): Promise<T[]>;
 export async function settleStarted(reads: readonly Promise<unknown>[]): Promise<unknown[]> {
   const results = await Promise.allSettled(reads);

@@ -167,6 +167,48 @@ test('settleStarted waits for all started promises before rethrowing', async () 
   assert.equal(settled, true);
 });
 
+test('settleStarted preserves wide tuple order and waits after rejection', async () => {
+  const failure = new Error('wide read failed');
+  let releaseLastRead!: () => void;
+  let settled = false;
+  const lastRead = new Promise<number>((resolve) => {
+    releaseLastRead = () => resolve(7);
+  });
+
+  const reads = settleStarted([
+    Promise.resolve(1),
+    Promise.resolve(2),
+    Promise.reject(failure),
+    Promise.resolve(4),
+    Promise.resolve(5),
+    Promise.resolve(6),
+    lastRead
+  ] as const);
+  reads.finally(() => {
+    settled = true;
+  }).catch(() => undefined);
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(settled, false);
+  releaseLastRead();
+
+  await assert.rejects(reads, (error: unknown) => error === failure);
+  assert.equal(settled, true);
+
+  const ordered = await settleStarted([
+    Promise.resolve(1),
+    Promise.resolve(2),
+    Promise.resolve(3),
+    Promise.resolve(4),
+    Promise.resolve(5),
+    Promise.resolve(6),
+    Promise.resolve(7)
+  ] as const);
+  assert.deepEqual(ordered, [1, 2, 3, 4, 5, 6, 7]);
+});
+
 test('settleStarted avoids global array map hooks when collecting results', async () => {
   const originalMap = Array.prototype.map;
   Array.prototype.map = function mapShouldNotBeCalled(): never {

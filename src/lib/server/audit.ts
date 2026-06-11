@@ -16,7 +16,7 @@ import {
   type WorkflowFile
 } from './audit-rules';
 import { decodeGitHubContent } from './audit-workflows';
-import { mapWithConcurrency } from './concurrency';
+import { mapWithConcurrency, settleStarted } from './concurrency';
 import { sanitizeGitBranchName } from './git-refs';
 import { discoverRepositories, GitHubApiError, githubGet, publicErrorMessage } from './github';
 import {
@@ -91,7 +91,7 @@ async function auditRepository(config: NullbuilderConfig, repo: RepoSlug): Promi
       githubSecurityPolicy,
       codeowners,
       githubCodeowners
-    ] = await Promise.all([
+    ] = await settleStarted([
       loadWorkflowFiles(config, normalizedRepo, workflowDirectory, urlContext),
       branchProtectionProbe,
       probeGitHub<GitHubContentFile>(config, `/repos/${normalizedRepo}/contents/.github/dependabot.yml`),
