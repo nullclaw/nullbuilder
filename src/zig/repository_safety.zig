@@ -10,23 +10,43 @@ const RepositorySlugParts = struct {
     repo: []const u8,
 };
 
+const RepositorySlugShape = union(enum) {
+    parts: RepositorySlugParts,
+    empty,
+    oversized,
+    missing_separator,
+    empty_owner,
+    empty_repo,
+    extra_separator,
+};
+
 pub fn isRepositorySlug(value: []const u8) bool {
     return parseRepositorySlug(value) != null;
 }
 
 fn parseRepositorySlug(value: []const u8) ?RepositorySlugParts {
-    if (value.len > max_repository_slug_bytes) return null;
-
-    const slash_index = std.mem.indexOfScalar(u8, value, '/') orelse return null;
-    if (slash_index == 0 or slash_index == value.len - 1) return null;
-    if (std.mem.indexOfScalar(u8, value[slash_index + 1 ..], '/') != null) return null;
-
-    const parts = RepositorySlugParts{
-        .owner = value[0..slash_index],
-        .repo = value[slash_index + 1 ..],
+    const shape = classifyRepositorySlugShape(value);
+    const parts = switch (shape) {
+        .parts => |parts| parts,
+        else => return null,
     };
 
     return if (isOwnerSegment(parts.owner) and isRepoSegment(parts.repo)) parts else null;
+}
+
+fn classifyRepositorySlugShape(value: []const u8) RepositorySlugShape {
+    if (value.len == 0) return .empty;
+    if (value.len > max_repository_slug_bytes) return .oversized;
+
+    const slash_index = std.mem.indexOfScalar(u8, value, '/') orelse return .missing_separator;
+    if (slash_index == 0) return .empty_owner;
+    if (slash_index == value.len - 1) return .empty_repo;
+    if (std.mem.indexOfScalar(u8, value[slash_index + 1 ..], '/') != null) return .extra_separator;
+
+    return .{ .parts = .{
+        .owner = value[0..slash_index],
+        .repo = value[slash_index + 1 ..],
+    } };
 }
 
 pub fn isOwnerSegment(value: []const u8) bool {
@@ -81,4 +101,36 @@ test "repository safety validates repository slugs" {
     try std.testing.expect(!isRepositorySlug(("a" ** max_owner_segment_bytes) ++ "/" ++ ("b" ** max_repo_segment_bytes) ++ "x"));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.git"));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.GIT"));
+}
+
+test "repository safety classifies repository slug shape before validating segments" {
+    switch (classifyRepositorySlugShape("nullclaw/nullbuilder")) {
+        .parts => |parts| {
+            try std.testing.expectEqualStrings("nullclaw", parts.owner);
+            try std.testing.expectEqualStrings("nullbuilder", parts.repo);
+        },
+        else => return error.ExpectedRepositorySlugParts,
+    }
+
+    try expectRepositorySlugShape(.empty, "");
+    try expectRepositorySlugShape(.missing_separator, "nullbuilder");
+    try expectRepositorySlugShape(.empty_owner, "/nullbuilder");
+    try expectRepositorySlugShape(.empty_repo, "nullclaw/");
+    try expectRepositorySlugShape(.extra_separator, "nullclaw/nullbuilder/extra");
+    try expectRepositorySlugShape(
+        .oversized,
+        ("a" ** max_owner_segment_bytes) ++ "/" ++ ("b" ** max_repo_segment_bytes) ++ "x",
+    );
+
+    switch (classifyRepositorySlugShape("owner_name/nullbuilder")) {
+        .parts => |parts| {
+            try std.testing.expect(!isOwnerSegment(parts.owner));
+            try std.testing.expect(isRepoSegment(parts.repo));
+        },
+        else => return error.ExpectedRepositorySlugParts,
+    }
+}
+
+fn expectRepositorySlugShape(expected: std.meta.Tag(RepositorySlugShape), value: []const u8) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyRepositorySlugShape(value)));
 }
