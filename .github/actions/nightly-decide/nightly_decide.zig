@@ -172,7 +172,32 @@ fn skipDecision(run: Run) Decision {
 }
 
 fn safeMatchedRunUrl(value: []const u8) []const u8 {
-    return if (action_values.isHttpUrl(value, MAX_OUTPUT_VALUE_BYTES)) value else "";
+    return if (isGitHubActionsRunUrl(value)) value else "";
+}
+
+fn isGitHubActionsRunUrl(value: []const u8) bool {
+    if (!action_values.isHttpUrl(value, MAX_OUTPUT_VALUE_BYTES)) return false;
+
+    const prefix = "https://github.com/";
+    if (!std.mem.startsWith(u8, value, prefix)) return false;
+
+    const path_and_query = value[prefix.len..];
+    const query_start = std.mem.indexOfScalar(u8, path_and_query, '?') orelse path_and_query.len;
+    const path = path_and_query[0..query_start];
+
+    var segments = std.mem.splitScalar(u8, path, '/');
+    const owner = segments.next() orelse return false;
+    const repo = segments.next() orelse return false;
+    const actions = segments.next() orelse return false;
+    const runs = segments.next() orelse return false;
+    const run_id = segments.next() orelse return false;
+
+    return segments.next() == null and
+        action_values.isRepositoryOwner(owner) and
+        action_values.isRepositoryName(repo) and
+        std.mem.eql(u8, actions, "actions") and
+        std.mem.eql(u8, runs, "runs") and
+        action_values.isDecimalId(run_id);
 }
 
 fn boundedWorkflowRuns(runs: []const Run) []const Run {
@@ -212,7 +237,7 @@ fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void 
 }
 
 fn validateActionOutputUrl(value: []const u8) error{InvalidActionOutput}!void {
-    if (!action_values.isHttpUrl(value, MAX_OUTPUT_VALUE_BYTES)) {
+    if (!isGitHubActionsRunUrl(value)) {
         return error.InvalidActionOutput;
     }
 }
@@ -369,13 +394,13 @@ test "nightly decide skips successful previous nightly for same sha and workflow
         .event = "schedule",
         .head_sha = TEST_HEAD_SHA,
         .conclusion = "success",
-        .html_url = "https://example.com/run/9",
+        .html_url = "https://github.com/nullclaw/nullbuilder/actions/runs/9",
     }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqualStrings("successful-nightly-exists", decision.reason);
     try std.testing.expectEqual(@as(?u64, 9), decision.matched_run_id);
-    try std.testing.expectEqualStrings("https://example.com/run/9", decision.matched_run_url);
+    try std.testing.expectEqualStrings("https://github.com/nullclaw/nullbuilder/actions/runs/9", decision.matched_run_url);
 }
 
 test "nightly decide ignores other workflows current run failed runs and non nightly events" {
@@ -490,13 +515,33 @@ test "nightly decide ignores matching API runs without a positive id" {
         .event = "schedule",
         .head_sha = TEST_HEAD_SHA,
         .conclusion = "success",
-        .html_url = "https://example.com/run/0",
+        .html_url = "https://github.com/nullclaw/nullbuilder/actions/runs/0",
     }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
     try std.testing.expect(decision.should_build);
     try std.testing.expectEqualStrings("new-sha", decision.reason);
     try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
     try std.testing.expectEqualStrings("", decision.matched_run_url);
+}
+
+test "nightly matched run URLs are limited to GitHub Actions runs" {
+    const query_url = "https://github.com/nullclaw/nullbuilder/actions/runs/44?check_suite_focus=true";
+    try std.testing.expectEqualStrings(
+        "https://github.com/nullclaw/nullbuilder/actions/runs/44",
+        safeMatchedRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/44"),
+    );
+    try std.testing.expectEqualStrings(query_url, safeMatchedRunUrl(query_url));
+
+    for ([_][]const u8{
+        "https://example.com/run/44",
+        "https://github.com/nullclaw/nullbuilder/actions/runs/44/extra",
+        "https://github.com/nullclaw/nullbuilder/actions/runs/0",
+        "https://github.com/nullclaw/nullbuilder/actions/jobs/44",
+        "https://github.com/null_claw/nullbuilder/actions/runs/44",
+        "https://github.com/nullclaw/nullbuilder/actions/runs/44#summary",
+    }) |url| {
+        try std.testing.expectEqualStrings("", safeMatchedRunUrl(url));
+    }
 }
 
 test "nightly decision output formats GitHub output lines" {
@@ -507,14 +552,14 @@ test "nightly decision output formats GitHub output lines" {
         .should_build = false,
         .reason = "successful-nightly-exists",
         .matched_run_id = 9,
-        .matched_run_url = "https://example.com/run/9",
+        .matched_run_url = "https://github.com/nullclaw/nullbuilder/actions/runs/9",
     });
 
     try std.testing.expectEqualStrings(
         \\should_build=false
         \\reason=successful-nightly-exists
         \\matched_run_id=9
-        \\matched_run_url=https://example.com/run/9
+        \\matched_run_url=https://github.com/nullclaw/nullbuilder/actions/runs/9
         \\
     , out.writer.buffered());
 }
@@ -543,7 +588,7 @@ test "nightly decision output rejects multiline values before writing" {
         .should_build = false,
         .reason = "successful-nightly-exists",
         .matched_run_id = 9,
-        .matched_run_url = "https://example.com/run/9\nshould_build=true",
+        .matched_run_url = "https://github.com/nullclaw/nullbuilder/actions/runs/9\nshould_build=true",
     };
 
     try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
@@ -559,6 +604,21 @@ test "nightly decision output rejects non-url matched run URLs" {
         .reason = "successful-nightly-exists",
         .matched_run_id = 9,
         .matched_run_url = "not-a-url",
+    };
+
+    try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
+    try std.testing.expectEqualStrings("", out.writer.buffered());
+}
+
+test "nightly decision output rejects non-GitHub matched run URLs" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const decision = Decision{
+        .should_build = false,
+        .reason = "successful-nightly-exists",
+        .matched_run_id = 9,
+        .matched_run_url = "https://example.com/run/9",
     };
 
     try std.testing.expectError(error.InvalidActionOutput, writeDecision(&out.writer, decision));
@@ -613,7 +673,7 @@ test "nightly rejects duplicate force flag" {
 
 test "nightly parses workflow run API payload with unknown fields" {
     const json =
-        \\{"total_count":1,"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42","extra":true}]}
+        \\{"total_count":1,"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/42","extra":true}]}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
@@ -629,9 +689,9 @@ test "nightly skips malformed workflow run API entries" {
         \\  "workflow_runs": [
         \\    null,
         \\    "not-a-run",
-        \\    {"id":"42","name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42"},
-        \\    {"id":43,"name":null,"event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/43"},
-        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\    {"id":"42","name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/42"},
+        \\    {"id":43,"name":null,"event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/43"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/44"}
         \\  ]
         \\}
     ;
@@ -641,15 +701,15 @@ test "nightly skips malformed workflow run API entries" {
     const decision = decideShouldBuildFromPayload(parsed.value, "45", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
-    try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
+    try std.testing.expectEqualStrings("https://github.com/nullclaw/nullbuilder/actions/runs/44", decision.matched_run_url);
 }
 
 test "nightly skips workflow runs with unsafe JSON integer ids" {
     const json =
         \\{
         \\  "workflow_runs": [
-        \\    {"id":9007199254740992,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/unsafe"},
-        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\    {"id":9007199254740992,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/unsafe"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/44"}
         \\  ]
         \\}
     ;
@@ -659,15 +719,15 @@ test "nightly skips workflow runs with unsafe JSON integer ids" {
     const decision = decideShouldBuildFromPayload(parsed.value, "45", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
-    try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
+    try std.testing.expectEqualStrings("https://github.com/nullclaw/nullbuilder/actions/runs/44", decision.matched_run_url);
 }
 
 test "nightly skips workflow runs with malformed head shas" {
     const json =
         \\{
         \\  "workflow_runs": [
-        \\    {"id":42,"name":"Nightly","event":"schedule","head_sha":"not-a-full-sha","conclusion":"success","html_url":"https://example.com/run/42"},
-        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/44"}
+        \\    {"id":42,"name":"Nightly","event":"schedule","head_sha":"not-a-full-sha","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/42"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/44"}
         \\  ]
         \\}
     ;
@@ -677,7 +737,7 @@ test "nightly skips workflow runs with malformed head shas" {
     const decision = decideShouldBuildFromPayload(parsed.value, "45", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 44), decision.matched_run_id);
-    try std.testing.expectEqualStrings("https://example.com/run/44", decision.matched_run_url);
+    try std.testing.expectEqualStrings("https://github.com/nullclaw/nullbuilder/actions/runs/44", decision.matched_run_url);
 }
 
 test "nightly treats malformed workflow run collections as empty history" {
@@ -731,7 +791,7 @@ test "nightly rejects oversized scalar values during runs payload parsing" {
 
 test "nightly omits unsafe matched run URLs from API payload" {
     const json =
-        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42%zz"}]}
+        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/42%zz"}]}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();
@@ -754,7 +814,7 @@ test "nightly omits unsafe matched run URLs from API payload" {
 
 test "nightly omits encoded-control matched run URLs from API payload" {
     const json =
-        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://example.com/run/42%0aoutput=true"}]}
+        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/42%0aoutput=true"}]}
     ;
     var parsed = try parseRunsPayload(std.testing.allocator, json);
     defer parsed.deinit();

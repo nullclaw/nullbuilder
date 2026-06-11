@@ -47,6 +47,14 @@ pub fn isRepositorySlug(value: []const u8) bool {
     return repository_safety.isRepositorySlug(value);
 }
 
+pub fn isRepositoryOwner(value: []const u8) bool {
+    return repository_safety.isOwnerSegment(value);
+}
+
+pub fn isRepositoryName(value: []const u8) bool {
+    return repository_safety.isRepoSegment(value);
+}
+
 pub fn isHttpUrlBase(value: []const u8) bool {
     const parsed = parseHttpUrlParts(value) orelse return false;
     if (parsed.tail.len != 0) return false;
@@ -435,6 +443,8 @@ test "action values validate decimal ids and full shas" {
 test "action values validate repository slugs" {
     try std.testing.expect(isRepositorySlug("nullclaw/nullbuilder"));
     try std.testing.expect(isRepositorySlug("null-claw/null.builder"));
+    try std.testing.expect(isRepositoryOwner("null-claw"));
+    try std.testing.expect(isRepositoryName("null.builder"));
 
     try std.testing.expect(!isRepositorySlug(""));
     try std.testing.expect(!isRepositorySlug("nullclaw"));
@@ -450,6 +460,8 @@ test "action values validate repository slugs" {
     try std.testing.expect(!isRepositorySlug("nullclaw/" ++ ("a" ** 101)));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.git"));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.GIT"));
+    try std.testing.expect(!isRepositoryOwner("null_claw"));
+    try std.testing.expect(!isRepositoryName(".hidden"));
 }
 
 test "action values validate URL bases" {
