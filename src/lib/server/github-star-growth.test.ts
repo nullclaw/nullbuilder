@@ -110,18 +110,12 @@ test('getStarGrowth treats unsafe clocks as unknown deltas without fetching', as
     NULLBUILDER_CACHE_TTL_MS: '0'
   });
   let requests = 0;
-  Date.now = () => Number.POSITIVE_INFINITY;
 
   globalThis.fetch = (async () => {
     requests += 1;
     return jsonResponse([{ starred_at: '2026-06-08T00:00:00Z' }]);
   }) as typeof fetch;
 
-  assert.deepEqual(await getStarGrowth(config, REPO, 12), {
-    current: 12,
-    last7Days: null,
-    last30Days: null
-  });
   assert.deepEqual(await getStarGrowth(config, REPO, 12, Number.MAX_SAFE_INTEGER + 1), {
     current: 12,
     last7Days: null,
@@ -133,6 +127,27 @@ test('getStarGrowth treats unsafe clocks as unknown deltas without fetching', as
     last30Days: null
   });
   assert.equal(requests, 0);
+});
+
+test('getStarGrowth reads the default clock from a captured Date.now', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://captured-star-clock.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const oneDayAgo = new Date(originalDateNow() - 24 * 60 * 60 * 1000).toISOString();
+
+  Date.now = function dateNowShouldNotBeCalled(): never {
+    throw new Error('Date.now should not be called');
+  };
+
+  globalThis.fetch = (async () => jsonResponse([{ starred_at: oneDayAgo }])) as typeof fetch;
+
+  assert.deepEqual(await getStarGrowth(config, REPO, 1), {
+    current: 1,
+    last7Days: 1,
+    last30Days: 1
+  });
 });
 
 test('getStarGrowth rejects unsafe and non-UTC stargazer timestamps', async () => {

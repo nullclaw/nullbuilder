@@ -10,12 +10,13 @@ export const STAR_PAGE_SIZE = 100;
 const MAX_STAR_PAGES_TO_SCAN = 10;
 const MAX_STARGAZER_TIMESTAMP_LENGTH = 64;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DATE_NOW = Date.now.bind(Date) as typeof Date.now;
 
 export async function getStarGrowth(
   config: NullbuilderConfig,
   repo: RepoSlug,
   currentStars: number,
-  now: unknown = Date.now()
+  now: unknown = DATE_NOW()
 ): Promise<StarGrowthSummary> {
   const current = safeCurrentStars(currentStars);
   if (current === null) {
