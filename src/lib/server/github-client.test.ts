@@ -679,20 +679,19 @@ test('githubRequest bypasses cache writes and fresh hits while cache clock is un
     NULLBUILDER_CACHE_TTL_MS: '60000'
   });
   const requests: string[] = [];
-  let now = 10_000;
-  Date.now = () => now;
+  let now: unknown = 10_000;
+  const cacheClock = () => now;
 
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     requests.push(String(input));
     return new Response(JSON.stringify({ id: requests.length }));
   }) as typeof fetch;
 
-  const first = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
-  Date.now = () => Number.MAX_SAFE_INTEGER + 1;
-  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
-  now += 1;
-  Date.now = () => now;
-  const third = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  const first = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder', { cacheClock });
+  now = Number.MAX_SAFE_INTEGER + 1;
+  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder', { cacheClock });
+  now = 10_001;
+  const third = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder', { cacheClock });
 
   assert.deepEqual(first, { id: 1 });
   assert.deepEqual(second, { id: 2 });
@@ -701,6 +700,31 @@ test('githubRequest bypasses cache writes and fresh hits while cache clock is un
     'https://unsafe-cache-clock.example.test/repos/nullclaw/nullbuilder',
     'https://unsafe-cache-clock.example.test/repos/nullclaw/nullbuilder'
   ]);
+});
+
+test('githubRequest default cache clock reads from captured Date.now', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://captured-cache-clock.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify({ id: requests.length }));
+  }) as typeof fetch;
+
+  Date.now = function dateNowShouldNotBeCalled(): never {
+    throw new Error('Date.now should not be called');
+  };
+
+  const first = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.deepEqual(first, { id: 1 });
+  assert.deepEqual(second, { id: 1 });
+  assert.deepEqual(requests, ['https://captured-cache-clock.example.test/repos/nullclaw/nullbuilder']);
 });
 
 test('githubRequest keeps cached responses isolated by GitHub token', async () => {
@@ -1394,7 +1418,7 @@ test('githubRequest revalidates stale cached GET responses with ETags', async ()
   });
   const requests: Array<{ url: string; ifNoneMatch: string | null }> = [];
   let now = 1_000;
-  Date.now = () => now;
+  const cacheClock = () => now;
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
@@ -1414,9 +1438,9 @@ test('githubRequest revalidates stale cached GET responses with ETags', async ()
     return new Response(null, { status: 304 });
   }) as typeof fetch;
 
-  const first = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  const first = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder', { cacheClock });
   now = 1_002;
-  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder');
+  const second = await githubRequest<{ id: number }>(config, '/repos/nullclaw/nullbuilder', { cacheClock });
 
   assert.deepEqual(first, { id: 1 });
   assert.deepEqual(second, { id: 1 });

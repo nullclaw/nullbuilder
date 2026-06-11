@@ -15,8 +15,11 @@ import type { NullbuilderConfig } from './config';
 
 export type GitHubRequestOptions = RequestInit & {
   accept?: string;
+  cacheClock?: GitHubCacheClock;
   useCache?: boolean;
 };
+
+type GitHubCacheClock = () => unknown;
 
 type GitHubFetchResult<T> = {
   data: T;
@@ -70,6 +73,7 @@ const STRUCTURED_CLONE = globalThis.structuredClone;
 const UTF8_RESPONSE_DECODER = new TextDecoder('utf-8', { fatal: true });
 const UTF8_RESPONSE_DECODE = UTF8_RESPONSE_DECODER.decode.bind(UTF8_RESPONSE_DECODER) as TextDecoder['decode'];
 const URL_CONSTRUCTOR = globalThis.URL;
+const DATE_NOW = Date.now.bind(Date) as typeof Date.now;
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 
 export type GitHubPublicValidationMessagePolicy = Readonly<{
@@ -156,7 +160,7 @@ async function githubFetchJson<T>(
   path: string,
   init: GitHubRequestOptions = {}
 ): Promise<GitHubFetchResult<T>> {
-  const { accept: requestedAccept, useCache, ...requestInit } = init;
+  const { accept: requestedAccept, cacheClock, useCache, ...requestInit } = init;
   const method = normalizeGitHubRequestMethod(requestInit.method);
   const accept = normalizeGitHubAcceptHeader(requestedAccept);
   const url = resolveGitHubApiUrl(config, path);
@@ -164,7 +168,7 @@ async function githubFetchJson<T>(
   const shouldCoalesce = shouldCache && !requestInit.signal;
   const key = shouldCache ? cacheKey(config, url, accept) : '';
   const cached = shouldCache ? readCacheEntry<T>(key) : undefined;
-  const now = shouldCache ? safeCacheClockMillis() : null;
+  const now = shouldCache ? safeCacheClockMillis(cacheClock) : null;
 
   if (cached && now !== null && cached.expiresAt > now) {
     touchCacheEntry(key, cached);
@@ -176,7 +180,17 @@ async function githubFetchJson<T>(
     return pending;
   }
 
-  const request = requestGitHubJson<T>(config, url, method, accept, requestInit, shouldCache, key, cached);
+  const request = requestGitHubJson<T>(
+    config,
+    url,
+    method,
+    accept,
+    requestInit,
+    shouldCache,
+    key,
+    cached,
+    cacheClock
+  );
   if (!shouldCoalesce) {
     return request;
   }
@@ -243,7 +257,8 @@ async function requestGitHubJson<T>(
   requestInit: RequestInit,
   shouldCache: boolean,
   key: string,
-  cached: CacheEntry<T> | undefined
+  cached: CacheEntry<T> | undefined,
+  cacheClock: GitHubCacheClock | undefined
 ): Promise<GitHubFetchResult<T>> {
   const headers = cloneGitHubRequestHeaders(requestInit.headers);
   stripCallerCredentialHeaders(headers);
@@ -271,7 +286,7 @@ async function requestGitHubJson<T>(
   });
 
   if (response.status === 304 && cached) {
-    const now = safeCacheClockMillis();
+    const now = safeCacheClockMillis(cacheClock);
     if (now !== null) {
       cached.expiresAt = cacheExpiresAt(now, config.cacheTtlMs);
       touchCacheEntry(key, cached);
@@ -287,7 +302,7 @@ async function requestGitHubJson<T>(
   const data = await readResponseJson<T>(response);
 
   if (shouldCache) {
-    const now = safeCacheClockMillis();
+    const now = safeCacheClockMillis(cacheClock);
     if (now !== null) {
       writeCacheEntry(
         key,
@@ -941,8 +956,19 @@ function cloneSharedJsonData<T>(data: T): T {
   return STRUCTURED_CLONE(data);
 }
 
-function safeCacheClockMillis(): number | null {
-  const timestamp = Math.floor(Date.now());
+function safeCacheClockMillis(clock: GitHubCacheClock | undefined): number | null {
+  let value: unknown;
+  try {
+    value = (clock ?? DATE_NOW)();
+  } catch {
+    return null;
+  }
+
+  if (typeof value !== 'number') {
+    return null;
+  }
+
+  const timestamp = Math.floor(value);
   return isSafeNonNegativeInteger(timestamp) ? timestamp : null;
 }
 
