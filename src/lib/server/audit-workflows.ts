@@ -7,6 +7,7 @@ export const MAX_WORKFLOW_REFERENCE_MATCHES = 200;
 export const MAX_WORKFLOW_REFERENCE_SCAN_MATCHES = MAX_WORKFLOW_REFERENCE_MATCHES * 4;
 export const MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH = 128;
 const NULLBUILDER_WORKFLOW_TARGET_PREFIX = 'nullclaw/nullbuilder/.github/workflows/';
+const BUFFER_FROM = Buffer.from.bind(Buffer) as typeof Buffer.from;
 
 export type WorkflowActionUse = {
   target: string;
@@ -117,7 +118,7 @@ export function decodeGitHubContent(
     return '';
   }
 
-  const decoded = Buffer.from(content, 'base64').subarray(0, byteLimit);
+  const decoded = BUFFER_FROM(content, 'base64').subarray(0, byteLimit);
   return decodeUtf8WorkflowContent(decoded);
 }
 

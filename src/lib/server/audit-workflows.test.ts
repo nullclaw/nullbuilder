@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { Buffer } from 'node:buffer';
 import { afterEach, test } from 'node:test';
 import {
   decodeGitHubContent,
@@ -12,9 +13,11 @@ import {
 } from './audit-workflows';
 
 const originalArrayPush = Array.prototype.push;
+const originalBufferFrom = Buffer.from;
 
 afterEach(() => {
   restoreArrayPush();
+  restoreBufferIntrinsics();
 });
 
 function restoreArrayPush(): void {
@@ -23,6 +26,10 @@ function restoreArrayPush(): void {
     writable: true,
     value: originalArrayPush
   });
+}
+
+function restoreBufferIntrinsics(): void {
+  Buffer.from = originalBufferFrom;
 }
 
 function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
@@ -240,6 +247,16 @@ test('decodeGitHubContent strips wrapped base64 without global array push hooks'
 
   assert.equal(pushCalls, 0);
   assert.equal(result, content.slice(0, 9));
+});
+
+test('decodeGitHubContent uses captured buffer decoder', () => {
+  const encoded = originalBufferFrom('abcdef', 'utf8').toString('base64');
+
+  Buffer.from = (() => {
+    throw new Error('Buffer.from should not be called');
+  }) as typeof Buffer.from;
+
+  assert.equal(decodeGitHubContent({ encoding: 'base64', content: encoded }, 4), 'abcd');
 });
 
 test('decodeGitHubContent rejects malformed base64 before audit parsing', () => {
