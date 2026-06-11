@@ -7,6 +7,19 @@ pub const MAX_OPTION_COUNT = 64;
 const MAX_VALUE_TOKEN_BYTES = 4096;
 pub const invalid_arguments_exit_code: u8 = 2;
 
+const OptionTokenStatus = enum {
+    valid,
+    invalid_length,
+    unsafe_control,
+};
+
+const ValueTokenStatus = enum {
+    valid,
+    option_like,
+    invalid_length,
+    unsafe_control,
+};
+
 pub fn nextOption(
     iterator: *std.process.Args.Iterator,
     option_count: *usize,
@@ -19,9 +32,12 @@ pub fn nextOption(
     }
     option_count.* += 1;
 
-    if (isOversizedOptionToken(arg) or hasUnsafeOptionControl(arg)) {
-        printDiagnostic("invalid option: {s}\n", arg);
-        return error.InvalidArguments;
+    switch (classifyOptionToken(arg)) {
+        .valid => {},
+        .invalid_length, .unsafe_control => {
+            printDiagnostic("invalid option: {s}\n", arg);
+            return error.InvalidArguments;
+        },
     }
 
     return arg;
@@ -105,20 +121,30 @@ pub fn sanitizeDiagnosticToken(value: []const u8, buffer: []u8) []const u8 {
 }
 
 fn validateValueToken(flag: []const u8, value: []const u8) error{InvalidArguments}!void {
-    if (isOptionLikeValue(value)) {
-        printDiagnostic("missing value for {s}\n", flag);
-        return error.InvalidArguments;
+    switch (classifyValueToken(value)) {
+        .valid => {},
+        .option_like => {
+            printDiagnostic("missing value for {s}\n", flag);
+            return error.InvalidArguments;
+        },
+        .invalid_length, .unsafe_control => {
+            printDiagnostic("invalid value for {s}\n", flag);
+            return error.InvalidArguments;
+        },
     }
+}
 
-    if (hasInvalidValueLength(value)) {
-        printDiagnostic("invalid value for {s}\n", flag);
-        return error.InvalidArguments;
-    }
+fn classifyOptionToken(value: []const u8) OptionTokenStatus {
+    if (isOversizedOptionToken(value)) return .invalid_length;
+    if (hasUnsafeOptionControl(value)) return .unsafe_control;
+    return .valid;
+}
 
-    if (hasUnsafeValueControl(value)) {
-        printDiagnostic("invalid value for {s}\n", flag);
-        return error.InvalidArguments;
-    }
+fn classifyValueToken(value: []const u8) ValueTokenStatus {
+    if (isOptionLikeValue(value)) return .option_like;
+    if (hasInvalidValueLength(value)) return .invalid_length;
+    if (hasUnsafeValueControl(value)) return .unsafe_control;
+    return .valid;
 }
 
 fn isOptionLikeValue(value: []const u8) bool {
@@ -151,6 +177,9 @@ test "invalid argument errors map to usage exit code only" {
 }
 
 test "value tokens reject option-looking arguments" {
+    try std.testing.expectEqual(ValueTokenStatus.valid, classifyValueToken("value"));
+    try std.testing.expectEqual(ValueTokenStatus.option_like, classifyValueToken("--other"));
+    try std.testing.expectEqual(ValueTokenStatus.option_like, classifyValueToken("-x"));
     try std.testing.expect(!isOptionLikeValue("value"));
     try std.testing.expect(isOptionLikeValue("--other"));
     try std.testing.expect(isOptionLikeValue("-x"));
@@ -162,6 +191,12 @@ test "option tokens are bounded before dispatch" {
     const argv = [_][*:0]const u8{ "action", "--flag", &max_option, &oversized_option, "bad\nflag" };
     var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
     var option_count: usize = 0;
+
+    try std.testing.expectEqual(OptionTokenStatus.valid, classifyOptionToken("--flag"));
+    try std.testing.expectEqual(OptionTokenStatus.valid, classifyOptionToken(max_option[0..MAX_OPTION_TOKEN_BYTES]));
+    try std.testing.expectEqual(OptionTokenStatus.invalid_length, classifyOptionToken(""));
+    try std.testing.expectEqual(OptionTokenStatus.invalid_length, classifyOptionToken(oversized_option[0 .. MAX_OPTION_TOKEN_BYTES + 1]));
+    try std.testing.expectEqual(OptionTokenStatus.unsafe_control, classifyOptionToken("bad\nflag"));
 
     try std.testing.expectEqualStrings("action", iterator.next().?);
     try std.testing.expectEqualStrings("--flag", (try nextOption(&iterator, &option_count)).?);
@@ -190,6 +225,9 @@ test "value tokens are bounded before duplication" {
     var empty_iterator = std.process.Args.Iterator.init(.{ .vector = &empty_argv });
 
     try validateValueToken("--flag", max_value[0..]);
+    try std.testing.expectEqual(ValueTokenStatus.valid, classifyValueToken(max_value[0..]));
+    try std.testing.expectEqual(ValueTokenStatus.invalid_length, classifyValueToken(""));
+    try std.testing.expectEqual(ValueTokenStatus.invalid_length, classifyValueToken(oversized_value[0..]));
     try std.testing.expect(!hasInvalidValueLength(max_value[0..]));
     try std.testing.expect(hasInvalidValueLength(""));
     try std.testing.expect(hasInvalidValueLength(oversized_value[0..]));
@@ -202,6 +240,10 @@ test "value tokens reject terminal controls before duplication" {
     try validateValueToken("--flag", "value with spaces");
     try validateValueToken("--flag", "release-\xd0\xbf\xd1\x83\xd1\x82\xd1\x8c");
 
+    try std.testing.expectEqual(ValueTokenStatus.unsafe_control, classifyValueToken("bad\nvalue"));
+    try std.testing.expectEqual(ValueTokenStatus.unsafe_control, classifyValueToken("bad\x1b[31mvalue"));
+    try std.testing.expectEqual(ValueTokenStatus.unsafe_control, classifyValueToken("bad\xc2\x85value"));
+    try std.testing.expectEqual(ValueTokenStatus.unsafe_control, classifyValueToken("bad\x85value"));
     try std.testing.expect(hasUnsafeValueControl("bad\nvalue"));
     try std.testing.expect(hasUnsafeValueControl("bad\x1b[31mvalue"));
     try std.testing.expect(hasUnsafeValueControl("bad\xc2\x85value"));
