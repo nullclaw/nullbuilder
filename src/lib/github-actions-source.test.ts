@@ -139,6 +139,13 @@ test('workflow matrix target labels use the action label contract', () => {
   assert.deepEqual(weakTargetGuards, []);
 });
 
+test('ci workflow tees test output under explicit pipefail', () => {
+  const source = readFileSync(join(workflowsRoot, 'zig-ci.yml'), 'utf8');
+
+  assert.ok(source.includes('run: |\n          set -euo pipefail\n          bash -euo pipefail -c "$TEST_COMMAND" 2>&1 | tee test-output.txt'));
+  assert.ok(!source.includes('run: bash -euo pipefail -c "$TEST_COMMAND" 2>&1 | tee test-output.txt'));
+});
+
 test('workflow runner jobs bound execution time', () => {
   const missingTimeouts: string[] = [];
 

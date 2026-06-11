@@ -163,7 +163,9 @@ jobs:
       - name: Run tests
         env:
           TEST_COMMAND: ${{ inputs.test_command }}
-        run: bash -euo pipefail -c "$TEST_COMMAND" 2>&1 | tee test-output.txt
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$TEST_COMMAND" 2>&1 | tee test-output.txt
 
       - name: Run pre-build command
         if: inputs.pre_build_command != ''
