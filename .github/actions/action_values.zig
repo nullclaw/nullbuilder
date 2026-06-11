@@ -232,6 +232,8 @@ fn isSafePort(port: []const u8) bool {
 }
 
 fn isSafeHttpUrlTail(value: []const u8) bool {
+    if (value.len > 0 and value[0] != '/') return false;
+
     var index: usize = 0;
     while (index < value.len) {
         const byte = value[index];
@@ -587,6 +589,8 @@ test "action values validate UTC timestamps" {
 }
 
 test "action values validate HTTP URLs with paths" {
+    try std.testing.expect(isHttpUrl("https://github.com", 256));
+    try std.testing.expect(isHttpUrl("http://localhost", 256));
     try std.testing.expect(isHttpUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
     try std.testing.expect(isHttpUrl("http://localhost/runs/1?check=true", 256));
     try std.testing.expect(isHttpUrl("http://127.0.0.1:8080/runs/1?check=true", 256));
@@ -607,6 +611,8 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("https://github.com:443:evil/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com:0443/runs/1", 256));
     try std.testing.expect(!isHttpUrl("http://127.0.0.1:08080/runs/1", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com?query=secret", 256));
+    try std.testing.expect(!isHttpUrl("https://github.com#fragment", 256));
     try std.testing.expect(!isHttpUrl("https://github.com\n/actions/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com@evil.example/runs/1", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/path with spaces", 256));
