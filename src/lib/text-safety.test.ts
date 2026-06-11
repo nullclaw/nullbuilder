@@ -11,7 +11,10 @@ import {
 } from './text-safety';
 
 const originalStringIterator = String.prototype[Symbol.iterator];
+const originalNumber = Number;
 const originalNumberParseInt = Number.parseInt;
+const originalMathFloor = Math.floor;
+const originalMathMin = Math.min;
 
 test('readSafeTextInput rejects oversized and control-bearing input', () => {
   assert.equal(readSafeTextInput(' nullbuilder ', { trim: true }), 'nullbuilder');
@@ -58,6 +61,67 @@ test('parsePositiveIntegerText uses checked decimal parsing', () => {
   } finally {
     Number.parseInt = originalNumberParseInt;
   }
+});
+
+test('text safety helpers use captured numeric intrinsics', () => {
+  const throwingNumber = new Proxy(originalNumber, {
+    apply(): never {
+      throw new Error('Number constructor should not be called');
+    },
+    construct(): never {
+      throw new Error('Number constructor should not be called');
+    },
+    get(target, property, receiver) {
+      if (
+        property === 'isSafeInteger' ||
+        property === 'isNaN' ||
+        property === 'isFinite' ||
+        property === 'MAX_SAFE_INTEGER'
+      ) {
+        throw new Error(`Number.${String(property)} should not be read`);
+      }
+
+      return Reflect.get(target, property, receiver);
+    }
+  }) as NumberConstructor;
+
+  Math.floor = function floorShouldNotBeCalled(): never {
+    throw new Error('Math.floor should not be called');
+  };
+  Math.min = function minShouldNotBeCalled(): never {
+    throw new Error('Math.min should not be called');
+  };
+  globalThis.Number = throwingNumber;
+
+  let safeInput: string | null = null;
+  let oversizedInput: string | null = null;
+  let parsedMax: number | null = null;
+  let parsedOverflow: number | null = null;
+  let nanFallback = '';
+  let truncated = '';
+  let infiniteLength = '';
+
+  try {
+    safeInput = readSafeTextInput('ok', { maxLength: 2 });
+    oversizedInput = readSafeTextInput('toolong', { maxLength: 3 });
+    parsedMax = parsePositiveIntegerText('9007199254740991');
+    parsedOverflow = parsePositiveIntegerText('9007199254740992');
+    nanFallback = sanitizeText('secret', { maxLength: originalNumber.NaN, fallback: 'fallback', trim: true });
+    truncated = sanitizeTerminalLine('abcdef', 4);
+    infiniteLength = sanitizeTerminalLine('abcdef', originalNumber.POSITIVE_INFINITY);
+  } finally {
+    globalThis.Number = originalNumber;
+    Math.floor = originalMathFloor;
+    Math.min = originalMathMin;
+  }
+
+  assert.equal(safeInput, 'ok');
+  assert.equal(oversizedInput, null);
+  assert.equal(parsedMax, originalNumber.MAX_SAFE_INTEGER);
+  assert.equal(parsedOverflow, null);
+  assert.equal(nanFallback, 'fallback');
+  assert.equal(truncated, 'a...');
+  assert.equal(infiniteLength, 'abcdef');
 });
 
 test('parsePositiveIntegerText rejects malformed runtime values without throwing type errors', () => {

@@ -6,6 +6,11 @@ const BIDI_FORMAT_CONTROL_TEST_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g;
 const CONTROL_CHARACTER_TEST_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 const POSITIVE_INTEGER_TEXT_PATTERN = /^[1-9]\d*$/;
+const NUMBER_IS_SAFE_INTEGER = Number.isSafeInteger.bind(Number) as typeof Number.isSafeInteger;
+const NUMBER_IS_NAN = Number.isNaN.bind(Number) as typeof Number.isNaN;
+const NUMBER_IS_FINITE = Number.isFinite.bind(Number) as typeof Number.isFinite;
+const MATH_FLOOR = Math.floor.bind(Math) as typeof Math.floor;
+const MATH_MIN = Math.min.bind(Math) as typeof Math.min;
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 const MAX_SAFE_INTEGER_DIGITS = MAX_SAFE_INTEGER.toString().length;
 
@@ -135,19 +140,19 @@ function normalizeInputLength(value: unknown): number | null {
     return MAX_TEXT_INPUT_LENGTH;
   }
 
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  return typeof value === 'number' && NUMBER_IS_SAFE_INTEGER(value) && value >= 0 ? value : null;
 }
 
 function normalizeTextLength(value: unknown): number {
-  if (typeof value !== 'number' || Number.isNaN(value) || value <= 0) {
+  if (typeof value !== 'number' || NUMBER_IS_NAN(value) || value <= 0) {
     return 0;
   }
 
-  if (!Number.isFinite(value)) {
+  if (!NUMBER_IS_FINITE(value)) {
     return MAX_TEXT_SAFETY_LENGTH;
   }
 
-  return Math.min(Math.floor(value), MAX_TEXT_SAFETY_LENGTH);
+  return MATH_MIN(MATH_FLOOR(value), MAX_TEXT_SAFETY_LENGTH);
 }
 
 function hasLoneSurrogate(value: string): boolean {
