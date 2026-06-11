@@ -177,7 +177,7 @@ jobs:
           MATRIX_TARGET: ${{ matrix.target }}
           MATRIX_ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
-          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${MATRIX_TARGET}" == *..* ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
             echo "invalid matrix target fields" >&2
             exit 1
           fi

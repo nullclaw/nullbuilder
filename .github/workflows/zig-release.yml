@@ -221,7 +221,7 @@ jobs:
             echo "invalid Android SDK inputs" >&2
             exit 1
           fi
-          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${MATRIX_TARGET}" == *..* ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
             echo "invalid Android matrix target" >&2
             exit 1
           fi
@@ -256,7 +256,7 @@ jobs:
           MATRIX_ZIG_CPU: ${{ matrix.zig_cpu }}
           MATRIX_ZIG_TARGET: ${{ matrix.zig_target }}
         run: |
-          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]] || [[ ! "${MATRIX_ZIG_CPU}" =~ ^[A-Za-z0-9._+-]*$ ]] || [[ ! "${MATRIX_EXT}" =~ ^(\.[A-Za-z0-9]+)?$ ]]; then
+          if [[ ! "${MATRIX_TARGET}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${MATRIX_TARGET}" == *..* ]] || [[ ! "${MATRIX_ZIG_TARGET}" =~ ^[A-Za-z0-9._+-]+$ ]] || [[ ! "${MATRIX_ZIG_CPU}" =~ ^[A-Za-z0-9._+-]*$ ]] || [[ ! "${MATRIX_EXT}" =~ ^(\.[A-Za-z0-9]+)?$ ]]; then
             echo "invalid matrix target fields" >&2
             exit 1
           fi
@@ -437,7 +437,7 @@ jobs:
             fi
 
             target="${artifact_dir#${artifact_prefix}-}"
-            if [[ ! "${target}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ "${target}" == *..* ]]; then
+            if [[ ! "${target}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${target}" == *..* ]]; then
               echo "invalid downloaded artifact target" >&2
               exit 1
             fi

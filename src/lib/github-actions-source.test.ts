@@ -121,9 +121,22 @@ test('release workflow validates downloaded artifact targets before staging asse
   const source = readFileSync(join(workflowsRoot, 'zig-release.yml'), 'utf8');
 
   assert.ok(source.includes('target="${artifact_dir#${artifact_prefix}-}"'));
-  assert.ok(source.includes('[[ ! "${target}" =~ ^[A-Za-z0-9._-]+$ ]]'));
+  assert.ok(source.includes('[[ ! "${target}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]'));
   assert.ok(source.includes('[[ "${target}" == *..* ]]'));
   assert.ok(source.includes('invalid downloaded artifact target'));
+});
+
+test('workflow matrix target labels use the action label contract', () => {
+  const weakTargetGuards: string[] = [];
+
+  for (const workflowFile of workflowYamlFiles(workflowsRoot)) {
+    const source = readFileSync(workflowFile, 'utf8');
+    if (source.includes('MATRIX_TARGET}" =~ ^[A-Za-z0-9._-]+$')) {
+      weakTargetGuards.push(relative(projectRoot, workflowFile));
+    }
+  }
+
+  assert.deepEqual(weakTargetGuards, []);
 });
 
 test('workflow runner jobs bound execution time', () => {
