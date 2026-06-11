@@ -35,9 +35,9 @@ pub const Dashboard = struct {
         while (repo_iter.next()) |repo| {
             result.repositories += 1;
             if (!repo.loaded) continue;
-            result.issues = saturatingAdd(result.issues, repo.open_issues);
-            result.pull_requests = saturatingAdd(result.pull_requests, repo.open_pulls);
-            result.stars = saturatingAdd(result.stars, repo.stars);
+            result.issues = saturatingSafeIntegerAdd(result.issues, repo.open_issues);
+            result.pull_requests = saturatingSafeIntegerAdd(result.pull_requests, repo.open_pulls);
+            result.stars = saturatingSafeIntegerAdd(result.stars, repo.stars);
             if (repo.has_failure) result.failing += 1;
         }
 
@@ -257,8 +257,10 @@ fn safeRepoSlugField(object: JsonObject, field_name: []const u8) ?[]const u8 {
     return if (repository_safety.isRepositorySlug(slug)) slug else null;
 }
 
-fn saturatingAdd(a: u64, b: u64) u64 {
-    return a +| b;
+fn saturatingSafeIntegerAdd(a: u64, b: u64) u64 {
+    if (a >= dashboard_json.max_safe_json_integer) return dashboard_json.max_safe_json_integer;
+    const remaining = dashboard_json.max_safe_json_integer - a;
+    return a + @min(b, remaining);
 }
 
 test "dashboard model collects repository totals and run statuses" {
@@ -317,7 +319,7 @@ test "dashboard model collects repository totals and run statuses" {
     try std.testing.expectEqual(null, errors.next());
 }
 
-test "dashboard totals reject counters outside the safe JSON integer domain" {
+test "dashboard totals saturate at the safe JSON integer domain" {
     const json = try std.fmt.allocPrint(std.testing.allocator,
         \\{{
         \\  "items": [
@@ -338,9 +340,21 @@ test "dashboard totals reject counters outside the safe JSON integer domain" {
     const dashboard = Dashboard.init(parsed.value.object);
     const totals = dashboard.totals();
 
-    try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.issues);
+    try std.testing.expectEqual(dashboard_json.max_safe_json_integer, totals.issues);
     try std.testing.expectEqual(@as(u64, 10), totals.pull_requests);
-    try std.testing.expectEqual(dashboard_json.max_safe_json_integer + 10, totals.stars);
+    try std.testing.expectEqual(dashboard_json.max_safe_json_integer, totals.stars);
+}
+
+test "dashboard total addition clamps without overflowing" {
+    try std.testing.expectEqual(@as(u64, 42), saturatingSafeIntegerAdd(40, 2));
+    try std.testing.expectEqual(
+        dashboard_json.max_safe_json_integer,
+        saturatingSafeIntegerAdd(dashboard_json.max_safe_json_integer, 1),
+    );
+    try std.testing.expectEqual(
+        dashboard_json.max_safe_json_integer,
+        saturatingSafeIntegerAdd(dashboard_json.max_safe_json_integer - 1, 10),
+    );
 }
 
 test "dashboard totals ignore repositories without safe slugs" {
