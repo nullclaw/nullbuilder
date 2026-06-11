@@ -90,6 +90,19 @@ const Run = struct {
     html_url: []const u8 = "",
 };
 
+const WorkflowRunHeadShaField = union(enum) {
+    safe: []const u8,
+    invalid_text: action_json.TextField,
+    invalid_sha: action_values.FullHexShaValidation,
+
+    fn valueOrEmpty(self: WorkflowRunHeadShaField) []const u8 {
+        return switch (self) {
+            .safe => |value| value,
+            .invalid_text, .invalid_sha => "",
+        };
+    }
+};
+
 const DecisionReason = enum {
     forced,
     new_sha,
@@ -342,8 +355,21 @@ fn runConclusionField(object: JsonObject) RunConclusion {
 }
 
 fn safeHeadShaField(object: JsonObject) []const u8 {
-    const value = action_json.optionalSafeTextField(object, "head_sha", MAX_RUN_HEAD_SHA_BYTES) orelse "";
-    return if (action_values.isFullHexSha(value)) value else "";
+    return classifyHeadShaField(object).valueOrEmpty();
+}
+
+fn classifyHeadShaField(object: JsonObject) WorkflowRunHeadShaField {
+    const text = action_json.classifyOptionalSafeTextField(object, "head_sha", MAX_RUN_HEAD_SHA_BYTES);
+    const value = switch (text) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_text = text },
+    };
+
+    const sha = action_values.classifyFullHexSha(value);
+    return switch (sha) {
+        .safe => .{ .safe = value },
+        else => .{ .invalid_sha = sha },
+    };
 }
 
 fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void {
@@ -926,6 +952,41 @@ test "nightly skips workflow runs with malformed head shas" {
     try std.testing.expectEqualStrings("https://github.com/nullclaw/nullbuilder/actions/runs/44", decision.matched_run_url);
 }
 
+test "nightly classifies workflow run head sha fields before fallback" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": {"head_sha": "0123456789abcdef0123456789abcdef01234567"},
+        \\  "missing": {},
+        \\  "number": {"head_sha": 42},
+        \\  "empty": {"head_sha": ""},
+        \\  "control": {"head_sha": "bad\nsha"},
+        \\  "oversized": {"head_sha": "0123456789abcdef0123456789abcdef01234567x"},
+        \\  "short": {"head_sha": "not-a-full-sha"},
+        \\  "badHex": {"head_sha": "g123456789abcdef0123456789abcdef01234567"}
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+    const safe = action_json.objectValue(object.get("safe").?).?;
+    switch (classifyHeadShaField(safe)) {
+        .safe => |sha| try std.testing.expectEqualStrings(TEST_HEAD_SHA, sha),
+        else => return error.ExpectedHeadSha,
+    }
+    try std.testing.expectEqualStrings(TEST_HEAD_SHA, safeHeadShaField(safe));
+
+    try expectHeadShaInvalidText(.missing, action_json.objectValue(object.get("missing").?).?);
+    try expectHeadShaInvalidText(.non_string, action_json.objectValue(object.get("number").?).?);
+    try expectHeadShaInvalidText(.empty, action_json.objectValue(object.get("empty").?).?);
+    try expectHeadShaInvalidText(.sanitizable_content, action_json.objectValue(object.get("control").?).?);
+    try expectHeadShaInvalidText(.oversized, action_json.objectValue(object.get("oversized").?).?);
+    try expectHeadShaInvalidSha(.invalid_length, action_json.objectValue(object.get("short").?).?);
+    try expectHeadShaInvalidSha(.invalid_hex, action_json.objectValue(object.get("badHex").?).?);
+
+    try std.testing.expectEqualStrings("", safeHeadShaField(action_json.objectValue(object.get("missing").?).?));
+    try std.testing.expectEqualStrings("", safeHeadShaField(action_json.objectValue(object.get("short").?).?));
+}
+
 test "nightly treats malformed workflow run collections as empty history" {
     for ([_][]const u8{
         "null",
@@ -1060,4 +1121,24 @@ test "nightly validates action options before reading runs json" {
     const oversized_workflow_name = [_]u8{'n'} ** (MAX_WORKFLOW_NAME_BYTES + 1);
     unsafe_workflow_options.workflow_name = oversized_workflow_name[0..];
     try std.testing.expectError(error.InvalidWorkflowName, validateDecideOptions(unsafe_workflow_options));
+}
+
+fn expectHeadShaInvalidText(
+    expected: std.meta.Tag(action_json.TextField),
+    object: JsonObject,
+) !void {
+    switch (classifyHeadShaField(object)) {
+        .invalid_text => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidHeadShaText,
+    }
+}
+
+fn expectHeadShaInvalidSha(
+    expected: std.meta.Tag(action_values.FullHexShaValidation),
+    object: JsonObject,
+) !void {
+    switch (classifyHeadShaField(object)) {
+        .invalid_sha => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidHeadSha,
+    }
 }
