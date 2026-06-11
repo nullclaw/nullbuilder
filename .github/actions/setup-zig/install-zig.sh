@@ -72,7 +72,8 @@ if [ "$zig_os" = "windows" ]; then
 fi
 
 if [ ! -x "${install_dir}/${zig_bin}" ]; then
-  mkdir -p "$(dirname "$install_dir")"
+  install_parent="$(dirname "$install_dir")"
+  mkdir -p "$install_parent"
 
   zig_metadata="$(
     "$python_bin" - "$version" "$host_key" <<'PY'
@@ -168,7 +169,10 @@ PY
   archive_dir="$(mktemp -d "${temp_root}/zig-archive.XXXXXX")"
   archive_path="${archive_dir}/${archive_name}"
   extract_dir="$(mktemp -d "${temp_root}/zig-extract.XXXXXX")"
-  trap 'rm -rf "$archive_dir"; rm -rf "$extract_dir"' EXIT
+  install_stage="$(mktemp -d "${install_parent}/.${host_key}.install.XXXXXX")"
+  install_trash="$(mktemp -d "${install_parent}/.${host_key}.old.XXXXXX")"
+  prepared_dir="${install_stage}/zig"
+  trap 'rm -rf "$archive_dir"; rm -rf "$extract_dir"; rm -rf "$install_stage"; rm -rf "$install_trash"' EXIT
 
   curl -fsSL --retry 3 --retry-all-errors --proto '=https' --proto-redir '=https' "$archive_url" -o "$archive_path"
 
@@ -247,8 +251,22 @@ PY
     exit 1
   fi
 
-  rm -rf "$install_dir"
-  mv "$extracted_dir" "$install_dir"
+  mv "$extracted_dir" "$prepared_dir"
+  if [ ! -x "${prepared_dir}/${zig_bin}" ]; then
+    echo "failed to stage Zig executable: $archive_url" >&2
+    exit 1
+  fi
+
+  if [ -e "$install_dir" ] || [ -L "$install_dir" ]; then
+    mv "$install_dir" "${install_trash}/previous"
+  fi
+  if ! mv "$prepared_dir" "$install_dir"; then
+    if [ -e "${install_trash}/previous" ] || [ -L "${install_trash}/previous" ]; then
+      mv "${install_trash}/previous" "$install_dir" || true
+    fi
+    echo "failed to install Zig into cache" >&2
+    exit 1
+  fi
 fi
 
 if [ -n "${GITHUB_PATH:-}" ]; then

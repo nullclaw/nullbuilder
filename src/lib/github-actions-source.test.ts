@@ -91,6 +91,29 @@ test('setup-zig validates archive filenames before local writes', () => {
   assert.ok(source.includes('archive_path="${archive_dir}/${archive_name}"'));
 });
 
+test('setup-zig replaces cached installs through staged directories', () => {
+  const source = readFileSync(join(actionsRoot, 'setup-zig', 'install-zig.sh'), 'utf8');
+
+  assert.ok(source.includes('install_parent="$(dirname "$install_dir")"'));
+  assert.ok(source.includes('mkdir -p "$install_parent"'));
+  assert.ok(source.includes('install_stage="$(mktemp -d "${install_parent}/.${host_key}.install.XXXXXX")"'));
+  assert.ok(source.includes('install_trash="$(mktemp -d "${install_parent}/.${host_key}.old.XXXXXX")"'));
+  assert.ok(source.includes('prepared_dir="${install_stage}/zig"'));
+  assert.ok(
+    source.includes(
+      'trap \'rm -rf "$archive_dir"; rm -rf "$extract_dir"; rm -rf "$install_stage"; rm -rf "$install_trash"\' EXIT'
+    )
+  );
+  assert.ok(source.includes('mv "$extracted_dir" "$prepared_dir"'));
+  assert.ok(source.includes('[ ! -x "${prepared_dir}/${zig_bin}" ]'));
+  assert.ok(source.includes('if [ -e "$install_dir" ] || [ -L "$install_dir" ]; then'));
+  assert.ok(source.includes('mv "$install_dir" "${install_trash}/previous"'));
+  assert.ok(source.includes('if ! mv "$prepared_dir" "$install_dir"; then'));
+  assert.ok(source.includes('mv "${install_trash}/previous" "$install_dir" || true'));
+  assert.ok(!source.includes('rm -rf "$install_dir"'));
+  assert.ok(!source.includes('mv "$extracted_dir" "$install_dir"'));
+});
+
 test('nightly decide validates temp root before creating decision output files', () => {
   const source = readFileSync(join(actionsRoot, 'nightly-decide', 'action.yml'), 'utf8');
 
