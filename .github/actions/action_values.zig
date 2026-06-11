@@ -69,6 +69,44 @@ const HostKind = enum {
     }
 };
 
+const LoopbackIpv4Prefix = enum {
+    first_octet,
+
+    fn text(self: LoopbackIpv4Prefix) []const u8 {
+        return switch (self) {
+            .first_octet => "127",
+        };
+    }
+
+    fn matches(self: LoopbackIpv4Prefix, octet: []const u8) bool {
+        return std.mem.eql(u8, octet, self.text());
+    }
+};
+
+const LoopbackIpv4Address = struct {
+    octets: [4][]const u8,
+
+    fn parse(host: []const u8) ?LoopbackIpv4Address {
+        var split = std.mem.splitScalar(u8, host, '.');
+        var octets: [4][]const u8 = undefined;
+        var index: usize = 0;
+
+        while (split.next()) |octet| {
+            if (index >= octets.len) return null;
+            octets[index] = octet;
+            index += 1;
+        }
+
+        if (index != octets.len) return null;
+        if (!LoopbackIpv4Prefix.first_octet.matches(octets[0])) return null;
+        for (octets[1..]) |octet| {
+            if (!isDecimalIpv4Octet(octet)) return null;
+        }
+
+        return .{ .octets = octets };
+    }
+};
+
 const GitHubActionsRunSegment = enum {
     actions,
     runs,
@@ -274,17 +312,7 @@ fn isLoopbackHost(host: []const u8) bool {
 }
 
 fn isLoopbackIpv4(host: []const u8) bool {
-    var octets = std.mem.splitScalar(u8, host, '.');
-    const first = octets.next() orelse return false;
-    if (!std.mem.eql(u8, first, "127")) return false;
-
-    var count: usize = 1;
-    while (octets.next()) |octet| {
-        count += 1;
-        if (!isDecimalIpv4Octet(octet)) return false;
-    }
-
-    return count == 4;
+    return LoopbackIpv4Address.parse(host) != null;
 }
 
 fn isLoopbackIpv6(host: []const u8) bool {
@@ -652,6 +680,21 @@ test "action values classify HTTP hosts and exact GitHub authority" {
     try std.testing.expectEqual(HostKind.loopback_ipv6, classifyHost("[::1]").?);
     try std.testing.expectEqual(HostKind.domain, classifyHost("github.example.test").?);
     try std.testing.expect(classifyHost("[::2]") == null);
+
+    const loopback_ipv4 = LoopbackIpv4Address.parse("127.0.0.1") orelse return error.ExpectedLoopbackIpv4;
+    try std.testing.expectEqualStrings("127", loopback_ipv4.octets[0]);
+    try std.testing.expectEqualStrings("0", loopback_ipv4.octets[1]);
+    try std.testing.expectEqualStrings("0", loopback_ipv4.octets[2]);
+    try std.testing.expectEqualStrings("1", loopback_ipv4.octets[3]);
+    for ([_][]const u8{
+        "126.0.0.1",
+        "127.0.0",
+        "127.0.0.1.1",
+        "127.0.0.01",
+        "127.0.0.256",
+    }) |host| {
+        try std.testing.expect(LoopbackIpv4Address.parse(host) == null);
+    }
 
     try std.testing.expect(HostKind.localhost.isLoopback());
     try std.testing.expect(HostKind.loopback_ipv4.isLoopback());
