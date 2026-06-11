@@ -36,6 +36,7 @@ const MAX_CONFIG_SECRET_LENGTH = 512;
 const MAX_CONFIG_URL_LENGTH = 2048;
 const MAX_CONFIG_BOOLEAN_LENGTH = 16;
 const MAX_CONFIG_INTEGER_LENGTH = 32;
+const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 
 export function readConfig(env: Record<string, string | undefined> = process.env): NullbuilderConfig {
   const owner = normalizeOwner(env.NULLBUILDER_OWNER ?? DEFAULT_OWNER);
@@ -140,16 +141,42 @@ function parseBoundedInteger(value: string | undefined, fallback: number, min: n
     return fallback;
   }
 
-  if (!/^[+-]?\d+$/.test(trimmed)) {
-    return fallback;
-  }
-
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isSafeInteger(parsed)) {
+  const parsed = parseConfigIntegerText(trimmed);
+  if (parsed === null) {
     return fallback;
   }
 
   return Math.min(max, Math.max(min, parsed));
+}
+
+function parseConfigIntegerText(value: string): number | null {
+  let index = 0;
+  let sign = 1;
+
+  if (value[0] === '+' || value[0] === '-') {
+    sign = value[0] === '-' ? -1 : 1;
+    index = 1;
+  }
+
+  if (index === value.length) {
+    return null;
+  }
+
+  let parsed = 0;
+  for (; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 48 || code > 57) {
+      return null;
+    }
+
+    const digit = code - 48;
+    if (parsed > Math.floor((MAX_SAFE_INTEGER - digit) / 10)) {
+      return null;
+    }
+    parsed = parsed * 10 + digit;
+  }
+
+  return sign < 0 ? -parsed : parsed;
 }
 
 function parseConfigScalar(value: string | undefined, maxLength: number): string | undefined {

@@ -1,6 +1,12 @@
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
+
+const originalNumberParseInt = Number.parseInt;
+
+afterEach(() => {
+  Number.parseInt = originalNumberParseInt;
+});
 
 test('readConfig normalizes URLs and clamps numeric settings', () => {
   const config = readConfig({
@@ -118,6 +124,23 @@ test('readConfig parses booleans and integers from bounded explicit env values o
   assert.equal(config.enableWebMutations, false);
   assert.equal(config.cacheTtlMs, 60_000);
   assert.equal(config.concurrency, 3);
+  assert.equal(config.requestTimeoutMs, 15_000);
+});
+
+test('readConfig parses signed integer settings without Number.parseInt', () => {
+  Number.parseInt = function parseIntShouldNotBeCalled(): never {
+    throw new Error('Number.parseInt should not be called');
+  };
+
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_CACHE_TTL_MS: '+000123',
+    NULLBUILDER_CONCURRENCY: '-1',
+    NULLBUILDER_REQUEST_TIMEOUT_MS: '9007199254740992'
+  });
+
+  assert.equal(config.cacheTtlMs, 123);
+  assert.equal(config.concurrency, 1);
   assert.equal(config.requestTimeoutMs, 15_000);
 });
 
