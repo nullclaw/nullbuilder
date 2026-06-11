@@ -215,6 +215,33 @@ fn validateGeneratedOutputPaths(binary_path: []const u8, sha_path: []const u8, m
     if (action_paths.eqlSafeRelativePath(sha_path, manifest_path)) return error.InvalidGeneratedPath;
 }
 
+fn ensureGeneratedOutputPathIsNew(io: std.Io, dir: std.Io.Dir, path: []const u8) !void {
+    _ = dir.statFile(io, path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
+
+    return error.PathAlreadyExists;
+}
+
+fn ensureGeneratedOutputsAreNew(io: std.Io, dir: std.Io.Dir, output_plan: PackageOutputPlan) !void {
+    try ensureGeneratedOutputPathIsNew(io, dir, output_plan.sha_path);
+    try ensureGeneratedOutputPathIsNew(io, dir, output_plan.manifest_path);
+}
+
+fn writeNewGeneratedFile(io: std.Io, dir: std.Io.Dir, path: []const u8, data: []const u8) !void {
+    try dir.writeFile(io, .{
+        .sub_path = path,
+        .data = data,
+        .flags = .{ .exclusive = true },
+    });
+}
+
+fn writePackageOutputs(io: std.Io, dir: std.Io.Dir, output_plan: PackageOutputPlan, sha_text: []const u8) !void {
+    try writeNewGeneratedFile(io, dir, output_plan.sha_path, sha_text);
+    try writeNewGeneratedFile(io, dir, output_plan.manifest_path, output_plan.manifest);
+}
+
 fn preparePackageOutputPlan(allocator: std.mem.Allocator, options: PackageOptions) !PackageOutputPlan {
     const sha_path = try formatSha256Path(allocator, options.binary_path);
     errdefer allocator.free(sha_path);
@@ -355,12 +382,26 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
     };
     defer output_plan.deinit(allocator);
 
-    const digest = try hashArtifactFileSha256(io, std.Io.Dir.cwd(), options.binary_path);
+    const cwd = std.Io.Dir.cwd();
+    ensureGeneratedOutputsAreNew(io, cwd, output_plan) catch |err| switch (err) {
+        error.PathAlreadyExists => {
+            action_args.printDiagnostic("generated artifact path already exists for: {s}\n", options.binary_path);
+            return error.InvalidArguments;
+        },
+        else => return err,
+    };
+
+    const digest = try hashArtifactFileSha256(io, cwd, options.binary_path);
     const sha_text = try formatSha256Line(allocator, digest, options.binary_path);
     defer allocator.free(sha_text);
 
-    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = output_plan.sha_path, .data = sha_text });
-    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = output_plan.manifest_path, .data = output_plan.manifest });
+    writePackageOutputs(io, cwd, output_plan, sha_text) catch |err| switch (err) {
+        error.PathAlreadyExists => {
+            action_args.printDiagnostic("generated artifact path already exists for: {s}\n", options.binary_path);
+            return error.InvalidArguments;
+        },
+        else => return err,
+    };
 }
 
 pub fn main(init: std.process.Init) !u8 {
@@ -641,6 +682,53 @@ test "package artifact prepares output metadata before reading binary bytes" {
         error.InvalidGeneratedPath,
         preparePackageOutputPlan(std.testing.allocator, case_insensitive_self_overwriting_options),
     );
+}
+
+test "package artifact preflights generated outputs before writing" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const output_plan = try preparePackageOutputPlan(std.testing.allocator, .{
+        .binary_path = "artifact.bin",
+        .target = "linux-x86_64",
+        .zig_target = "x86_64-linux-musl",
+        .version = "nightly-20260504-abcdef0",
+        .repository = "nullclaw/nullclaw",
+        .commit = "abcdef0123456789abcdef0123456789abcdef01",
+        .run_id = "123",
+        .server_url = "https://github.com",
+        .built_at = "2026-05-04T02:23:00Z",
+    });
+    defer output_plan.deinit(std.testing.allocator);
+
+    try ensureGeneratedOutputsAreNew(std.testing.io, tmp.dir, output_plan);
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = output_plan.manifest_path,
+        .data = "existing manifest",
+    });
+    try std.testing.expectError(error.PathAlreadyExists, ensureGeneratedOutputsAreNew(std.testing.io, tmp.dir, output_plan));
+}
+
+test "package artifact writes generated outputs with exclusive creation" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try writeNewGeneratedFile(std.testing.io, tmp.dir, "artifact.bin.sha256", "first");
+    try std.testing.expectError(
+        error.PathAlreadyExists,
+        writeNewGeneratedFile(std.testing.io, tmp.dir, "artifact.bin.sha256", "second"),
+    );
+
+    const contents = try tmp.dir.readFileAlloc(
+        std.testing.io,
+        "artifact.bin.sha256",
+        std.testing.allocator,
+        .limited(16),
+    );
+    defer std.testing.allocator.free(contents);
+
+    try std.testing.expectEqualStrings("first", contents);
 }
 
 test "package artifact rejects duplicate options" {
