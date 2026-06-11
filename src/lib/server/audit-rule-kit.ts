@@ -3,6 +3,8 @@ import { checkStatus } from './audit-summary';
 import type { AuditArea, AuditCheckResult, AuditFinding, AuditSeverity } from './audit-types';
 import { safeGitHubWebUrl } from './github-web-urls';
 
+const URL_CONSTRUCTOR = globalThis.URL;
+
 export type GitHubRepositoryResponse = {
   full_name: string;
   html_url: string;
@@ -129,7 +131,7 @@ function findingUrl(context: AuditContext, url: string | undefined): string {
 
 function repositoryUrlParts(value: string): { origin: string; pathPrefix: string } | null {
   try {
-    const url = new URL(value);
+    const url = new URL_CONSTRUCTOR(value);
     return {
       origin: url.origin,
       pathPrefix: url.pathname

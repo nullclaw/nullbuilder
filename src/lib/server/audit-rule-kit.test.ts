@@ -104,6 +104,45 @@ test('evaluateAuditRule constrains custom finding URLs to the repository', () =>
   assert.equal(result.findings[2].url, 'https://github.example.test/nullclaw/nullbuilder/actions/runs/1');
 });
 
+test('evaluateAuditRule parses repository URLs with captured URL constructor', () => {
+  const originalUrl = globalThis.URL;
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: class URLShouldNotBeCalled {
+      constructor() {
+        throw new Error('global URL constructor should not be called');
+      }
+    }
+  });
+
+  try {
+    const rule: AuditRule = {
+      id: 'workflow-url',
+      title: 'Workflow URL is safe',
+      area: 'workflow',
+      evaluate: (_context, finding) => [
+        finding(
+          'warning',
+          'Same-repository URL',
+          'Keep safe repository links.',
+          'https://github.example.test/nullclaw/nullbuilder/actions/runs/1'
+        )
+      ]
+    };
+
+    const result = evaluateAuditRule(rule, auditContext());
+
+    assert.equal(result.findings[0].url, 'https://github.example.test/nullclaw/nullbuilder/actions/runs/1');
+  } finally {
+    Object.defineProperty(globalThis, 'URL', {
+      configurable: true,
+      writable: true,
+      value: originalUrl
+    });
+  }
+});
+
 test('isPresent narrows probe data', () => {
   const present: Probe<{ value: number }> = { status: 'present', data: { value: 7 } };
   const missing: Probe<{ value: number }> = { status: 'missing' };
