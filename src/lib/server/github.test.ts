@@ -102,6 +102,26 @@ test('resolveGitHubApiUrl validates relative paths before URL normalization', ()
   }
 });
 
+test('resolveGitHubApiUrl rejects ambiguous relative paths on root API bases', () => {
+  const config = readConfig({
+    NULLBUILDER_GITHUB_API_URL: 'https://api.github.com',
+    NULLBUILDER_REPOS: 'nullbuilder'
+  });
+
+  for (const path of [
+    '/../meta',
+    '/%2e%2e/meta',
+    '/repos/./nullbuilder',
+    '/repos/%2E/nullbuilder',
+    '/repos//nullbuilder'
+  ]) {
+    assert.throws(
+      () => resolveGitHubApiUrl(config, path),
+      (error: unknown) => error instanceof Error && error.message === 'Invalid GitHub API path.'
+    );
+  }
+});
+
 test('resolveGitHubApiUrl rejects cross-origin absolute next URLs', () => {
   const config = readConfig({
     NULLBUILDER_GITHUB_API_URL: 'https://api.github.com',
@@ -122,6 +142,11 @@ test('resolveGitHubApiUrl rejects cross-origin absolute next URLs', () => {
     'https://token@api.github.com/repos/nullclaw/nullbuilder',
     'https://user:token@api.github.com/repos/nullclaw/nullbuilder',
     'https://api.github.com/repos/nullclaw/nullbuilder#ignored',
+    'https://api.github.com/repos/../meta',
+    'https://api.github.com/repos/%2e%2e/meta',
+    'https://api.github.com/repos/./nullbuilder',
+    'https://api.github.com/repos/%2E/nullbuilder',
+    'https://api.github.com/repos//nullbuilder',
     'https://api.github.com/repos/nullclaw/nullbuilder/%0asecret',
     'https://api.github.com/repos/nullclaw/nullbuilder/%C2%85secret',
     'https://api.github.com/repos/nullclaw/nullbuilder/%e2%80%aesecret',

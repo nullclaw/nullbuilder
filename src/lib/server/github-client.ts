@@ -6,7 +6,10 @@ import {
 } from '../number-safety';
 import { readObjectRecord } from '../record-safety';
 import { readSafeTextInput } from '../text-safety';
-import { hasEncodedTextControlCharacter } from '../url-safety';
+import {
+  hasEncodedTextControlCharacter,
+  hasUnsafeHttpUrlPathSyntax
+} from '../url-safety';
 import { contentLengthExceedsByteLimit, readBoundedByteStream } from './byte-stream';
 import type { NullbuilderConfig } from './config';
 
@@ -734,14 +737,20 @@ export function resolveGitHubApiUrl(config: NullbuilderConfig, path: string): st
 }
 
 function resolveRelativeGitHubApiUrl(config: NullbuilderConfig, path: string): string {
-  if (path.startsWith('//') || hasUnsafeApiPathControl(path)) {
+  const rawUrl = `${config.apiBaseUrl}${path}`;
+
+  if (path.startsWith('//') || hasUnsafeApiPathControl(path) || hasUnsafeHttpUrlPathSyntax(rawUrl)) {
     throw new Error('Invalid GitHub API path.');
   }
 
-  return normalizeGitHubApiUrl(config, new URL(`${config.apiBaseUrl}${path}`), 'Invalid GitHub API path.');
+  return normalizeGitHubApiUrl(config, new URL(rawUrl), 'Invalid GitHub API path.');
 }
 
 function resolveAbsoluteGitHubApiUrl(config: NullbuilderConfig, path: string): string {
+  if (hasUnsafeHttpUrlPathSyntax(path)) {
+    throw new Error('Invalid GitHub API URL.');
+  }
+
   return normalizeGitHubApiUrl(config, new URL(path), 'Invalid GitHub API URL.');
 }
 

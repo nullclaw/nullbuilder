@@ -630,7 +630,7 @@ test('githubRequest keeps cache keys structured across delimiter-bearing inputs'
   });
   const second = await githubRequest<{ id: number; url: string }>(
     config,
-    '/repos/second|https://cache-key.example.test/repos/first',
+    '/repos/second|cache-key.example.test|repos|first',
     {
       accept: 'first'
     }
@@ -645,7 +645,7 @@ test('githubRequest keeps cache keys structured across delimiter-bearing inputs'
   });
   assert.deepEqual(second, {
     id: 2,
-    url: 'https://cache-key.example.test/repos/second|https://cache-key.example.test/repos/first'
+    url: 'https://cache-key.example.test/repos/second|cache-key.example.test|repos|first'
   });
   assert.deepEqual(firstAgain, first);
   assert.deepEqual(requests, [
@@ -654,7 +654,7 @@ test('githubRequest keeps cache keys structured across delimiter-bearing inputs'
       accept: 'first|https://cache-key.example.test/repos/second'
     },
     {
-      url: 'https://cache-key.example.test/repos/second|https://cache-key.example.test/repos/first',
+      url: 'https://cache-key.example.test/repos/second|cache-key.example.test|repos|first',
       accept: 'first'
     }
   ]);
