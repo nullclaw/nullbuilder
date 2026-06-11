@@ -22,10 +22,12 @@ import {
 const originalMapKeys = Map.prototype.keys;
 const originalMapIterator = Map.prototype[Symbol.iterator];
 const originalArrayPush = Array.prototype.push;
+const originalNumberParseInt = Number.parseInt;
 
 afterEach(() => {
   restoreArrayPush();
   restoreMapIteration();
+  restoreNumberParsing();
 });
 
 function cookiesWith(value?: string): Cookies {
@@ -55,6 +57,10 @@ function restoreArrayPush(): void {
     writable: true,
     value: originalArrayPush
   });
+}
+
+function restoreNumberParsing(): void {
+  Number.parseInt = originalNumberParseInt;
 }
 
 test('session tokens validate signature and expiry', () => {
@@ -98,6 +104,21 @@ test('session tokens reject malformed bounded parts before matching signatures',
   assert.equal(isSessionTokenMatch(`${timestamp}.${'g'.repeat(64)}`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(`${timestamp}.${signature}.extra`, 'secret', issuedAt), false);
   assert.equal(isSessionTokenMatch(`${timestamp}${'.x'.repeat(10_000)}`, 'secret', issuedAt), false);
+});
+
+test('session tokens parse issued-at timestamps without Number.parseInt', () => {
+  const token = createSessionToken('secret', Number.MAX_SAFE_INTEGER);
+
+  Number.parseInt = function parseIntShouldNotBeCalled(): never {
+    throw new Error('Number.parseInt should not be called');
+  };
+
+  try {
+    assert.equal(isSessionTokenMatch(token, 'secret', Number.MAX_SAFE_INTEGER), true);
+    assert.equal(isSessionTokenMatch(`${'z'.repeat(11)}.${'f'.repeat(64)}`, 'secret', Number.MAX_SAFE_INTEGER), false);
+  } finally {
+    restoreNumberParsing();
+  }
 });
 
 test('auth cookie options keep session cookie policy centralized', () => {

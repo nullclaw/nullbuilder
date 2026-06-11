@@ -17,7 +17,9 @@ export const AUTH_COOKIE_DELETE_OPTIONS = {
 
 const ALLOWED_CLOCK_SKEW_MS = 60_000;
 const SESSION_SIGNATURE_LENGTH = 64;
-const MAX_ISSUED_AT_LENGTH = Number.MAX_SAFE_INTEGER.toString(36).length;
+const BASE36_RADIX = 36;
+const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
+const MAX_ISSUED_AT_LENGTH = MAX_SAFE_INTEGER.toString(BASE36_RADIX).length;
 const MAX_SESSION_TOKEN_LENGTH = MAX_ISSUED_AT_LENGTH + 1 + SESSION_SIGNATURE_LENGTH;
 const DEFAULT_LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_LOGIN_RATE_LIMIT_MAX_FAILURES = 5;
@@ -331,12 +333,8 @@ function parseSessionToken(value: string): SessionTokenParts | null {
 
   const issuedAt = value.slice(0, separator);
   const signature = value.slice(separator + 1);
-  if (!isIssuedAtTokenPart(issuedAt) || !isSignatureTokenPart(signature)) {
-    return null;
-  }
-
-  const timestamp = Number.parseInt(issuedAt, 36);
-  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+  const timestamp = parseIssuedAtTimestamp(issuedAt);
+  if (timestamp === null || !isSignatureTokenPart(signature)) {
     return null;
   }
 
@@ -356,8 +354,32 @@ function normalizeSessionTimestamp(value: number): number | null {
   return isSafeNonNegativeInteger(timestamp) ? timestamp : null;
 }
 
-function isIssuedAtTokenPart(value: string): boolean {
-  return value.length > 0 && value.length <= MAX_ISSUED_AT_LENGTH && /^[0-9a-z]+$/.test(value);
+function parseIssuedAtTimestamp(value: string): number | null {
+  if (value.length === 0 || value.length > MAX_ISSUED_AT_LENGTH) {
+    return null;
+  }
+
+  let parsed = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    let digit: number;
+
+    if (code >= 48 && code <= 57) {
+      digit = code - 48;
+    } else if (code >= 97 && code <= 122) {
+      digit = code - 87;
+    } else {
+      return null;
+    }
+
+    if (parsed > Math.floor((MAX_SAFE_INTEGER - digit) / BASE36_RADIX)) {
+      return null;
+    }
+    parsed = parsed * BASE36_RADIX + digit;
+  }
+
+  return parsed;
 }
 
 function isSignatureTokenPart(value: string): boolean {
