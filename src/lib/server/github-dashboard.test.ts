@@ -6,6 +6,7 @@ import {
   buildDashboard,
   makeErrorRepository,
   mapRepositorySummary,
+  workflowRunClassifierEntries,
   MAX_DASHBOARD_TEXT_FIELD_LENGTH,
   MAX_DASHBOARD_URL_LENGTH,
   MAX_DASHBOARD_WORK_LIST_ITEMS,
@@ -570,6 +571,74 @@ test('mapRepositorySummary selects newest matching workflow runs within the boun
   assert.equal(summary.latestRuns.nightly?.displayTitle, 'Newer Nightly');
   assert.equal(summary.latestRuns.release?.id, 5);
   assert.equal(summary.latestRuns.release?.displayTitle, 'First Release');
+});
+
+test('workflow run classifier registry cannot be mutated by callers', () => {
+  const entries = workflowRunClassifierEntries();
+
+  assert.deepEqual(
+    entries.map((entry) => [entry.slot, entry.nameKeywords.join(','), entry.pathKeywords.join(',')]),
+    [
+      ['ci', 'ci,test', 'ci.yml,zig-ci.yml'],
+      ['nightly', 'nightly', 'nightly.yml,zig-nightly.yml'],
+      ['release', 'release', 'release.yml,zig-release.yml']
+    ]
+  );
+
+  assert.throws(() => {
+    (entries as unknown as Array<(typeof entries)[number]>).push({
+      slot: 'ci',
+      nameKeywords: ['unsafe'],
+      pathKeywords: ['unsafe.yml']
+    });
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0] as { slot: string }).slot = 'release';
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0].nameKeywords as unknown as string[]).push('unsafe');
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0].pathKeywords as unknown as string[]).push('unsafe.yml');
+  }, TypeError);
+
+  const summary = mapRepositorySummary(
+    REPO,
+    githubRepository(),
+    [],
+    [],
+    [
+      workflowRun({
+        id: 10,
+        name: 'Unit Tests',
+        path: '.github/workflows/build.yml',
+        display_title: 'Test Suite',
+        updated_at: '2026-06-10T00:00:00Z'
+      }),
+      workflowRun({
+        id: 11,
+        name: 'Docs',
+        path: '.github/workflows/zig-nightly.yml',
+        display_title: 'Nightly',
+        updated_at: '2026-06-09T00:00:00Z'
+      }),
+      workflowRun({
+        id: 12,
+        name: 'Deploy',
+        path: '.github/workflows/zig-release.yml',
+        display_title: 'Release',
+        updated_at: '2026-06-08T00:00:00Z'
+      })
+    ],
+    { current: null, last7Days: null, last30Days: null }
+  );
+
+  assert.equal(summary.latestRuns.ci?.id, 10);
+  assert.equal(summary.latestRuns.nightly?.id, 11);
+  assert.equal(summary.latestRuns.release?.id, 12);
 });
 
 test('mapRepositorySummary matches workflow path keywords as full path segments only', () => {

@@ -44,12 +44,34 @@ export const MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN = 20;
 export const MAX_REPOSITORY_WORK_ITEMS_TO_SCAN =
   GITHUB_WORK_ITEMS_PAGE_SIZE * MAX_REPOSITORY_WORK_ITEM_PAGES_TO_SCAN;
 export const MAX_WORKFLOW_RUNS_PER_REPOSITORY = 100;
-const CI_RUN_NAME_KEYWORDS = ['ci', 'test'] as const;
-const CI_RUN_PATH_KEYWORDS = ['ci.yml', 'zig-ci.yml'] as const;
-const NIGHTLY_RUN_NAME_KEYWORDS = ['nightly'] as const;
-const NIGHTLY_RUN_PATH_KEYWORDS = ['nightly.yml', 'zig-nightly.yml'] as const;
-const RELEASE_RUN_NAME_KEYWORDS = ['release'] as const;
-const RELEASE_RUN_PATH_KEYWORDS = ['release.yml', 'zig-release.yml'] as const;
+
+type WorkflowRunClassifier = Readonly<{
+  slot: keyof RepositoryLatestRuns;
+  nameKeywords: ReadonlyArray<string>;
+  pathKeywords: ReadonlyArray<string>;
+}>;
+
+function workflowRunClassifier(
+  slot: keyof RepositoryLatestRuns,
+  nameKeywords: ReadonlyArray<string>,
+  pathKeywords: ReadonlyArray<string>
+): WorkflowRunClassifier {
+  return Object.freeze({
+    slot,
+    nameKeywords: Object.freeze(copyKeywords(nameKeywords)),
+    pathKeywords: Object.freeze(copyKeywords(pathKeywords))
+  });
+}
+
+const WORKFLOW_RUN_CLASSIFIERS: ReadonlyArray<WorkflowRunClassifier> = Object.freeze([
+  workflowRunClassifier('ci', ['ci', 'test'], ['ci.yml', 'zig-ci.yml']),
+  workflowRunClassifier('nightly', ['nightly'], ['nightly.yml', 'zig-nightly.yml']),
+  workflowRunClassifier('release', ['release'], ['release.yml', 'zig-release.yml'])
+]);
+
+export function workflowRunClassifierEntries(): ReadonlyArray<WorkflowRunClassifier> {
+  return WORKFLOW_RUN_CLASSIFIERS;
+}
 
 export function mapRepositorySummary(
   repo: RepoSlug,
@@ -355,14 +377,13 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
       ordinal
     };
 
-    if (matchesRun(name, path, CI_RUN_NAME_KEYWORDS, CI_RUN_PATH_KEYWORDS)) {
-      selectedRuns.ci = newerWorkflowRun(rankedRun, selectedRuns.ci);
-    }
-    if (matchesRun(name, path, NIGHTLY_RUN_NAME_KEYWORDS, NIGHTLY_RUN_PATH_KEYWORDS)) {
-      selectedRuns.nightly = newerWorkflowRun(rankedRun, selectedRuns.nightly);
-    }
-    if (matchesRun(name, path, RELEASE_RUN_NAME_KEYWORDS, RELEASE_RUN_PATH_KEYWORDS)) {
-      selectedRuns.release = newerWorkflowRun(rankedRun, selectedRuns.release);
+    for (let classifierIndex = 0; classifierIndex < WORKFLOW_RUN_CLASSIFIERS.length; classifierIndex += 1) {
+      const classifier = WORKFLOW_RUN_CLASSIFIERS[classifierIndex];
+      if (!matchesRun(name, path, classifier.nameKeywords, classifier.pathKeywords)) {
+        continue;
+      }
+
+      selectedRuns[classifier.slot] = newerWorkflowRun(rankedRun, selectedRuns[classifier.slot]);
     }
   }
 
@@ -371,6 +392,15 @@ function selectLatestRuns(runs: unknown[]): SelectedWorkflowRuns {
     nightly: selectedRuns.nightly?.run ?? null,
     release: selectedRuns.release?.run ?? null
   };
+}
+
+function copyKeywords(values: ReadonlyArray<string>): string[] {
+  const copy: string[] = [];
+  for (let index = 0; index < values.length; index += 1) {
+    copy[index] = values[index];
+  }
+
+  return copy;
 }
 
 function newerWorkflowRun(candidate: RankedWorkflowRun, current: RankedWorkflowRun | null): RankedWorkflowRun {

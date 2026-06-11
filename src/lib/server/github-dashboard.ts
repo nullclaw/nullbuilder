@@ -19,6 +19,7 @@ export {
   GITHUB_WORK_ITEMS_PAGE_SIZE,
   mapLatestRuns,
   mapRepositorySummary,
+  workflowRunClassifierEntries,
   MAX_DASHBOARD_TEXT_FIELD_LENGTH,
   MAX_DASHBOARD_URL_LENGTH,
   MAX_LABELS_PER_WORK_ITEM,
