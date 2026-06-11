@@ -7,6 +7,7 @@ pub const JsonValue = json_fields.JsonValue;
 pub const JsonObject = json_fields.JsonObject;
 pub const ParseLimits = json_fields.ParseLimits;
 pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
+pub const max_supported_json_array_items: usize = json_fields.max_supported_json_array_items;
 
 pub fn emptyValues() []const JsonValue {
     return json_fields.emptyValues();

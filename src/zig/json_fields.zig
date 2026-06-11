@@ -7,6 +7,7 @@ pub const JsonObject = std.json.ObjectMap;
 pub const max_safe_json_integer: u64 = json_safety.max_safe_json_integer;
 pub const max_supported_json_bytes: usize = 64 * 1024 * 1024;
 pub const max_supported_json_value_bytes: usize = 1024 * 1024;
+pub const max_supported_json_array_items: usize = 4096;
 
 pub const ParseLimits = struct {
     max_bytes: usize,
@@ -56,7 +57,8 @@ pub fn arrayField(object: JsonObject, field_name: []const u8) ?[]const JsonValue
 
 pub fn boundedArrayField(object: JsonObject, field_name: []const u8, max_items: usize) ?[]const JsonValue {
     const items = arrayField(object, field_name) orelse return null;
-    return items[0..@min(items.len, max_items)];
+    const item_limit = normalizeArrayItemLimit(max_items);
+    return items[0..@min(items.len, item_limit)];
 }
 
 pub fn boundedArrayFieldOrEmpty(object: JsonObject, field_name: []const u8, max_items: usize) []const JsonValue {
@@ -107,6 +109,10 @@ pub fn safeTextValue(
     return json_safety.safeTextValue(value, max_len, isSafeText);
 }
 
+fn normalizeArrayItemLimit(max_items: usize) usize {
+    return @min(max_items, max_supported_json_array_items);
+}
+
 test "json fields expose typed values and bounded arrays" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
@@ -127,6 +133,25 @@ test "json fields expose typed values and bounded arrays" {
     try std.testing.expectEqual(@as(usize, 0), boundedArrayFieldOrEmpty(object, "missing", 2).len);
     try std.testing.expect(objectField(object, "child") != null);
     try std.testing.expectEqual(null, objectField(object, "items"));
+}
+
+test "json fields cap array limits to a supported shared maximum" {
+    var json: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer json.deinit();
+
+    try json.writer.writeAll("{\"items\":[");
+    for (0..max_supported_json_array_items + 1) |index| {
+        if (index > 0) try json.writer.writeByte(',');
+        try json.writer.writeByte('0');
+    }
+    try json.writer.writeAll("]}");
+
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator, json.writer.buffered(), .{});
+    defer parsed.deinit();
+    const object = objectValue(parsed.value).?;
+
+    try std.testing.expectEqual(max_supported_json_array_items, boundedArrayField(object, "items", std.math.maxInt(usize)).?.len);
+    try std.testing.expectEqual(max_supported_json_array_items, boundedArrayFieldOrEmpty(object, "items", std.math.maxInt(usize)).len);
 }
 
 test "json fields parse helper bounds payloads and scalar values" {
