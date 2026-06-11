@@ -542,9 +542,13 @@ test "package artifact rejects binary files that reach the hash byte limit" {
     try std.testing.expectError(error.StreamTooLong, hashArtifactFileSha256Limited(std.testing.io, tmp.dir, "artifact.bin", 3));
 }
 
-test "package artifact builds parseable manifest" {
-    const manifest = try buildManifest(std.testing.allocator, .{
-        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
+fn validPackageOptions() PackageOptions {
+    return packageOptionsForBinaryPath("nightly-artifacts/nullclaw-linux-x86_64");
+}
+
+fn packageOptionsForBinaryPath(binary_path: []const u8) PackageOptions {
+    return .{
+        .binary_path = binary_path,
         .target = "linux-x86_64",
         .zig_target = "x86_64-linux-musl",
         .version = "nightly-20260504-abcdef0",
@@ -553,7 +557,11 @@ test "package artifact builds parseable manifest" {
         .run_id = "123",
         .server_url = "https://github.com",
         .built_at = "2026-05-04T02:23:00Z",
-    });
+    };
+}
+
+test "package artifact builds parseable manifest" {
+    const manifest = try buildManifest(std.testing.allocator, validPackageOptions());
     defer std.testing.allocator.free(manifest);
 
     var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, manifest, .{});
@@ -567,17 +575,7 @@ test "package artifact builds parseable manifest" {
 }
 
 test "package artifact validates manifest run URL fields at the formatter boundary" {
-    const valid_options = PackageOptions{
-        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
-        .target = "linux-x86_64",
-        .zig_target = "x86_64-linux-musl",
-        .version = "nightly-20260504-abcdef0",
-        .repository = "nullclaw/nullclaw",
-        .commit = "abcdef0123456789abcdef0123456789abcdef01",
-        .run_id = "123",
-        .server_url = "https://github.com",
-        .built_at = "2026-05-04T02:23:00Z",
-    };
+    const valid_options = validPackageOptions();
 
     var run_url_buffer: [MAX_MANIFEST_URL_BYTES]u8 = undefined;
     const run_url = try formatRunUrl(run_url_buffer[0..], valid_options);
@@ -612,17 +610,7 @@ test "package artifact validates manifest run URL fields at the formatter bounda
 }
 
 test "package artifact validates manifest metadata at the formatter boundary" {
-    const valid_options = PackageOptions{
-        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
-        .target = "linux-x86_64",
-        .zig_target = "x86_64-linux-musl",
-        .version = "nightly-20260504-abcdef0",
-        .repository = "nullclaw/nullclaw",
-        .commit = "abcdef0123456789abcdef0123456789abcdef01",
-        .run_id = "123",
-        .server_url = "https://github.com",
-        .built_at = "2026-05-04T02:23:00Z",
-    };
+    const valid_options = validPackageOptions();
 
     var unsafe_target_options = valid_options;
     unsafe_target_options.target = "../outside";
@@ -730,17 +718,7 @@ test "package artifact rejects unsafe generated path inputs before allocation" {
 }
 
 test "package artifact prepares output metadata before reading binary bytes" {
-    const valid_options = PackageOptions{
-        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
-        .target = "linux-x86_64",
-        .zig_target = "x86_64-linux-musl",
-        .version = "nightly-20260504-abcdef0",
-        .repository = "nullclaw/nullclaw",
-        .commit = "abcdef0123456789abcdef0123456789abcdef01",
-        .run_id = "123",
-        .server_url = "https://github.com",
-        .built_at = "2026-05-04T02:23:00Z",
-    };
+    const valid_options = validPackageOptions();
 
     const output_plan = try preparePackageOutputPlan(std.testing.allocator, valid_options);
     defer output_plan.deinit(std.testing.allocator);
@@ -781,17 +759,7 @@ test "package artifact preflights generated outputs before writing" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const output_plan = try preparePackageOutputPlan(std.testing.allocator, .{
-        .binary_path = "artifact.bin",
-        .target = "linux-x86_64",
-        .zig_target = "x86_64-linux-musl",
-        .version = "nightly-20260504-abcdef0",
-        .repository = "nullclaw/nullclaw",
-        .commit = "abcdef0123456789abcdef0123456789abcdef01",
-        .run_id = "123",
-        .server_url = "https://github.com",
-        .built_at = "2026-05-04T02:23:00Z",
-    });
+    const output_plan = try preparePackageOutputPlan(std.testing.allocator, packageOptionsForBinaryPath("artifact.bin"));
     defer output_plan.deinit(std.testing.allocator);
 
     try ensureGeneratedOutputsAreNew(std.testing.io, tmp.dir, output_plan);
@@ -828,17 +796,7 @@ test "package artifact removes partial checksum output when manifest write fails
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const output_plan = try preparePackageOutputPlan(std.testing.allocator, .{
-        .binary_path = "artifact.bin",
-        .target = "linux-x86_64",
-        .zig_target = "x86_64-linux-musl",
-        .version = "nightly-20260504-abcdef0",
-        .repository = "nullclaw/nullclaw",
-        .commit = "abcdef0123456789abcdef0123456789abcdef01",
-        .run_id = "123",
-        .server_url = "https://github.com",
-        .built_at = "2026-05-04T02:23:00Z",
-    });
+    const output_plan = try preparePackageOutputPlan(std.testing.allocator, packageOptionsForBinaryPath("artifact.bin"));
     defer output_plan.deinit(std.testing.allocator);
 
     try tmp.dir.writeFile(std.testing.io, .{
@@ -901,17 +859,7 @@ test "package artifact rejects duplicate options" {
 }
 
 test "package artifact validates package options before filesystem writes" {
-    const valid_options = PackageOptions{
-        .binary_path = "nightly-artifacts/nullclaw-linux-x86_64",
-        .target = "linux-x86_64",
-        .zig_target = "x86_64-linux-musl",
-        .version = "nightly-20260504-abcdef0",
-        .repository = "nullclaw/nullclaw",
-        .commit = "abcdef0123456789abcdef0123456789abcdef01",
-        .run_id = "123",
-        .server_url = "https://github.com",
-        .built_at = "2026-05-04T02:23:00Z",
-    };
+    const valid_options = validPackageOptions();
 
     try validatePackageOptions(valid_options);
 
