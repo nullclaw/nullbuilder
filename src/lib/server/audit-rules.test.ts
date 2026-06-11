@@ -3,8 +3,10 @@ import { test } from 'node:test';
 import type { RepoSlug } from '../repositories';
 import type { AuditCheckResult } from './audit-types';
 import {
+  auditRuleEntries,
   evaluateAuditChecks,
   type AuditContext,
+  type AuditRule,
   type GitHubContentFile,
   type GitHubContentItem,
   type GitHubBranchProtection,
@@ -13,6 +15,18 @@ import {
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalArrayPush = Array.prototype.push;
+const EXPECTED_AUDIT_RULE_IDS = [
+  'repository-active',
+  'security-policy',
+  'dependabot',
+  'codeowners',
+  'branch-protection',
+  'nullbuilder-workflows',
+  'workflow-dangerous-triggers',
+  'workflow-permissions',
+  'workflow-pinning',
+  'nullbuilder-workflow-ref'
+] as const;
 
 test('evaluateAuditChecks reports missing repository security controls', () => {
   const checks = evaluateAuditChecks(
@@ -30,18 +44,7 @@ test('evaluateAuditChecks reports missing repository security controls', () => {
 
   assert.deepEqual(
     checks.map(({ id }) => id),
-    [
-      'repository-active',
-      'security-policy',
-      'dependabot',
-      'codeowners',
-      'branch-protection',
-      'nullbuilder-workflows',
-      'workflow-dangerous-triggers',
-      'workflow-permissions',
-      'workflow-pinning',
-      'nullbuilder-workflow-ref'
-    ]
+    EXPECTED_AUDIT_RULE_IDS
   );
   assert.equal(check(checks, 'repository-active').status, 'warning');
   assert.equal(check(checks, 'security-policy').status, 'warning');
@@ -103,21 +106,26 @@ jobs:
 test('evaluateAuditChecks avoids array iterators while scanning static rules', () => {
   const checks = withGuardedArrayIterator(() => evaluateAuditChecks(auditContext()));
 
-  assert.deepEqual(
-    checks.map(({ id }) => id),
-    [
-      'repository-active',
-      'security-policy',
-      'dependabot',
-      'codeowners',
-      'branch-protection',
-      'nullbuilder-workflows',
-      'workflow-dangerous-triggers',
-      'workflow-permissions',
-      'workflow-pinning',
-      'nullbuilder-workflow-ref'
-    ]
-  );
+  assert.deepEqual(checks.map(({ id }) => id), EXPECTED_AUDIT_RULE_IDS);
+});
+
+test('audit rule registry cannot be mutated by callers', () => {
+  const entries = auditRuleEntries();
+
+  assert.throws(() => {
+    (entries as unknown as AuditRule[]).push({
+      id: 'unsafe',
+      title: 'Unsafe injected rule',
+      area: 'security',
+      evaluate: () => []
+    });
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0] as { id: string }).id = 'unsafe';
+  }, TypeError);
+
+  assert.deepEqual(evaluateAuditChecks(auditContext()).map(({ id }) => id), EXPECTED_AUDIT_RULE_IDS);
 });
 
 test('evaluateAuditChecks collects checks and branch findings without global array push hooks', () => {

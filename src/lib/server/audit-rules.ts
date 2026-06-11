@@ -16,11 +16,16 @@ export type {
   GitHubContentItem,
   GitHubRepositoryResponse,
   Probe,
+  AuditRule,
   WorkflowFile
 } from './audit-rule-kit';
 
-const RULES = [
-  {
+function auditRule(rule: AuditRule): AuditRule {
+  return Object.freeze(rule);
+}
+
+const RULES: ReadonlyArray<AuditRule> = Object.freeze([
+  auditRule({
     id: 'repository-active',
     title: 'Repository is active',
     area: 'repository',
@@ -37,8 +42,8 @@ const RULES = [
         )
       ];
     }
-  },
-  {
+  }),
+  auditRule({
     id: 'security-policy',
     title: 'Security policy exists',
     area: 'security',
@@ -55,8 +60,8 @@ const RULES = [
         )
       ];
     }
-  },
-  {
+  }),
+  auditRule({
     id: 'dependabot',
     title: 'Dependabot configuration exists',
     area: 'security',
@@ -73,8 +78,8 @@ const RULES = [
         )
       ];
     }
-  },
-  {
+  }),
+  auditRule({
     id: 'codeowners',
     title: 'Code owners exist',
     area: 'security',
@@ -91,8 +96,8 @@ const RULES = [
         )
       ];
     }
-  },
-  {
+  }),
+  auditRule({
     id: 'branch-protection',
     title: 'Default branch is protected',
     area: 'security',
@@ -138,38 +143,42 @@ const RULES = [
         )
       ];
     }
-  },
-  {
+  }),
+  auditRule({
     id: 'nullbuilder-workflows',
     title: 'Nullbuilder workflows are installed',
     area: 'workflow',
     evaluate: nullbuilderWorkflowFindings
-  },
-  {
+  }),
+  auditRule({
     id: 'workflow-dangerous-triggers',
     title: 'Workflows avoid dangerous triggers',
     area: 'workflow',
     evaluate: dangerousWorkflowTriggerFindings
-  },
-  {
+  }),
+  auditRule({
     id: 'workflow-permissions',
     title: 'Workflow token permissions are explicit',
     area: 'workflow',
     evaluate: workflowPermissionFindings
-  },
-  {
+  }),
+  auditRule({
     id: 'workflow-pinning',
     title: 'Third-party workflow actions are pinned',
     area: 'workflow',
     evaluate: workflowPinningFindings
-  },
-  {
+  }),
+  auditRule({
     id: 'nullbuilder-workflow-ref',
     title: 'Nullbuilder workflow references are stable',
     area: 'release',
     evaluate: mutableNullbuilderWorkflowRefFindings
-  }
-] satisfies readonly AuditRule[];
+  })
+]);
+
+export function auditRuleEntries(): ReadonlyArray<AuditRule> {
+  return RULES;
+}
 
 export function evaluateAuditChecks(context: AuditContext): AuditCheckResult[] {
   const checks: AuditCheckResult[] = [];

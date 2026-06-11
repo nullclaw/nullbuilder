@@ -66,10 +66,10 @@ export type AuditFindingBuilder = (
 ) => AuditFinding;
 
 export type AuditRule = {
-  id: string;
-  title: string;
-  area: AuditArea;
-  evaluate: (context: AuditContext, finding: AuditFindingBuilder) => AuditFinding[];
+  readonly id: string;
+  readonly title: string;
+  readonly area: AuditArea;
+  readonly evaluate: (context: AuditContext, finding: AuditFindingBuilder) => AuditFinding[];
 };
 
 export function evaluateAuditRule(rule: AuditRule, context: AuditContext): AuditCheckResult {
