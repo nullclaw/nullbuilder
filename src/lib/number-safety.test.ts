@@ -9,6 +9,11 @@ import {
   saturatingSafeIntegerAdd
 } from './number-safety';
 
+const originalNumber = Number;
+const originalMathFloor = Math.floor;
+const originalMathMax = Math.max;
+const originalMathMin = Math.min;
+
 test('safe integer helpers classify external numeric values', () => {
   assert.equal(isSafePositiveInteger(1), true);
   assert.equal(isSafePositiveInteger(0), false);
@@ -75,4 +80,44 @@ test('saturatingSafeIntegerAdd normalizes malformed runtime base values', () => 
   assert.equal(saturatingSafeIntegerAdd('10', 2), 0);
   assert.equal(saturatingSafeIntegerAdd(-1, 2), 0);
   assert.equal(saturatingSafeIntegerAdd(Number.NaN, 2), 0);
+});
+
+test('safe integer helpers use captured numeric intrinsics', () => {
+  globalThis.Number = new Proxy(originalNumber, {
+    get(target, property, receiver) {
+      if (property === 'isSafeInteger' || property === 'isFinite' || property === 'MAX_SAFE_INTEGER') {
+        throw new Error('Number static properties should not be read');
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+    apply(): never {
+      throw new Error('Number constructor should not be called');
+    },
+    construct(): never {
+      throw new Error('Number constructor should not be called');
+    }
+  });
+  Math.floor = function floorShouldNotBeCalled(): never {
+    throw new Error('Math.floor should not be called');
+  };
+  Math.max = function maxShouldNotBeCalled(): never {
+    throw new Error('Math.max should not be called');
+  };
+  Math.min = function minShouldNotBeCalled(): never {
+    throw new Error('Math.min should not be called');
+  };
+
+  try {
+    assert.equal(isSafePositiveInteger(1), true);
+    assert.equal(isSafeNonNegativeInteger(0), true);
+    assert.equal(normalizeBoundedPositiveInteger(50, 2, 10), 10);
+    assert.equal(normalizeBoundedNonNegativeInteger(2.8, 1, 10), 2);
+    assert.equal(safeNonNegativeInteger(42), 42);
+    assert.equal(saturatingSafeIntegerAdd(originalNumber.MAX_SAFE_INTEGER, 1), originalNumber.MAX_SAFE_INTEGER);
+  } finally {
+    globalThis.Number = originalNumber;
+    Math.floor = originalMathFloor;
+    Math.max = originalMathMax;
+    Math.min = originalMathMin;
+  }
 });
