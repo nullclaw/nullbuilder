@@ -33,6 +33,42 @@ const ParsedHttpUrlParts = struct {
     tail: []const u8,
 };
 
+const KnownHostLiteral = enum {
+    github_dot_com,
+    localhost,
+    loopback_ipv6,
+
+    fn text(self: KnownHostLiteral) []const u8 {
+        return switch (self) {
+            .github_dot_com => "github.com",
+            .localhost => "localhost",
+            .loopback_ipv6 => "[::1]",
+        };
+    }
+
+    fn matches(self: KnownHostLiteral, host: []const u8) bool {
+        return switch (self) {
+            .github_dot_com, .loopback_ipv6 => std.mem.eql(u8, host, self.text()),
+            .localhost => text_safety.eqlAsciiIgnoreCase(host, self.text()),
+        };
+    }
+};
+
+const HostKind = enum {
+    github_dot_com,
+    localhost,
+    loopback_ipv4,
+    loopback_ipv6,
+    domain,
+
+    fn isLoopback(self: HostKind) bool {
+        return switch (self) {
+            .localhost, .loopback_ipv4, .loopback_ipv6 => true,
+            .github_dot_com, .domain => false,
+        };
+    }
+};
+
 const GitHubActionsRunSegment = enum {
     actions,
     runs,
@@ -104,8 +140,7 @@ pub fn isGitHubActionsRunUrl(value: []const u8, max_len: usize) bool {
 
 pub fn isGitHubDotComActionsRunUrl(value: []const u8, max_len: usize) bool {
     const parsed = parseSafeHttpUrl(value, max_len) orelse return false;
-    return parsed.scheme == .https and
-        std.mem.eql(u8, parsed.authority, "github.com") and
+    return parsed.scheme == .https and isGitHubDotComAuthority(parsed.authority) and
         isGitHubActionsRunUrlTail(parsed.tail);
 }
 
@@ -174,6 +209,13 @@ fn isLoopbackAuthority(authority: []const u8) bool {
     return isLoopbackHost(host_port.host);
 }
 
+fn isGitHubDotComAuthority(authority: []const u8) bool {
+    const host_port = splitHostPort(authority) orelse return false;
+    if (host_port.port != null) return false;
+    const kind = classifyHost(host_port.host) orelse return false;
+    return kind == .github_dot_com;
+}
+
 fn isAllowedHttpAuthority(scheme: HttpScheme, authority: []const u8) bool {
     if (!isHttpAuthority(authority)) return false;
     return scheme == .https or isLoopbackAuthority(authority);
@@ -204,9 +246,20 @@ fn splitHostPort(authority: []const u8) ?HostPort {
 }
 
 fn isSafeHost(host: []const u8) bool {
-    if (host.len == 0 or host.len > max_host_bytes) return false;
-    if (isLoopbackIpv6(host)) return true;
+    return classifyHost(host) != null;
+}
 
+fn classifyHost(host: []const u8) ?HostKind {
+    if (host.len == 0 or host.len > max_host_bytes) return null;
+    if (KnownHostLiteral.github_dot_com.matches(host)) return .github_dot_com;
+    if (KnownHostLiteral.localhost.matches(host)) return .localhost;
+    if (KnownHostLiteral.loopback_ipv6.matches(host)) return .loopback_ipv6;
+    if (isLoopbackIpv4(host)) return .loopback_ipv4;
+    if (!isSafeDomainHost(host)) return null;
+    return .domain;
+}
+
+fn isSafeDomainHost(host: []const u8) bool {
     var labels = std.mem.splitScalar(u8, host, '.');
     while (labels.next()) |label| {
         if (!isSafeHostLabel(label)) return false;
@@ -216,7 +269,8 @@ fn isSafeHost(host: []const u8) bool {
 }
 
 fn isLoopbackHost(host: []const u8) bool {
-    return text_safety.eqlAsciiIgnoreCase(host, "localhost") or isLoopbackIpv4(host) or isLoopbackIpv6(host);
+    const kind = classifyHost(host) orelse return false;
+    return kind.isLoopback();
 }
 
 fn isLoopbackIpv4(host: []const u8) bool {
@@ -234,7 +288,7 @@ fn isLoopbackIpv4(host: []const u8) bool {
 }
 
 fn isLoopbackIpv6(host: []const u8) bool {
-    return std.mem.eql(u8, host, "[::1]");
+    return KnownHostLiteral.loopback_ipv6.matches(host);
 }
 
 fn isDecimalIpv4Octet(value: []const u8) bool {
@@ -587,6 +641,28 @@ test "action values validate URL bases" {
     try std.testing.expect(!isHttpUrlBase("https://github.com:65536"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:123456"));
     try std.testing.expect(!isHttpUrlBase("https://github.com:" ++ ("1" ** 100)));
+}
+
+test "action values classify HTTP hosts and exact GitHub authority" {
+    try std.testing.expectEqual(HostKind.github_dot_com, classifyHost("github.com").?);
+    try std.testing.expectEqual(HostKind.domain, classifyHost("GitHub.com").?);
+    try std.testing.expectEqual(HostKind.localhost, classifyHost("localhost").?);
+    try std.testing.expectEqual(HostKind.localhost, classifyHost("LOCALHOST").?);
+    try std.testing.expectEqual(HostKind.loopback_ipv4, classifyHost("127.0.0.1").?);
+    try std.testing.expectEqual(HostKind.loopback_ipv6, classifyHost("[::1]").?);
+    try std.testing.expectEqual(HostKind.domain, classifyHost("github.example.test").?);
+    try std.testing.expect(classifyHost("[::2]") == null);
+
+    try std.testing.expect(HostKind.localhost.isLoopback());
+    try std.testing.expect(HostKind.loopback_ipv4.isLoopback());
+    try std.testing.expect(HostKind.loopback_ipv6.isLoopback());
+    try std.testing.expect(!HostKind.github_dot_com.isLoopback());
+    try std.testing.expect(!HostKind.domain.isLoopback());
+
+    try std.testing.expect(isGitHubDotComAuthority("github.com"));
+    try std.testing.expect(!isGitHubDotComAuthority("GitHub.com"));
+    try std.testing.expect(!isGitHubDotComAuthority("github.com:443"));
+    try std.testing.expect(!isGitHubDotComAuthority("github.com.evil.example"));
 }
 
 test "action values validate metadata tokens" {
