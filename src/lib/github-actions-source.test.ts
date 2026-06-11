@@ -145,6 +145,21 @@ test('release workflow validates downloaded artifact targets before staging asse
   assert.ok(source.includes('invalid downloaded artifact target'));
 });
 
+test('release workflow validates source archives before staging assets', () => {
+  const source = readFileSync(join(workflowsRoot, 'zig-release.yml'), 'utf8');
+
+  assert.ok(source.includes('source_archives=("${artifact_dir}"/*.tar.gz)'));
+  assert.ok(source.includes('if [ "${#source_archives[@]}" -ne 1 ]; then'));
+  assert.ok(source.includes('expected exactly one source archive'));
+  assert.ok(source.includes('source_archive_name="$(basename "${source_archive}")"'));
+  assert.ok(source.includes('[[ ! "${source_archive_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\\.tar\\.gz$ ]]'));
+  assert.ok(source.includes('[[ "${source_archive_name}" == *..* ]]'));
+  assert.ok(source.includes('if [ -e "release-output/${source_archive_name}" ]; then'));
+  assert.ok(source.includes('duplicate release asset: ${source_archive_name}'));
+  assert.ok(source.includes('cp "${source_archive}" "release-output/${source_archive_name}"'));
+  assert.ok(!source.includes('cp "${artifact_dir}"/*.tar.gz release-output/'));
+});
+
 test('release workflow stages source archives in validated runner temp', () => {
   const source = readFileSync(join(workflowsRoot, 'zig-release.yml'), 'utf8');
 

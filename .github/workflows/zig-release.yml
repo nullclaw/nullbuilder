@@ -451,7 +451,22 @@ jobs:
           for artifact_dir in "${artifact_prefix}"-*; do
             [ -d "${artifact_dir}" ] || continue
             if [[ "${artifact_dir}" == "${artifact_prefix}-source" ]]; then
-              cp "${artifact_dir}"/*.tar.gz release-output/
+              source_archives=("${artifact_dir}"/*.tar.gz)
+              if [ "${#source_archives[@]}" -ne 1 ]; then
+                echo "expected exactly one source archive" >&2
+                exit 1
+              fi
+              source_archive="${source_archives[0]}"
+              source_archive_name="$(basename "${source_archive}")"
+              if [[ ! "${source_archive_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.tar\.gz$ ]] || [[ "${source_archive_name}" == *..* ]]; then
+                echo "invalid source archive name" >&2
+                exit 1
+              fi
+              if [ -e "release-output/${source_archive_name}" ]; then
+                echo "duplicate release asset: ${source_archive_name}" >&2
+                exit 1
+              fi
+              cp "${source_archive}" "release-output/${source_archive_name}"
               continue
             fi
 
