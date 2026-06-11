@@ -115,6 +115,24 @@ pub const MetadataTokenValidation = union(enum) {
     }
 };
 
+pub const UtcTimestampValidation = union(enum) {
+    safe,
+    invalid_length: usize,
+    invalid_separator: usize,
+    invalid_digit: usize,
+    invalid_calendar_date,
+    invalid_hour,
+    invalid_minute,
+    invalid_second,
+
+    pub fn accepts(self: UtcTimestampValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+};
+
 const KnownHostLiteral = enum {
     github_dot_com,
     localhost,
@@ -638,22 +656,31 @@ pub fn classifySafeMetadataToken(value: []const u8, max_len: usize) MetadataToke
 }
 
 pub fn isUtcTimestamp(value: []const u8) bool {
-    if (value.len != "0000-00-00T00:00:00Z".len) return false;
-    if (value[4] != '-' or value[7] != '-' or value[10] != 'T') return false;
-    if (value[13] != ':' or value[16] != ':' or value[19] != 'Z') return false;
+    return classifyUtcTimestamp(value).accepts();
+}
 
-    if (!isAsciiDigitSlice(value[0..4])) return false;
-    const year = fourDigitValue(value, 0) orelse return false;
-    const month = twoDigitValue(value, 5) orelse return false;
-    const day = twoDigitValue(value, 8) orelse return false;
-    const hour = twoDigitValue(value, 11) orelse return false;
-    const minute = twoDigitValue(value, 14) orelse return false;
-    const second = twoDigitValue(value, 17) orelse return false;
+pub fn classifyUtcTimestamp(value: []const u8) UtcTimestampValidation {
+    if (value.len != "0000-00-00T00:00:00Z".len) return .{ .invalid_length = value.len };
+    if (value[4] != '-') return .{ .invalid_separator = 4 };
+    if (value[7] != '-') return .{ .invalid_separator = 7 };
+    if (value[10] != 'T') return .{ .invalid_separator = 10 };
+    if (value[13] != ':') return .{ .invalid_separator = 13 };
+    if (value[16] != ':') return .{ .invalid_separator = 16 };
+    if (value[19] != 'Z') return .{ .invalid_separator = 19 };
 
-    return isValidCalendarDay(year, month, day) and
-        hour <= 23 and
-        minute <= 59 and
-        second <= 59;
+    const year = fourDigitValue(value, 0) orelse return .{ .invalid_digit = firstNonDigitIndex(value[0..4], 0).? };
+    const month = twoDigitValue(value, 5) orelse return .{ .invalid_digit = firstNonDigitIndex(value[5..7], 5).? };
+    const day = twoDigitValue(value, 8) orelse return .{ .invalid_digit = firstNonDigitIndex(value[8..10], 8).? };
+    const hour = twoDigitValue(value, 11) orelse return .{ .invalid_digit = firstNonDigitIndex(value[11..13], 11).? };
+    const minute = twoDigitValue(value, 14) orelse return .{ .invalid_digit = firstNonDigitIndex(value[14..16], 14).? };
+    const second = twoDigitValue(value, 17) orelse return .{ .invalid_digit = firstNonDigitIndex(value[17..19], 17).? };
+
+    if (!isValidCalendarDay(year, month, day)) return .invalid_calendar_date;
+    if (hour > 23) return .invalid_hour;
+    if (minute > 59) return .invalid_minute;
+    if (second > 59) return .invalid_second;
+
+    return .safe;
 }
 
 pub fn isSafeActionOutputValue(value: []const u8, max_len: usize) bool {
@@ -669,6 +696,13 @@ fn isAsciiDigitSlice(value: []const u8) bool {
         if (!std.ascii.isDigit(byte)) return false;
     }
     return true;
+}
+
+fn firstNonDigitIndex(value: []const u8, offset: usize) ?usize {
+    for (value, 0..) |byte, index| {
+        if (!std.ascii.isDigit(byte)) return offset + index;
+    }
+    return null;
 }
 
 fn isCanonicalDecimalText(value: []const u8, max_digits: usize) bool {
@@ -1034,6 +1068,51 @@ test "action values validate UTC timestamps" {
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:60:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:60Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:00Z\n"));
+}
+
+test "action values classify UTC timestamps" {
+    try expectUtcTimestampValidation(.safe, "2026-05-04T02:23:00Z");
+    try expectUtcTimestampValidation(.safe, "2024-02-29T00:00:00Z");
+    try expectUtcTimestampIndex(.invalid_length, "", 0);
+    try expectUtcTimestampIndex(.invalid_length, "2026-05-04T02:23:00", 19);
+    try expectUtcTimestampIndex(.invalid_length, "2026-05-04T02:23:00Z\n", 21);
+    try expectUtcTimestampIndex(.invalid_separator, "2026-05-04 02:23:00Z", 10);
+    try expectUtcTimestampIndex(.invalid_separator, "2026/05-04T02:23:00Z", 4);
+    try expectUtcTimestampIndex(.invalid_digit, "202x-05-04T02:23:00Z", 3);
+    try expectUtcTimestampIndex(.invalid_digit, "2026-0x-04T02:23:00Z", 6);
+    try expectUtcTimestampValidation(.invalid_calendar_date, "2026-13-04T02:23:00Z");
+    try expectUtcTimestampValidation(.invalid_calendar_date, "2026-05-00T02:23:00Z");
+    try expectUtcTimestampValidation(.invalid_calendar_date, "2100-02-29T00:00:00Z");
+    try expectUtcTimestampValidation(.invalid_hour, "2026-05-04T24:23:00Z");
+    try expectUtcTimestampValidation(.invalid_minute, "2026-05-04T02:60:00Z");
+    try expectUtcTimestampValidation(.invalid_second, "2026-05-04T02:23:60Z");
+
+    try std.testing.expect((UtcTimestampValidation{ .safe = {} }).accepts());
+    try std.testing.expect(!(UtcTimestampValidation{ .invalid_length = 0 }).accepts());
+    try std.testing.expect(!(UtcTimestampValidation{ .invalid_calendar_date = {} }).accepts());
+}
+
+fn expectUtcTimestampValidation(
+    expected: std.meta.Tag(UtcTimestampValidation),
+    value: []const u8,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyUtcTimestamp(value)));
+}
+
+fn expectUtcTimestampIndex(
+    expected: std.meta.Tag(UtcTimestampValidation),
+    value: []const u8,
+    expected_index: usize,
+) !void {
+    const actual = classifyUtcTimestamp(value);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .invalid_length => |index| index,
+        .invalid_separator => |index| index,
+        .invalid_digit => |index| index,
+        else => return error.ExpectedUtcTimestampIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
 }
 
 test "action values map HTTP schemes to canonical URL prefixes" {
