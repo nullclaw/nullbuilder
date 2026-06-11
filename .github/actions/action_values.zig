@@ -257,9 +257,9 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
 
 fn isGitHubActionsRunUrlTail(value: []const u8) bool {
     if (value.len == 0 or value[0] != '/') return false;
+    if (std.mem.indexOfAny(u8, value, "?#") != null) return false;
 
-    const query_start = std.mem.indexOfScalar(u8, value, '?') orelse value.len;
-    const path = value[1..query_start];
+    const path = value[1..];
 
     var segments = std.mem.splitScalar(u8, path, '/');
     const owner = segments.next() orelse return false;
@@ -629,16 +629,16 @@ test "action values validate HTTP URLs with paths" {
 
 test "action values validate GitHub Actions run URLs" {
     try std.testing.expect(isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
-    try std.testing.expect(isGitHubActionsRunUrl("https://github.example.test/nullclaw/nullbuilder/actions/runs/123?check_suite_focus=true", 256));
+    try std.testing.expect(isGitHubActionsRunUrl("https://github.example.test/nullclaw/nullbuilder/actions/runs/123", 256));
     try std.testing.expect(isGitHubActionsRunUrl("http://localhost/nullclaw/nullbuilder/actions/runs/123", 256));
     try std.testing.expect(isGitHubDotComActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
-    try std.testing.expect(isGitHubDotComActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123?check_suite_focus=true", 256));
 
     try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/0", 256));
     try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/null_claw/nullbuilder/actions/runs/123", 256));
     try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/.hidden/actions/runs/123", 256));
     try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/jobs/123", 256));
     try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123/extra", 256));
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123?check_suite_focus=true", 256));
     try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123#summary", 256));
     try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 32));
 

@@ -500,12 +500,10 @@ test "nightly decide ignores matching API runs without a positive id" {
 }
 
 test "nightly matched run URLs are limited to GitHub Actions runs" {
-    const query_url = "https://github.com/nullclaw/nullbuilder/actions/runs/44?check_suite_focus=true";
     try std.testing.expectEqualStrings(
         "https://github.com/nullclaw/nullbuilder/actions/runs/44",
         safeMatchedRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/44"),
     );
-    try std.testing.expectEqualStrings(query_url, safeMatchedRunUrl(query_url));
 
     for ([_][]const u8{
         "https://example.com/run/44",
@@ -513,6 +511,7 @@ test "nightly matched run URLs are limited to GitHub Actions runs" {
         "https://github.com/nullclaw/nullbuilder/actions/runs/0",
         "https://github.com/nullclaw/nullbuilder/actions/jobs/44",
         "https://github.com/null_claw/nullbuilder/actions/runs/44",
+        "https://github.com/nullclaw/nullbuilder/actions/runs/44?check_suite_focus=true",
         "https://github.com/nullclaw/nullbuilder/actions/runs/44#summary",
     }) |url| {
         try std.testing.expectEqualStrings("", safeMatchedRunUrl(url));
