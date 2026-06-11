@@ -4,6 +4,14 @@ const text_safety = @import("text_safety");
 pub const MAX_LABEL_BYTES = 128;
 pub const MAX_RELATIVE_PATH_BYTES = 1024;
 
+const RelativePathSegment = enum {
+    safe_label,
+    empty,
+    current_dir,
+    parent_dir,
+    unsafe_label,
+};
+
 fn isAsciiAlpha(byte: u8) bool {
     return (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z');
 }
@@ -58,12 +66,17 @@ pub fn isSafeRelativePath(path: []const u8) bool {
 
     var segments = std.mem.splitScalar(u8, path, '/');
     while (segments.next()) |segment| {
-        if (std.mem.eql(u8, segment, ".")) return false;
-        if (std.mem.eql(u8, segment, "..")) return false;
-        if (!isSafeLabel(segment)) return false;
+        if (classifyRelativePathSegment(segment) != .safe_label) return false;
     }
 
     return true;
+}
+
+fn classifyRelativePathSegment(segment: []const u8) RelativePathSegment {
+    if (segment.len == 0) return .empty;
+    if (std.mem.eql(u8, segment, ".")) return .current_dir;
+    if (std.mem.eql(u8, segment, "..")) return .parent_dir;
+    return if (isSafeLabel(segment)) .safe_label else .unsafe_label;
 }
 
 pub fn eqlSafeRelativePath(left: []const u8, right: []const u8) bool {
@@ -90,6 +103,17 @@ test "action paths rejects unsafe labels" {
     try std.testing.expect(!isSafeLabel("lpt9.log"));
     try std.testing.expect(!isSafeLabel(oversized_label[0..]));
     try std.testing.expect(isSafeLabel("com10"));
+}
+
+test "action paths classify relative path segments before accepting paths" {
+    try std.testing.expectEqual(RelativePathSegment.safe_label, classifyRelativePathSegment("nightly-artifacts"));
+    try std.testing.expectEqual(RelativePathSegment.safe_label, classifyRelativePathSegment("nullclaw-linux-x86_64.exe"));
+    try std.testing.expectEqual(RelativePathSegment.empty, classifyRelativePathSegment(""));
+    try std.testing.expectEqual(RelativePathSegment.current_dir, classifyRelativePathSegment("."));
+    try std.testing.expectEqual(RelativePathSegment.parent_dir, classifyRelativePathSegment(".."));
+    try std.testing.expectEqual(RelativePathSegment.unsafe_label, classifyRelativePathSegment(".hidden"));
+    try std.testing.expectEqual(RelativePathSegment.unsafe_label, classifyRelativePathSegment("CON"));
+    try std.testing.expectEqual(RelativePathSegment.unsafe_label, classifyRelativePathSegment("linux/amd64"));
 }
 
 test "action paths accepts only safe relative paths" {
