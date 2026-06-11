@@ -15,7 +15,8 @@ import {
   runLoginWebAction,
   runLogoutWebAction,
   runReleaseTagWebMutation,
-  webActionContentLengthFailure
+  webActionContentLengthFailure,
+  webActionFormFieldPolicyEntries
 } from './web-actions';
 
 test('parsePositiveFormInteger accepts only safe positive base-10 integers', () => {
@@ -60,6 +61,49 @@ test('parseReleaseTagMutationForm trims optional ref and drops empty target ref'
     targetRef: undefined,
     confirm: false,
     force: true
+  });
+});
+
+test('web action form field policy cannot be mutated by callers', () => {
+  const entries = webActionFormFieldPolicyEntries();
+
+  assert.deepEqual(
+    entries.map((entry) => [entry.id, entry.fields.join(',')]),
+    [
+      ['login', 'webToken'],
+      ['logout', 'csrfToken'],
+      ['build-pr', 'csrfToken,repo,prNumber,tagName,confirm,force'],
+      ['release-tag', 'csrfToken,repo,tagName,targetRef,confirm,force']
+    ]
+  );
+  assert.equal(MAX_WEB_ACTION_FORM_FIELDS, 6);
+
+  assert.throws(() => {
+    (entries as unknown as Array<(typeof entries)[number]>).push({
+      id: 'login',
+      fields: ['unsafe']
+    });
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0] as { id: string }).id = 'release-tag';
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0].fields as unknown as string[]).push('unsafe');
+  }, TypeError);
+
+  const formData = new FormData();
+  formData.set('csrfToken', 'token');
+  formData.set('repo', 'nullbuilder');
+  formData.set('prNumber', '17');
+
+  assert.deepEqual(parseBuildPrMutationForm(formData), {
+    repo: 'nullbuilder',
+    prNumber: 17,
+    tagName: undefined,
+    confirm: false,
+    force: false
   });
 });
 

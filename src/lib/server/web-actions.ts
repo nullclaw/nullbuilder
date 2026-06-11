@@ -81,26 +81,76 @@ const MAX_WEB_ACTION_FIELD_NAME_LENGTH = 64;
 const WEB_ACTION_FORM_URLENCODED_MEDIA_TYPE = 'application/x-www-form-urlencoded';
 const WEB_ACTION_MULTIPART_MEDIA_TYPE = 'multipart/form-data';
 export const MAX_WEB_ACTION_FORM_BYTES = 16 * 1024;
-const LOGIN_FORM_FIELDS = ['webToken'] as const;
-const LOGOUT_FORM_FIELDS = ['csrfToken'] as const;
-const BUILD_PR_FORM_FIELDS = ['repo', 'prNumber', 'tagName', 'confirm', 'force'] as const;
-const RELEASE_TAG_FORM_FIELDS = ['repo', 'tagName', 'targetRef', 'confirm', 'force'] as const;
-const BUILD_PR_ALLOWED_FORM_FIELDS = ['csrfToken', ...BUILD_PR_FORM_FIELDS] as const;
-const RELEASE_TAG_ALLOWED_FORM_FIELDS = ['csrfToken', ...RELEASE_TAG_FORM_FIELDS] as const;
-export const MAX_WEB_ACTION_FORM_FIELDS = Math.max(
-  LOGIN_FORM_FIELDS.length,
-  LOGOUT_FORM_FIELDS.length,
-  BUILD_PR_ALLOWED_FORM_FIELDS.length,
-  RELEASE_TAG_ALLOWED_FORM_FIELDS.length
-);
-const LOGIN_FORM_FIELD_SET = new Set<string>(LOGIN_FORM_FIELDS);
-const LOGOUT_FORM_FIELD_SET = new Set<string>(LOGOUT_FORM_FIELDS);
-const BUILD_PR_ALLOWED_FORM_FIELD_SET = new Set<string>(BUILD_PR_ALLOWED_FORM_FIELDS);
-const RELEASE_TAG_ALLOWED_FORM_FIELD_SET = new Set<string>(RELEASE_TAG_ALLOWED_FORM_FIELDS);
+
+export type WebActionFormFieldPolicy = Readonly<{
+  id: 'login' | 'logout' | WebMutationOperation;
+  fields: ReadonlyArray<string>;
+}>;
+
+function webActionFormFieldPolicy(
+  id: WebActionFormFieldPolicy['id'],
+  fields: ReadonlyArray<string>
+): WebActionFormFieldPolicy {
+  return Object.freeze({
+    id,
+    fields: Object.freeze(copyFormFieldNames(fields))
+  });
+}
+
+const LOGIN_FORM_FIELD_POLICY = webActionFormFieldPolicy('login', ['webToken']);
+const LOGOUT_FORM_FIELD_POLICY = webActionFormFieldPolicy('logout', ['csrfToken']);
+const BUILD_PR_FORM_FIELD_POLICY = webActionFormFieldPolicy('build-pr', [
+  'csrfToken',
+  'repo',
+  'prNumber',
+  'tagName',
+  'confirm',
+  'force'
+]);
+const RELEASE_TAG_FORM_FIELD_POLICY = webActionFormFieldPolicy('release-tag', [
+  'csrfToken',
+  'repo',
+  'tagName',
+  'targetRef',
+  'confirm',
+  'force'
+]);
+
+const WEB_ACTION_FORM_FIELD_POLICIES: ReadonlyArray<WebActionFormFieldPolicy> = Object.freeze([
+  LOGIN_FORM_FIELD_POLICY,
+  LOGOUT_FORM_FIELD_POLICY,
+  BUILD_PR_FORM_FIELD_POLICY,
+  RELEASE_TAG_FORM_FIELD_POLICY
+]);
+export const MAX_WEB_ACTION_FORM_FIELDS = maxWebActionFormFields(WEB_ACTION_FORM_FIELD_POLICIES);
 const FORM_DATA_ENTRIES = FormData.prototype.entries;
 const FORM_DATA_ENTRIES_NEXT = Object.getPrototypeOf(FORM_DATA_ENTRIES.call(new FormData())).next as ReturnType<
   FormData['entries']
 >['next'];
+
+export function webActionFormFieldPolicyEntries(): ReadonlyArray<WebActionFormFieldPolicy> {
+  return WEB_ACTION_FORM_FIELD_POLICIES;
+}
+
+function copyFormFieldNames(fields: ReadonlyArray<string>): string[] {
+  const copy: string[] = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    copy[index] = fields[index];
+  }
+
+  return copy;
+}
+
+function maxWebActionFormFields(policies: ReadonlyArray<WebActionFormFieldPolicy>): number {
+  let maxFields = 0;
+  for (let index = 0; index < policies.length; index += 1) {
+    if (policies[index].fields.length > maxFields) {
+      maxFields = policies[index].fields.length;
+    }
+  }
+
+  return maxFields;
+}
 
 export function runLoginWebAction(
   config: NullbuilderConfig,
@@ -116,7 +166,7 @@ export function runLoginWebAction(
     return authFailure(429, 'Too many failed login attempts. Try again later.');
   }
 
-  const form = parseAuthForm(formData, LOGIN_FORM_FIELD_SET, 'Invalid web token.');
+  const form = parseAuthForm(formData, LOGIN_FORM_FIELD_POLICY, 'Invalid web token.');
   if (!form.ok) {
     rateLimiter.recordFailure(rateLimitKey);
     return form;
@@ -216,7 +266,7 @@ export async function readWebActionFormData(request: Request): Promise<WebAction
 }
 
 export function runLogoutWebAction(config: NullbuilderConfig, cookies: Cookies, formData: FormData): WebLogoutResult {
-  const form = parseAuthForm(formData, LOGOUT_FORM_FIELD_SET, 'Invalid request token.');
+  const form = parseAuthForm(formData, LOGOUT_FORM_FIELD_POLICY, 'Invalid request token.');
   if (!form.ok) {
     return form;
   }
@@ -258,11 +308,11 @@ export function mutationAccessError(
 
 function parseAuthForm(
   formData: FormData,
-  allowedFields: ReadonlySet<string>,
+  policy: WebActionFormFieldPolicy,
   message: string
 ): WebAuthFailure | { ok: true; fields: ReadonlyMap<string, FormDataEntryValue> } {
   try {
-    return { ok: true, fields: readFormFields(formData, allowedFields) };
+    return { ok: true, fields: readFormFields(formData, policy.fields) };
   } catch (error) {
     if (isInvalidFormShapeError(error)) {
       return authFailure(403, message);
@@ -337,7 +387,7 @@ export async function runReleaseTagWebMutation<T>(
 }
 
 export function parseBuildPrMutationForm(formData: FormData): BuildPrMutationForm {
-  const fields = readFormFields(formData, BUILD_PR_ALLOWED_FORM_FIELD_SET);
+  const fields = readFormFields(formData, BUILD_PR_FORM_FIELD_POLICY.fields);
   const tagName = trimmedFormString(fields.get('tagName') ?? null);
 
   return {
@@ -350,7 +400,7 @@ export function parseBuildPrMutationForm(formData: FormData): BuildPrMutationFor
 }
 
 export function parseReleaseTagMutationForm(formData: FormData): ReleaseTagMutationForm {
-  const fields = readFormFields(formData, RELEASE_TAG_ALLOWED_FORM_FIELD_SET);
+  const fields = readFormFields(formData, RELEASE_TAG_FORM_FIELD_POLICY.fields);
   const targetRef = trimmedFormString(fields.get('targetRef') ?? null);
 
   return {
@@ -512,7 +562,10 @@ function optionalTargetRef(value: string | undefined): string | undefined | null
   }
 }
 
-function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>): Map<string, FormDataEntryValue> {
+function readFormFields(
+  formData: FormData,
+  allowedFields: ReadonlyArray<string>
+): Map<string, FormDataEntryValue> {
   const fields = new Map<string, FormDataEntryValue>();
   const entries = formDataEntries(formData);
   let fieldCount = 0;
@@ -534,7 +587,7 @@ function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>):
       throw new Error(INVALID_FORM_FIELD_MESSAGE);
     }
 
-    if (!allowedFields.has(field)) {
+    if (!isAllowedFormField(allowedFields, field)) {
       throw new Error(UNKNOWN_FORM_FIELD_MESSAGE);
     }
 
@@ -545,6 +598,16 @@ function readFormFields(formData: FormData, allowedFields: ReadonlySet<string>):
   }
 
   return fields;
+}
+
+function isAllowedFormField(allowedFields: ReadonlyArray<string>, field: string): boolean {
+  for (let index = 0; index < allowedFields.length; index += 1) {
+    if (allowedFields[index] === field) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function singleFormValue(formData: FormData, field: string): FormDataEntryValue | null {
