@@ -11,7 +11,16 @@ const max_port_digits = "65535".len;
 const HttpScheme = enum {
     http,
     https,
+
+    fn prefix(self: HttpScheme) []const u8 {
+        return switch (self) {
+            .http => "http://",
+            .https => "https://",
+        };
+    }
 };
+
+const http_schemes = [_]HttpScheme{ .https, .http };
 
 const ParsedHttpUrl = struct {
     scheme: HttpScheme,
@@ -92,18 +101,14 @@ fn parseSafeHttpUrl(value: []const u8, max_len: usize) ?ParsedHttpUrlParts {
 }
 
 fn parseHttpPrefix(value: []const u8) ?ParsedHttpUrl {
-    if (std.mem.startsWith(u8, value, "https://")) {
-        return .{
-            .scheme = .https,
-            .rest = value["https://".len..],
-        };
-    }
-
-    if (std.mem.startsWith(u8, value, "http://")) {
-        return .{
-            .scheme = .http,
-            .rest = value["http://".len..],
-        };
+    for (http_schemes) |scheme| {
+        const prefix = scheme.prefix();
+        if (std.mem.startsWith(u8, value, prefix)) {
+            return .{
+                .scheme = scheme,
+                .rest = value[prefix.len..],
+            };
+        }
     }
 
     return null;
@@ -589,6 +594,23 @@ test "action values validate UTC timestamps" {
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:60:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:60Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:00Z\n"));
+}
+
+test "action values map HTTP schemes to canonical URL prefixes" {
+    try std.testing.expectEqual(@as(usize, 2), http_schemes.len);
+    for (http_schemes) |scheme| {
+        const sample_url = switch (scheme) {
+            .https => "https://github.com",
+            .http => "http://github.com",
+        };
+        const parsed = parseHttpPrefix(sample_url) orelse return error.ExpectedHttpScheme;
+        try std.testing.expectEqual(scheme, parsed.scheme);
+        try std.testing.expectEqualStrings("github.com", parsed.rest);
+    }
+
+    try std.testing.expect(parseHttpPrefix("github.com") == null);
+    try std.testing.expect(parseHttpPrefix("https:/github.com") == null);
+    try std.testing.expect(parseHttpPrefix("httpx://github.com") == null);
 }
 
 test "action values parse safe HTTP URL components at the validation boundary" {
