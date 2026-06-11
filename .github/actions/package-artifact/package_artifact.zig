@@ -6,6 +6,7 @@ const action_values = @import("action_values");
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 const MAX_MANIFEST_URL_BYTES = 4096;
+const MAX_SHA256_LINE_BYTES = 512;
 const SHA256_READ_BUFFER_BYTES = 64 * 1024;
 const Sha256Digest = [std.crypto.hash.sha2.Sha256.digest_length]u8;
 
@@ -41,6 +42,10 @@ const ManifestBuildError = error{
 
 const ArtifactNameError = error{
     InvalidArtifactBinaryPath,
+};
+
+const Sha256LineError = ArtifactNameError || error{
+    InvalidSha256LineBuffer,
 };
 
 const PackageOutputPlan = struct {
@@ -102,10 +107,10 @@ fn validateArtifactFileSize(file_size: u64, max_bytes: u64) !void {
     if (file_size >= max_bytes) return error.StreamTooLong;
 }
 
-fn formatSha256Line(allocator: std.mem.Allocator, digest: Sha256Digest, binary_path: []const u8) ![]u8 {
+fn formatSha256Line(buffer: []u8, digest: Sha256Digest, binary_path: []const u8) Sha256LineError![]const u8 {
     const name = try artifactNameFromPath(binary_path);
     const hex_buf = std.fmt.bytesToHex(digest, .lower);
-    return try std.fmt.allocPrint(allocator, "{s}  {s}\n", .{ hex_buf[0..], name });
+    return std.fmt.bufPrint(buffer, "{s}  {s}\n", .{ hex_buf[0..], name }) catch return error.InvalidSha256LineBuffer;
 }
 
 fn manifestRunUrlLength(options: PackageOptions) ManifestBuildError!usize {
@@ -409,8 +414,8 @@ fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions)
     };
 
     const digest = try hashArtifactFileSha256(io, cwd, options.binary_path);
-    const sha_text = try formatSha256Line(allocator, digest, options.binary_path);
-    defer allocator.free(sha_text);
+    var sha_line_buffer: [MAX_SHA256_LINE_BYTES]u8 = undefined;
+    const sha_text = try formatSha256Line(sha_line_buffer[0..], digest, options.binary_path);
 
     writePackageOutputs(io, cwd, output_plan, sha_text) catch |err| switch (err) {
         error.PathAlreadyExists => {
@@ -440,24 +445,31 @@ pub fn main(init: std.process.Init) !u8 {
 
 test "package artifact formats sha256 line" {
     const digest = hashBytesSha256("");
-    const line = try formatSha256Line(std.testing.allocator, digest, "nightly-artifacts/empty.bin");
-    defer std.testing.allocator.free(line);
+    var line_buffer: [MAX_SHA256_LINE_BYTES]u8 = undefined;
+    const line = try formatSha256Line(line_buffer[0..], digest, "nightly-artifacts/empty.bin");
 
     try std.testing.expectEqualStrings(
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  empty.bin\n",
         line,
     );
+
+    var tiny_line_buffer: [8]u8 = undefined;
+    try std.testing.expectError(
+        error.InvalidSha256LineBuffer,
+        formatSha256Line(tiny_line_buffer[0..], digest, "nightly-artifacts/empty.bin"),
+    );
 }
 
 test "package artifact rejects unsafe checksum artifact paths" {
     const digest = hashBytesSha256("");
+    var line_buffer: [MAX_SHA256_LINE_BYTES]u8 = undefined;
 
     try std.testing.expectEqualStrings(
         "empty.bin",
         try artifactNameFromPath("nightly-artifacts/empty.bin"),
     );
     try std.testing.expectError(error.InvalidArtifactBinaryPath, artifactNameFromPath("../empty.bin"));
-    try std.testing.expectError(error.InvalidArtifactBinaryPath, formatSha256Line(std.testing.allocator, digest, "../empty.bin"));
+    try std.testing.expectError(error.InvalidArtifactBinaryPath, formatSha256Line(line_buffer[0..], digest, "../empty.bin"));
 }
 
 test "package artifact hashes binary files with bounded stack memory" {
