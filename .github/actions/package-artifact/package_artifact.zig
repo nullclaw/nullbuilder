@@ -8,6 +8,7 @@ const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 const MAX_MANIFEST_URL_BYTES = 4096;
 const MAX_SHA256_LINE_BYTES = 512;
 const SHA256_READ_BUFFER_BYTES = 64 * 1024;
+const GITHUB_ACTIONS_RUN_PATH_PREFIX = "/actions/runs/";
 const Sha256Digest = [std.crypto.hash.sha2.Sha256.digest_length]u8;
 
 const PackageOptions = struct {
@@ -136,6 +137,37 @@ const Sha256LineError = ArtifactNameError || error{
     InvalidSha256LineBuffer,
 };
 
+const ManifestRunUrlParts = struct {
+    server_url: []const u8,
+    repository: []const u8,
+    run_id: []const u8,
+
+    fn fromOptions(options: PackageOptions) ManifestBuildError!ManifestRunUrlParts {
+        if (!action_values.isHttpUrlBase(options.server_url) or
+            !action_values.isRepositorySlug(options.repository) or
+            !action_values.isDecimalId(options.run_id))
+        {
+            return ManifestBuildError.InvalidManifestRunUrl;
+        }
+
+        return .{
+            .server_url = options.server_url,
+            .repository = options.repository,
+            .run_id = options.run_id,
+        };
+    }
+
+    fn byteLen(self: ManifestRunUrlParts) ManifestBuildError!usize {
+        var length: usize = 0;
+        try addManifestRunUrlBytes(&length, self.server_url.len);
+        try addManifestRunUrlBytes(&length, "/".len);
+        try addManifestRunUrlBytes(&length, self.repository.len);
+        try addManifestRunUrlBytes(&length, GITHUB_ACTIONS_RUN_PATH_PREFIX.len);
+        try addManifestRunUrlBytes(&length, self.run_id.len);
+        return length;
+    }
+};
+
 const PackageOutputPlan = struct {
     sha_path: []u8,
     manifest_path: []u8,
@@ -208,20 +240,7 @@ fn formatSha256Line(buffer: []u8, digest: Sha256Digest, binary_path: []const u8)
 }
 
 fn manifestRunUrlLength(options: PackageOptions) ManifestBuildError!usize {
-    if (!action_values.isHttpUrlBase(options.server_url) or
-        !action_values.isRepositorySlug(options.repository) or
-        !action_values.isDecimalId(options.run_id))
-    {
-        return ManifestBuildError.InvalidManifestRunUrl;
-    }
-
-    var length: usize = 0;
-    try addManifestRunUrlBytes(&length, options.server_url.len);
-    try addManifestRunUrlBytes(&length, "/".len);
-    try addManifestRunUrlBytes(&length, options.repository.len);
-    try addManifestRunUrlBytes(&length, "/actions/runs/".len);
-    try addManifestRunUrlBytes(&length, options.run_id.len);
-    return length;
+    return (try ManifestRunUrlParts.fromOptions(options)).byteLen();
 }
 
 fn addManifestRunUrlBytes(length: *usize, bytes: usize) ManifestBuildError!void {
@@ -230,13 +249,15 @@ fn addManifestRunUrlBytes(length: *usize, bytes: usize) ManifestBuildError!void 
 }
 
 fn formatRunUrl(buffer: []u8, options: PackageOptions) ManifestBuildError![]const u8 {
-    const run_url_len = try manifestRunUrlLength(options);
+    const parts = try ManifestRunUrlParts.fromOptions(options);
+    const run_url_len = try parts.byteLen();
     if (buffer.len < run_url_len) return ManifestBuildError.InvalidManifestRunUrl;
 
-    const run_url = std.fmt.bufPrint(buffer[0..run_url_len], "{s}/{s}/actions/runs/{s}", .{
-        options.server_url,
-        options.repository,
-        options.run_id,
+    const run_url = std.fmt.bufPrint(buffer[0..run_url_len], "{s}/{s}{s}{s}", .{
+        parts.server_url,
+        parts.repository,
+        GITHUB_ACTIONS_RUN_PATH_PREFIX,
+        parts.run_id,
     }) catch return ManifestBuildError.InvalidManifestRunUrl;
 
     if (run_url.len != run_url_len or !action_values.isGitHubActionsRunUrl(run_url, MAX_MANIFEST_URL_BYTES)) {
@@ -628,6 +649,13 @@ test "package artifact builds parseable manifest" {
 test "package artifact validates manifest run URL fields at the formatter boundary" {
     const valid_options = validPackageOptions();
 
+    const valid_parts = try ManifestRunUrlParts.fromOptions(valid_options);
+    try std.testing.expectEqualStrings("https://github.com", valid_parts.server_url);
+    try std.testing.expectEqualStrings("nullclaw/nullclaw", valid_parts.repository);
+    try std.testing.expectEqualStrings("123", valid_parts.run_id);
+    try std.testing.expectEqual(@as(usize, "https://github.com/nullclaw/nullclaw/actions/runs/123".len), try valid_parts.byteLen());
+    try std.testing.expectEqual(@as(usize, "https://github.com/nullclaw/nullclaw/actions/runs/123".len), try manifestRunUrlLength(valid_options));
+
     var run_url_buffer: [MAX_MANIFEST_URL_BYTES]u8 = undefined;
     const run_url = try formatRunUrl(run_url_buffer[0..], valid_options);
     try std.testing.expectEqualStrings("https://github.com/nullclaw/nullclaw/actions/runs/123", run_url);
@@ -643,16 +671,20 @@ test "package artifact validates manifest run URL fields at the formatter bounda
 
     var unsafe_url_options = valid_options;
     unsafe_url_options.server_url = "https://github.com/path";
+    try std.testing.expectError(error.InvalidManifestRunUrl, ManifestRunUrlParts.fromOptions(unsafe_url_options));
     try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_url_options));
 
     var unsafe_repository_options = valid_options;
     unsafe_repository_options.repository = "nullclaw/nullclaw/extra";
+    try std.testing.expectError(error.InvalidManifestRunUrl, ManifestRunUrlParts.fromOptions(unsafe_repository_options));
     try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_repository_options));
 
     var unsafe_run_options = valid_options;
     unsafe_run_options.run_id = "0";
+    try std.testing.expectError(error.InvalidManifestRunUrl, ManifestRunUrlParts.fromOptions(unsafe_run_options));
     try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_run_options));
     unsafe_run_options.run_id = "01";
+    try std.testing.expectError(error.InvalidManifestRunUrl, ManifestRunUrlParts.fromOptions(unsafe_run_options));
     try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_run_options));
 
     var unsafe_binary_options = valid_options;
