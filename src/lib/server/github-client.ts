@@ -69,6 +69,7 @@ const OBJECT_GET_OWN_PROPERTY_NAMES = Object.getOwnPropertyNames.bind(Object) as
 const STRUCTURED_CLONE = globalThis.structuredClone;
 const UTF8_RESPONSE_DECODER = new TextDecoder('utf-8', { fatal: true });
 const UTF8_RESPONSE_DECODE = UTF8_RESPONSE_DECODER.decode.bind(UTF8_RESPONSE_DECODER) as TextDecoder['decode'];
+const URL_CONSTRUCTOR = globalThis.URL;
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 
 export type GitHubPublicValidationMessagePolicy = Readonly<{
@@ -820,7 +821,7 @@ function resolveRelativeGitHubApiUrl(config: NullbuilderConfig, path: string): s
     throw new Error('Invalid GitHub API path.');
   }
 
-  return normalizeGitHubApiUrl(config, new URL(rawUrl), 'Invalid GitHub API path.');
+  return normalizeGitHubApiUrl(config, new URL_CONSTRUCTOR(rawUrl), 'Invalid GitHub API path.');
 }
 
 function resolveAbsoluteGitHubApiUrl(config: NullbuilderConfig, path: string): string {
@@ -828,11 +829,11 @@ function resolveAbsoluteGitHubApiUrl(config: NullbuilderConfig, path: string): s
     throw new Error('Invalid GitHub API URL.');
   }
 
-  return normalizeGitHubApiUrl(config, new URL(path), 'Invalid GitHub API URL.');
+  return normalizeGitHubApiUrl(config, new URL_CONSTRUCTOR(path), 'Invalid GitHub API URL.');
 }
 
 function normalizeGitHubApiUrl(config: NullbuilderConfig, url: URL, errorMessage: string): string {
-  const base = new URL(config.apiBaseUrl);
+  const base = new URL_CONSTRUCTOR(config.apiBaseUrl);
   const basePath = base.pathname.replace(/\/+$/, '');
 
   if (

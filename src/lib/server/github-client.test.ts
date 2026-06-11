@@ -23,7 +23,8 @@ import {
   githubPublicValidationMessagePolicyEntries,
   githubRequest,
   githubRequestMethodEntries,
-  publicErrorMessage
+  publicErrorMessage,
+  resolveGitHubApiUrl
 } from './github-client';
 
 const originalFetch = globalThis.fetch;
@@ -31,6 +32,7 @@ const originalDateNow = Date.now;
 const originalJsonParse = JSON.parse;
 const originalNumberParseInt = Number.parseInt;
 const originalStructuredClone = globalThis.structuredClone;
+const originalUrl = globalThis.URL;
 const originalObjectGetOwnPropertyNames = Object.getOwnPropertyNames;
 const originalArrayPush = Array.prototype.push;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
@@ -49,6 +51,7 @@ afterEach(() => {
   JSON.parse = originalJsonParse;
   Number.parseInt = originalNumberParseInt;
   globalThis.structuredClone = originalStructuredClone;
+  restoreGlobalUrl();
   restoreObjectGetOwnPropertyNames();
   restoreArrayPush();
   Array.prototype[Symbol.iterator] = originalArrayIterator;
@@ -70,6 +73,14 @@ function restoreObjectGetOwnPropertyNames(): void {
     configurable: true,
     writable: true,
     value: originalObjectGetOwnPropertyNames
+  });
+}
+
+function restoreGlobalUrl(): void {
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: originalUrl
   });
 }
 
@@ -215,6 +226,37 @@ test('githubGetPages follows same-origin pagination links', async () => {
 
   assert.deepEqual(pages, [{ id: 1 }, { id: 2 }]);
   assert.deepEqual(requests, ['https://api.example.test/repos', 'https://api.example.test/repos?page=2']);
+});
+
+test('resolveGitHubApiUrl parses with captured URL constructor', () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://api.example.test/base',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: class URLShouldNotBeCalled {
+      constructor() {
+        throw new Error('global URL constructor should not be called');
+      }
+    }
+  });
+
+  try {
+    assert.equal(
+      resolveGitHubApiUrl(config, '/repos/nullclaw/nullbuilder'),
+      'https://api.example.test/base/repos/nullclaw/nullbuilder'
+    );
+    assert.equal(
+      resolveGitHubApiUrl(config, 'https://api.example.test/base/repos?page=2'),
+      'https://api.example.test/base/repos?page=2'
+    );
+  } finally {
+    restoreGlobalUrl();
+  }
 });
 
 test('githubGetPages follows only explicit next link relations', async () => {
