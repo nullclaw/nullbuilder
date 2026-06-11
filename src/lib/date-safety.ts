@@ -4,7 +4,8 @@ import { readSafeTextInput } from './text-safety';
 const DEFAULT_MAX_UTC_TIMESTAMP_LENGTH = 64;
 const UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
-const numberIsFinite = Number.isFinite;
+const DATE_CONSTRUCTOR = Date;
+const NUMBER_IS_FINITE = Number.isFinite.bind(Number) as typeof Number.isFinite;
 
 export type UtcTimestampParseOptions = {
   maxLength?: unknown;
@@ -41,7 +42,7 @@ export function parseUtcTimestampMillis(
 
   const { year, month, day, hour, minute, second, millisecond } = timestampParts;
 
-  const date = new Date(0);
+  const date = new DATE_CONSTRUCTOR(0);
   date.setUTCFullYear(year, month - 1, day);
   date.setUTCHours(hour, minute, second, millisecond);
 
@@ -58,7 +59,7 @@ export function parseUtcTimestampMillis(
   }
 
   const timestamp = date.getTime();
-  return numberIsFinite(timestamp) ? timestamp : null;
+  return NUMBER_IS_FINITE(timestamp) ? timestamp : null;
 }
 
 function normalizeMaxTimestampLength(value: unknown): number {

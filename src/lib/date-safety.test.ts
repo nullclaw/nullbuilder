@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { parseUtcTimestampMillis, safeUtcTimestampText } from './date-safety';
 
+const originalDate = Date;
 const originalNumber = Number;
 
 test('parseUtcTimestampMillis accepts strict UTC timestamps', () => {
@@ -63,23 +64,47 @@ test('parseUtcTimestampMillis handles malformed runtime values and options safel
   );
 });
 
-test('parseUtcTimestampMillis parses timestamp fields without Number coercion', () => {
+test('parseUtcTimestampMillis parses timestamp fields with captured runtime intrinsics', () => {
   const expected = Date.UTC(2026, 5, 2, 12, 34, 56, 789);
+  const expectedWithoutMillis = Date.UTC(2026, 5, 2, 12, 34, 56);
+  const throwingDate = new Proxy(originalDate, {
+    apply(): never {
+      throw new Error('Date constructor should not be called');
+    },
+    construct(): never {
+      throw new Error('Date constructor should not be called');
+    }
+  }) as DateConstructor;
   globalThis.Number = new Proxy(originalNumber, {
     apply(): never {
       throw new Error('Number constructor should not be called');
     },
     construct(): never {
       throw new Error('Number constructor should not be called');
+    },
+    get(target, property, receiver) {
+      if (property === 'isFinite') {
+        throw new Error('Number.isFinite should not be read');
+      }
+
+      return Reflect.get(target, property, receiver);
     }
   });
+  globalThis.Date = throwingDate;
+
+  let parsedWithMillis: number | null = null;
+  let parsedWithoutMillis: number | null = null;
 
   try {
-    assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56.789Z'), expected);
-    assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56Z'), Date.UTC(2026, 5, 2, 12, 34, 56));
+    parsedWithMillis = parseUtcTimestampMillis('2026-06-02T12:34:56.789Z');
+    parsedWithoutMillis = parseUtcTimestampMillis('2026-06-02T12:34:56Z');
   } finally {
+    globalThis.Date = originalDate;
     globalThis.Number = originalNumber;
   }
+
+  assert.equal(parsedWithMillis, expected);
+  assert.equal(parsedWithoutMillis, expectedWithoutMillis);
 });
 
 test('safeUtcTimestampText returns only strict UTC timestamp text', () => {
