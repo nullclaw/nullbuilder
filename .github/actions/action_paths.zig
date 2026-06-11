@@ -1,8 +1,8 @@
 const std = @import("std");
 const text_safety = @import("text_safety");
 
-const max_label_bytes = 128;
-const max_relative_path_bytes = 1024;
+pub const MAX_LABEL_BYTES = 128;
+pub const MAX_RELATIVE_PATH_BYTES = 1024;
 
 fn isAsciiAlpha(byte: u8) bool {
     return (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z');
@@ -13,7 +13,7 @@ fn isAsciiDigit(byte: u8) bool {
 }
 
 pub fn isSafeLabel(value: []const u8) bool {
-    if (value.len == 0 or value.len > max_label_bytes) return false;
+    if (value.len == 0 or value.len > MAX_LABEL_BYTES) return false;
     if (isWindowsReservedDeviceName(value)) return false;
 
     var previous_dot = false;
@@ -51,7 +51,7 @@ fn hasWindowsDrivePrefix(path: []const u8) bool {
 }
 
 pub fn isSafeRelativePath(path: []const u8) bool {
-    if (path.len == 0 or path.len > max_relative_path_bytes) return false;
+    if (path.len == 0 or path.len > MAX_RELATIVE_PATH_BYTES) return false;
     if (path[0] == '/') return false;
     if (std.mem.indexOfScalar(u8, path, '\\') != null) return false;
     if (hasWindowsDrivePrefix(path)) return false;
@@ -76,7 +76,7 @@ test "action paths accepts safe labels" {
 }
 
 test "action paths rejects unsafe labels" {
-    const oversized_label = [_]u8{'a'} ** (max_label_bytes + 1);
+    const oversized_label = [_]u8{'a'} ** (MAX_LABEL_BYTES + 1);
 
     try std.testing.expect(!isSafeLabel("../outside"));
     try std.testing.expect(!isSafeLabel("linux/amd64"));
@@ -93,7 +93,7 @@ test "action paths rejects unsafe labels" {
 }
 
 test "action paths accepts only safe relative paths" {
-    const oversized_path = [_]u8{'a'} ** (max_relative_path_bytes + 1);
+    const oversized_path = [_]u8{'a'} ** (MAX_RELATIVE_PATH_BYTES + 1);
 
     try std.testing.expect(isSafeRelativePath("previous-nightly-runs.json"));
     try std.testing.expect(isSafeRelativePath("nightly-artifacts/nullclaw-linux-x86_64"));

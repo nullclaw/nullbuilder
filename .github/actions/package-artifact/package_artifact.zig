@@ -219,6 +219,10 @@ fn allocGeneratedPath(
     comptime format: []const u8,
     args: anytype,
 ) ![]u8 {
+    if (std.fmt.count(format, args) > action_paths.MAX_RELATIVE_PATH_BYTES) {
+        return error.InvalidGeneratedPath;
+    }
+
     const path = try std.fmt.allocPrint(allocator, format, args);
     errdefer allocator.free(path);
     try validateGeneratedPath(path);
@@ -671,6 +675,28 @@ test "package artifact rejects unsafe generated path inputs before allocation" {
     try std.testing.expectError(
         error.InvalidGeneratedPath,
         formatManifestPath(std.testing.failing_allocator, "nightly-artifacts/nullclaw-linux-x86_64", "../linux-x86_64"),
+    );
+
+    const long_safe_binary =
+        ("a" ** 128) ++ "/" ++
+        ("b" ** 128) ++ "/" ++
+        ("c" ** 128) ++ "/" ++
+        ("d" ** 128) ++ "/" ++
+        ("e" ** 128) ++ "/" ++
+        ("f" ** 128) ++ "/" ++
+        ("g" ** 128) ++ "/" ++
+        ("h" ** 115);
+    try std.testing.expect(action_paths.isSafeRelativePath(long_safe_binary));
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        formatSha256Path(std.testing.failing_allocator, long_safe_binary),
+    );
+
+    const long_safe_target = "t" ** 128;
+    try std.testing.expect(action_paths.isSafeLabel(long_safe_target));
+    try std.testing.expectError(
+        error.InvalidGeneratedPath,
+        formatManifestPath(std.testing.failing_allocator, long_safe_binary, long_safe_target),
     );
 }
 
