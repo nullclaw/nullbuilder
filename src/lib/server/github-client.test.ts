@@ -29,6 +29,7 @@ import {
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
 const originalJsonParse = JSON.parse;
+const originalNumberParseInt = Number.parseInt;
 const originalStructuredClone = globalThis.structuredClone;
 const originalArrayPush = Array.prototype.push;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
@@ -44,6 +45,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
   JSON.parse = originalJsonParse;
+  Number.parseInt = originalNumberParseInt;
   globalThis.structuredClone = originalStructuredClone;
   restoreArrayPush();
   Array.prototype[Symbol.iterator] = originalArrayIterator;
@@ -1762,6 +1764,10 @@ test('githubRequest includes valid rate-limit reset timestamps in API errors', a
         'X-RateLimit-Reset': '1760000000'
       }
     })) as typeof fetch;
+
+  Number.parseInt = function parseIntShouldNotBeCalled(): never {
+    throw new Error('Number.parseInt should not be called');
+  };
 
   await assert.rejects(
     githubRequest(config, '/repos/nullclaw/nullbuilder'),

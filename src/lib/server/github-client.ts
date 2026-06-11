@@ -66,6 +66,7 @@ const HEADERS_ENTRIES_NEXT = Object.getPrototypeOf(HEADERS_ENTRIES.call(new Head
   Headers['entries']
 >['next'];
 const STRUCTURED_CLONE = globalThis.structuredClone;
+const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 
 export type GitHubPublicValidationMessagePolicy = Readonly<{
   match: 'exact' | 'prefix';
@@ -574,17 +575,35 @@ function parseRateLimitResetDate(reset: string): Date | null {
   const safeReset = readSafeTextInput(reset, {
     maxLength: GITHUB_RATE_LIMIT_RESET_MAX_LENGTH
   });
-  if (!safeReset || !/^[1-9]\d*$/.test(safeReset)) {
-    return null;
-  }
-
-  const resetSeconds = Number.parseInt(safeReset, 10);
-  if (!Number.isSafeInteger(resetSeconds)) {
+  const resetSeconds = safeReset ? parsePositiveDecimalText(safeReset) : null;
+  if (resetSeconds === null) {
     return null;
   }
 
   const resetDate = new Date(resetSeconds * 1000);
   return Number.isFinite(resetDate.getTime()) ? resetDate : null;
+}
+
+function parsePositiveDecimalText(value: string): number | null {
+  if (value.length === 0 || value.charCodeAt(0) < 49 || value.charCodeAt(0) > 57) {
+    return null;
+  }
+
+  let parsed = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 48 || code > 57) {
+      return null;
+    }
+
+    const digit = code - 48;
+    if (parsed > Math.floor((MAX_SAFE_INTEGER - digit) / 10)) {
+      return null;
+    }
+    parsed = parsed * 10 + digit;
+  }
+
+  return parsed;
 }
 
 function parseNextLink(link: string | null): string | null {
