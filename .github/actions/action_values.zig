@@ -60,6 +60,30 @@ const PercentEncodedByteValidation = enum {
     }
 };
 
+pub const DecimalIdValidation = union(enum) {
+    safe: u64,
+    empty,
+    oversized,
+    leading_zero,
+    invalid_digit: usize,
+    overflow,
+    zero,
+
+    pub fn accepts(self: DecimalIdValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+
+    pub fn valueOrNull(self: DecimalIdValidation) ?u64 {
+        return switch (self) {
+            .safe => |value| value,
+            else => null,
+        };
+    }
+};
+
 const KnownHostLiteral = enum {
     github_dot_com,
     localhost,
@@ -157,12 +181,26 @@ const GitHubActionsRunPath = struct {
 };
 
 pub fn isDecimalId(value: []const u8) bool {
-    return parseDecimalId(value) != null;
+    return classifyDecimalId(value).accepts();
 }
 
 pub fn parseDecimalId(value: []const u8) ?u64 {
-    const id = parseCanonicalDecimal(u64, value, max_decimal_id_digits) orelse return null;
-    return if (id > 0) id else null;
+    return classifyDecimalId(value).valueOrNull();
+}
+
+pub fn classifyDecimalId(value: []const u8) DecimalIdValidation {
+    if (value.len == 0) return .empty;
+    if (value.len > max_decimal_id_digits) return .oversized;
+    if (value.len > 1 and value[0] == '0') return .leading_zero;
+
+    var parsed: u64 = 0;
+    for (value, 0..) |byte, index| {
+        const digit: u64 = @intCast(decimalValue(byte) orelse return .{ .invalid_digit = index });
+        const shifted = std.math.mul(u64, parsed, 10) catch return .overflow;
+        parsed = std.math.add(u64, shifted, digit) catch return .overflow;
+    }
+
+    return if (parsed > 0) .{ .safe = parsed } else .zero;
 }
 
 pub fn isFullHexSha(value: []const u8) bool {
@@ -668,6 +706,42 @@ test "action values validate decimal ids and full shas" {
     try std.testing.expect(!isFullHexSha("abcdef"));
     try std.testing.expect(!isFullHexSha("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"));
     try std.testing.expect(!isFullHexSha("not-a-sha"));
+}
+
+test "action values classify decimal ids" {
+    try expectDecimalIdSafe(1, "1");
+    try expectDecimalIdSafe(123456789, "123456789");
+    try expectDecimalIdSafe(18446744073709551615, "18446744073709551615");
+    try expectDecimalIdValidation(.empty, "");
+    try expectDecimalIdValidation(.zero, "0");
+    try expectDecimalIdValidation(.leading_zero, "01");
+    try expectDecimalIdValidation(.oversized, "1" ** 100);
+    try expectDecimalIdValidation(.overflow, "18446744073709551616");
+    try expectDecimalIdInvalidDigit("12a", 2);
+
+    try std.testing.expect((DecimalIdValidation{ .safe = 1 }).accepts());
+    try std.testing.expect(!(DecimalIdValidation{ .zero = {} }).accepts());
+    try std.testing.expect(!(DecimalIdValidation{ .invalid_digit = 0 }).accepts());
+    try std.testing.expectEqual(@as(?u64, 1), (DecimalIdValidation{ .safe = 1 }).valueOrNull());
+    try std.testing.expectEqual(@as(?u64, null), (DecimalIdValidation{ .overflow = {} }).valueOrNull());
+}
+
+fn expectDecimalIdSafe(expected: u64, value: []const u8) !void {
+    switch (classifyDecimalId(value)) {
+        .safe => |actual| try std.testing.expectEqual(expected, actual),
+        else => return error.ExpectedDecimalId,
+    }
+}
+
+fn expectDecimalIdValidation(expected: std.meta.Tag(DecimalIdValidation), value: []const u8) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyDecimalId(value)));
+}
+
+fn expectDecimalIdInvalidDigit(value: []const u8, expected_index: usize) !void {
+    switch (classifyDecimalId(value)) {
+        .invalid_digit => |index| try std.testing.expectEqual(expected_index, index),
+        else => return error.ExpectedInvalidDigit,
+    }
 }
 
 test "action values validate repository slugs" {
