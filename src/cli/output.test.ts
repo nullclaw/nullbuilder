@@ -4,6 +4,7 @@ import type { AuditFinding, AuditReport } from '../lib/server/audit';
 import { GitHubApiError, type BuildPrResult, type DashboardData, type ReleaseTagResult } from '../lib/server/github';
 import {
   auditExitCode,
+  cliRunKindEntries,
   formatAuditReport,
   formatBuildPrResult,
   formatCliError,
@@ -235,6 +236,22 @@ test('formatDashboard renders only canonical workflow run slots', () => {
   assert.match(output, /\bnightly\b/);
   assert.match(output, /\brelease\b/);
   assert.doesNotMatch(output, /injected|secret-branch|evil\.example/);
+});
+
+test('CLI run kind registry cannot be mutated by callers', () => {
+  const runKinds = cliRunKindEntries();
+
+  assert.deepEqual(runKinds, ['ci', 'nightly', 'release']);
+
+  assert.throws(() => {
+    (runKinds as unknown as string[]).push('unsafe');
+  }, TypeError);
+
+  const output = formatDashboard('runs', dashboardFixture());
+  assert.match(
+    output,
+    /nullclaw\/nullbuilder\s+ci\s+success[\s\S]+nullclaw\/nullbuilder\s+nightly\s+n\/a[\s\S]+nullclaw\/nullbuilder\s+release\s+n\/a/
+  );
 });
 
 test('formatDashboard bounds large terminal tables without spreading row widths', () => {

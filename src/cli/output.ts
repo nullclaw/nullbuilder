@@ -1,5 +1,6 @@
 import type { AuditFinding, AuditReport } from '../lib/server/audit';
 import { countFindings } from '../lib/server/audit-summary';
+import type { RepositoryLatestRuns } from '../lib/server/github-dashboard-types';
 import {
   GitHubApiError,
   publicErrorMessage,
@@ -14,7 +15,13 @@ import type { Command } from './options';
 const MAX_TERMINAL_CELL_LENGTH = 240;
 const MAX_TERMINAL_LINE_LENGTH = 2048;
 const MAX_TERMINAL_TABLE_ROWS = 1000;
-const RUN_KINDS = ['ci', 'nightly', 'release'] as const;
+type RunKind = keyof RepositoryLatestRuns;
+
+const RUN_KINDS: ReadonlyArray<RunKind> = Object.freeze(['ci', 'nightly', 'release']);
+
+export function cliRunKindEntries(): ReadonlyArray<RunKind> {
+  return RUN_KINDS;
+}
 
 export function selectDashboardJson(command: Command, dashboard: DashboardData) {
   if (command === 'issues') {
@@ -232,6 +239,10 @@ function formatRuns(dashboard: DashboardData): string {
   return formatBoundedTable(rowCount, columns, (rowIndex) => {
     const repo = dashboard.repositories[Math.floor(rowIndex / RUN_KINDS.length)];
     const kind = RUN_KINDS[rowIndex % RUN_KINDS.length];
+    if (kind === undefined) {
+      throw new Error('Invalid run kind registry index.');
+    }
+
     const run = repo.latestRuns[kind];
     return {
       repo: repo.slug,
