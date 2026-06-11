@@ -5,7 +5,7 @@ pub const max_owner_segment_bytes = 39;
 pub const max_repo_segment_bytes = 100;
 pub const max_repository_slug_bytes = max_owner_segment_bytes + 1 + max_repo_segment_bytes;
 
-const RepositorySlugParts = struct {
+pub const RepositorySlugParts = struct {
     owner: []const u8,
     repo: []const u8,
 };
@@ -47,18 +47,55 @@ pub const RepoSegmentValidation = enum {
     }
 };
 
+pub const RepositorySlugValidation = union(enum) {
+    safe: RepositorySlugParts,
+    empty,
+    oversized,
+    missing_separator,
+    empty_owner,
+    empty_repo,
+    extra_separator,
+    invalid_owner: OwnerSegmentValidation,
+    invalid_repo: RepoSegmentValidation,
+
+    pub fn accepts(self: RepositorySlugValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+};
+
 pub fn isRepositorySlug(value: []const u8) bool {
     return parseRepositorySlug(value) != null;
 }
 
 fn parseRepositorySlug(value: []const u8) ?RepositorySlugParts {
+    return switch (classifyRepositorySlug(value)) {
+        .safe => |parts| parts,
+        else => null,
+    };
+}
+
+pub fn classifyRepositorySlug(value: []const u8) RepositorySlugValidation {
     const shape = classifyRepositorySlugShape(value);
     const parts = switch (shape) {
         .parts => |parts| parts,
-        else => return null,
+        .empty => return .empty,
+        .oversized => return .oversized,
+        .missing_separator => return .missing_separator,
+        .empty_owner => return .empty_owner,
+        .empty_repo => return .empty_repo,
+        .extra_separator => return .extra_separator,
     };
 
-    return if (isOwnerSegment(parts.owner) and isRepoSegment(parts.repo)) parts else null;
+    const owner_validation = classifyOwnerSegment(parts.owner);
+    if (!owner_validation.accepts()) return .{ .invalid_owner = owner_validation };
+
+    const repo_validation = classifyRepoSegment(parts.repo);
+    if (!repo_validation.accepts()) return .{ .invalid_repo = repo_validation };
+
+    return .{ .safe = parts };
 }
 
 fn classifyRepositorySlugShape(value: []const u8) RepositorySlugShape {
@@ -170,6 +207,59 @@ test "repository safety classifies repository slug shape before validating segme
 
 fn expectRepositorySlugShape(expected: std.meta.Tag(RepositorySlugShape), value: []const u8) !void {
     try std.testing.expectEqual(expected, std.meta.activeTag(classifyRepositorySlugShape(value)));
+}
+
+test "repository safety classifies complete repository slugs" {
+    switch (classifyRepositorySlug("nullclaw/nullbuilder")) {
+        .safe => |parts| {
+            try std.testing.expectEqualStrings("nullclaw", parts.owner);
+            try std.testing.expectEqualStrings("nullbuilder", parts.repo);
+        },
+        else => return error.ExpectedRepositorySlugParts,
+    }
+
+    try expectRepositorySlugValidation(.empty, "");
+    try expectRepositorySlugValidation(.missing_separator, "nullbuilder");
+    try expectRepositorySlugValidation(.empty_owner, "/nullbuilder");
+    try expectRepositorySlugValidation(.empty_repo, "nullclaw/");
+    try expectRepositorySlugValidation(.extra_separator, "nullclaw/nullbuilder/extra");
+    try expectRepositorySlugValidation(
+        .oversized,
+        ("a" ** max_owner_segment_bytes) ++ "/" ++ ("b" ** max_repo_segment_bytes) ++ "x",
+    );
+    try expectInvalidOwnerSlug(.invalid_character, "owner_name/nullbuilder");
+    try expectInvalidOwnerSlug(.invalid_edge, "-owner/nullbuilder");
+    try expectInvalidRepoSlug(.leading_symbol, "nullclaw/.hidden");
+    try expectInvalidRepoSlug(.repeated_dot, "nullclaw/double..dot");
+    try expectInvalidRepoSlug(.git_suffix, "nullclaw/nullbuilder.git");
+
+    try std.testing.expect((RepositorySlugValidation{ .safe = .{
+        .owner = "nullclaw",
+        .repo = "nullbuilder",
+    } }).accepts());
+    try std.testing.expect(!(RepositorySlugValidation{ .missing_separator = {} }).accepts());
+    try std.testing.expect(!(RepositorySlugValidation{ .invalid_repo = .git_suffix }).accepts());
+}
+
+fn expectRepositorySlugValidation(
+    expected: std.meta.Tag(RepositorySlugValidation),
+    value: []const u8,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyRepositorySlug(value)));
+}
+
+fn expectInvalidOwnerSlug(expected: OwnerSegmentValidation, value: []const u8) !void {
+    switch (classifyRepositorySlug(value)) {
+        .invalid_owner => |actual| try std.testing.expectEqual(expected, actual),
+        else => return error.ExpectedInvalidOwner,
+    }
+}
+
+fn expectInvalidRepoSlug(expected: RepoSegmentValidation, value: []const u8) !void {
+    switch (classifyRepositorySlug(value)) {
+        .invalid_repo => |actual| try std.testing.expectEqual(expected, actual),
+        else => return error.ExpectedInvalidRepo,
+    }
 }
 
 test "repository safety classifies owner segments" {
