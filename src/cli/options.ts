@@ -1,8 +1,16 @@
 import { parsePositiveIntegerText, readSafeTextInput } from '../lib/text-safety';
 import { readCliArgVector } from './runtime-args';
 
-const COMMANDS = ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag'] as const;
-const COMMAND_SET: ReadonlySet<string> = new Set(COMMANDS);
+const COMMANDS = Object.freeze([
+  'repos',
+  'issues',
+  'prs',
+  'runs',
+  'stars',
+  'audit',
+  'build-pr',
+  'release-tag'
+] as const);
 const MAX_POSITIONAL_ARGS = 16;
 
 export type Command = (typeof COMMANDS)[number];
@@ -68,6 +76,10 @@ Environment:
   NULLBUILDER_GITHUB_TOKEN
                         Token for private repos and write operations
 `;
+
+export function cliCommandEntries(): ReadonlyArray<Command> {
+  return COMMANDS;
+}
 
 export function parseCommandLine(argv: unknown): ParsedCommandLine {
   const args = readCliArgVector(argv);
@@ -219,5 +231,11 @@ function parsePositiveInteger(value: string, option: string): number {
 }
 
 function isCommand(value: string): value is Command {
-  return COMMAND_SET.has(value);
+  for (let index = 0; index < COMMANDS.length; index += 1) {
+    if (COMMANDS[index] === value) {
+      return true;
+    }
+  }
+
+  return false;
 }

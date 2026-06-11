@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { parseCommandLine, parseOptions } from './options';
+import { cliCommandEntries, parseCommandLine, parseOptions, type Command } from './options';
 
 test('parseCommandLine treats empty and explicit help as help', () => {
   assert.deepEqual(parseCommandLine([]), { kind: 'help' });
@@ -24,6 +24,31 @@ test('parseCommandLine parses known commands through the command guard', () => {
       positionals: []
     }
   });
+});
+
+test('CLI command registry cannot be mutated by callers', () => {
+  const commands = cliCommandEntries();
+
+  assert.deepEqual(commands, ['repos', 'issues', 'prs', 'runs', 'stars', 'audit', 'build-pr', 'release-tag']);
+
+  assert.throws(() => {
+    (commands as unknown as string[]).push('unsafe');
+  }, TypeError);
+
+  for (let index = 0; index < commands.length; index += 1) {
+    let command: Command | undefined = undefined;
+    command = commands[index];
+    if (command === undefined) {
+      throw new Error('Expected command registry entry.');
+    }
+
+    const parsed = parseCommandLine([command]);
+    assert.equal(parsed.kind, 'command');
+    if (parsed.kind === 'command') {
+      assert.equal(parsed.command, command);
+      assert.deepEqual(parsed.options, emptyOptions());
+    }
+  }
 });
 
 test('parseCommandLine avoids user-controlled argv array methods', () => {
@@ -54,6 +79,19 @@ test('parseCommandLine avoids user-controlled argv array methods', () => {
     }
   });
 });
+
+function emptyOptions(): Extract<ReturnType<typeof parseCommandLine>, { kind: 'command' }>['options'] {
+  return {
+    json: false,
+    discover: false,
+    confirm: false,
+    force: false,
+    allowDraft: false,
+    allowFork: false,
+    allowNonDefaultBase: false,
+    positionals: []
+  };
+}
 
 test('parseCommandLine copies argv before parsing', () => {
   let reads = 0;
