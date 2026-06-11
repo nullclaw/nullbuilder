@@ -1,6 +1,6 @@
 export const DEFAULT_OWNER = 'nullclaw';
 
-export const DEFAULT_REPOSITORIES = [
+export const DEFAULT_REPOSITORIES = Object.freeze([
   'nullbuilder',
   'nullclaw',
   'nullboiler',
@@ -11,16 +11,16 @@ export const DEFAULT_REPOSITORIES = [
   'nullwatch',
   'nulltickets',
   'nullcap'
-] as const;
+] as const);
 
-export const DEFAULT_IGNORED_REPOSITORIES = [
+export const DEFAULT_IGNORED_REPOSITORIES = Object.freeze([
   'sentry-zig',
   'nullclaw-channel-whatsmeow-bridge',
   'nullclaw-channel-baileys',
   'nullclaw-channel-imap-connector',
   'wasm3',
   'websocket'
-] as const;
+] as const);
 
 export type RepoSlug = `${string}/${string}`;
 export type RepoSlugParts = {
@@ -95,13 +95,30 @@ export function parseRepositoryList(
   defaultOwner = DEFAULT_OWNER,
   fallback: readonly string[] = DEFAULT_REPOSITORIES
 ): RepoSlug[] {
-  const source = repositoryListSource(value, fallback);
+  const source = repositoryListSource(value);
+  const seen = new Set<string>();
+  const repos: RepoSlug[] = [];
+
+  if (source === null) {
+    addRepositoryFallbackEntries(fallback, defaultOwner, seen, repos);
+    return repos;
+  }
+
+  addRepositoryTextEntries(source, defaultOwner, seen, repos);
+
+  return repos;
+}
+
+function addRepositoryTextEntries(
+  source: string,
+  defaultOwner: string,
+  seen: Set<string>,
+  repos: RepoSlug[]
+): void {
   if (source.length > MAX_REPOSITORY_LIST_CHARS) {
     throw new Error('Repository list is too large.');
   }
 
-  const seen = new Set<string>();
-  const repos: RepoSlug[] = [];
   let entryStart: number | null = null;
 
   for (let index = 0; index < source.length; index += 1) {
@@ -119,8 +136,6 @@ export function parseRepositoryList(
   if (entryStart !== null) {
     addRepositoryListEntry(source.slice(entryStart), defaultOwner, seen, repos);
   }
-
-  return repos;
 }
 
 export function findConfiguredRepoSlug(
@@ -158,7 +173,7 @@ export function repoSlugParts(repo: RepoSlug): RepoSlugParts {
   };
 }
 
-function repositoryListSource(value: unknown, fallback: readonly string[]): string {
+function repositoryListSource(value: unknown): string | null {
   if (value !== undefined) {
     if (typeof value !== 'string') {
       throw new Error('Invalid repository list.');
@@ -173,7 +188,67 @@ function repositoryListSource(value: unknown, fallback: readonly string[]): stri
     }
   }
 
-  return fallback.join(',');
+  return null;
+}
+
+function addRepositoryFallbackEntries(
+  fallback: readonly string[],
+  defaultOwner: string,
+  seen: Set<string>,
+  repos: RepoSlug[]
+): void {
+  let sourceLength = 0;
+  const count = repositoryFallbackLength(fallback);
+  for (let index = 0; index < count; index += 1) {
+    const entry = repositoryFallbackEntry(fallback, index);
+    if (typeof entry !== 'string') {
+      throw new Error('Invalid repository list.');
+    }
+
+    sourceLength += index === 0 ? entry.length : entry.length + 1;
+    if (sourceLength > MAX_REPOSITORY_LIST_CHARS) {
+      throw new Error('Repository list is too large.');
+    }
+
+    addRepositoryTextEntries(entry, defaultOwner, seen, repos);
+  }
+}
+
+function repositoryFallbackLength(fallback: readonly string[]): number {
+  let isArray: boolean;
+  try {
+    isArray = Array.isArray(fallback);
+  } catch {
+    throw new Error('Invalid repository list.');
+  }
+  if (!isArray) {
+    throw new Error('Invalid repository list.');
+  }
+
+  let length: number;
+  try {
+    length = fallback.length;
+  } catch {
+    throw new Error('Invalid repository list.');
+  }
+
+  if (!Number.isSafeInteger(length) || length < 0) {
+    throw new Error('Invalid repository list.');
+  }
+
+  if (length > MAX_REPOSITORY_LIST_CHARS + 1) {
+    throw new Error('Repository list is too large.');
+  }
+
+  return length;
+}
+
+function repositoryFallbackEntry(fallback: readonly string[], index: number): unknown {
+  try {
+    return fallback[index];
+  } catch {
+    throw new Error('Invalid repository list.');
+  }
 }
 
 function addRepositoryListEntry(entry: string, defaultOwner: string, seen: Set<string>, repos: RepoSlug[]): void {

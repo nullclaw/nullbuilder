@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 import {
+  DEFAULT_IGNORED_REPOSITORIES,
+  DEFAULT_REPOSITORIES,
   findConfiguredRepoSlug,
   normalizeOwner,
   normalizeRepoSlug,
@@ -9,11 +11,21 @@ import {
 } from './repositories';
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
+const originalArrayJoin = Array.prototype.join;
 const originalArrayPush = Array.prototype.push;
 
 afterEach(() => {
+  restoreArrayJoin();
   restoreArrayPush();
 });
+
+function restoreArrayJoin(): void {
+  Object.defineProperty(Array.prototype, 'join', {
+    configurable: true,
+    writable: true,
+    value: originalArrayJoin
+  });
+}
 
 function restoreArrayPush(): void {
   Object.defineProperty(Array.prototype, 'push', {
@@ -21,6 +33,27 @@ function restoreArrayPush(): void {
     writable: true,
     value: originalArrayPush
   });
+}
+
+function withGuardedArrayJoin<T>(callback: () => T): { result: T; joinCalls: number } {
+  let joinCalls = 0;
+  Object.defineProperty(Array.prototype, 'join', {
+    configurable: true,
+    writable: true,
+    value() {
+      joinCalls += 1;
+      throw new Error('Array.prototype.join should not be called');
+    }
+  });
+
+  try {
+    return {
+      result: callback(),
+      joinCalls
+    };
+  } finally {
+    restoreArrayJoin();
+  }
 }
 
 function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
@@ -43,6 +76,19 @@ function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: num
     restoreArrayPush();
   }
 }
+
+test('default repository lists cannot be mutated by callers', () => {
+  assert.throws(() => {
+    (DEFAULT_REPOSITORIES as unknown as string[]).push('unexpected');
+  }, TypeError);
+
+  assert.throws(() => {
+    (DEFAULT_IGNORED_REPOSITORIES as unknown as string[])[0] = 'unexpected';
+  }, TypeError);
+
+  assert.equal(DEFAULT_REPOSITORIES[0], 'nullbuilder');
+  assert.equal(DEFAULT_IGNORED_REPOSITORIES[0], 'sentry-zig');
+});
 
 test('normalizeOwner rejects invalid owners', () => {
   assert.equal(normalizeOwner('NullClaw'), 'NullClaw');
@@ -143,6 +189,21 @@ test('parseRepositoryList collects repositories without global array push hooks'
   assert.deepEqual(result, ['nullclaw/nullbuilder', 'nullclaw/nullhub']);
 });
 
+test('parseRepositoryList parses fallback repositories without array join hooks', () => {
+  class CustomFallback extends Array<string> {
+    override join(separator?: string): string {
+      void separator;
+      throw new Error('fallback join should not be called');
+    }
+  }
+
+  const fallback = new CustomFallback('NullClaw/NullBuilder', 'nullhub nullwatch');
+  const { result, joinCalls } = withGuardedArrayJoin(() => parseRepositoryList(' ', 'nullclaw', fallback));
+
+  assert.equal(joinCalls, 0);
+  assert.deepEqual(result, ['NullClaw/NullBuilder', 'nullclaw/nullhub', 'nullclaw/nullwatch']);
+});
+
 test('findConfiguredRepoSlug normalizes candidates against configured repositories', () => {
   const repos = parseRepositoryList('NullClaw/NullBuilder nullclaw/nullhub', 'nullclaw');
 
@@ -203,6 +264,15 @@ test('parseRepositoryList bounds configured repository input', () => {
       error.message === 'Repository slug is too large.' &&
       !error.message.includes(oversizedSlug.slice(0, 32))
   );
+
+  const oversizedFallback = ['a'.repeat(256 * 1024 + 1)];
+  assert.throws(
+    () => parseRepositoryList(undefined, 'nullclaw', oversizedFallback),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'Repository list is too large.' &&
+      !error.message.includes(oversizedFallback[0].slice(0, 32))
+  );
 });
 
 test('parseRepositoryList rejects malformed runtime values without throwing type errors', () => {
@@ -210,6 +280,36 @@ test('parseRepositoryList rejects malformed runtime values without throwing type
     assert.throws(
       () => parseRepositoryList(value, 'nullclaw'),
       (error: unknown) => error instanceof Error && error.message === 'Invalid repository list.'
+    );
+  }
+});
+
+test('parseRepositoryList rejects hostile fallback values without leaking details', () => {
+  const arrayLike = { 0: 'nullbuilder', length: 1 } as unknown as string[];
+  const hostileLength = new Proxy(['nullbuilder'], {
+    get(target, property, receiver) {
+      if (property === 'length') {
+        throw new Error('private length detail');
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const hostileEntry = new Proxy(['nullbuilder', 'nullhub'], {
+    get(target, property, receiver) {
+      if (property === '1') {
+        throw new Error('private entry detail');
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  for (const fallback of [arrayLike, hostileLength, hostileEntry]) {
+    assert.throws(
+      () => parseRepositoryList(undefined, 'nullclaw', fallback),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === 'Invalid repository list.' &&
+        !error.message.includes('private')
     );
   }
 });
