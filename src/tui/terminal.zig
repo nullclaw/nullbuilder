@@ -10,6 +10,33 @@ pub const SanitizeOptions = text_safety.SanitizeOptions;
 pub const OutputBudget = struct {
     remaining: usize,
     truncated: bool = false,
+
+    pub fn init(max_bytes: usize) OutputBudget {
+        return .{ .remaining = max_bytes };
+    }
+
+    pub fn isTruncated(self: OutputBudget) bool {
+        return self.truncated;
+    }
+
+    fn take(self: *OutputBudget, slice: []const u8) BudgetedOutputSlice {
+        if (self.truncated) return .{ .value = "", .truncated = true };
+
+        if (slice.len <= self.remaining) {
+            self.remaining -= slice.len;
+            return .{ .value = slice, .truncated = false };
+        }
+
+        const prefix = clipUtf8(slice, self.remaining);
+        self.remaining = 0;
+        self.truncated = true;
+        return .{ .value = prefix, .truncated = true };
+    }
+};
+
+const BudgetedOutputSlice = struct {
+    value: []const u8,
+    truncated: bool,
 };
 
 pub const SanitizedText = struct {
@@ -74,29 +101,25 @@ pub fn writeSafe(out: *std.Io.Writer, value: []const u8, options: SanitizeOption
 }
 
 pub fn writeSafeBounded(out: *std.Io.Writer, value: []const u8, max_bytes: usize, options: SanitizeOptions) !bool {
-    var budget = OutputBudget{ .remaining = max_bytes };
+    var budget = OutputBudget.init(max_bytes);
     return writeSafeBudgeted(out, value, &budget, options);
 }
 
 pub fn writeSafeBudgeted(out: *std.Io.Writer, value: []const u8, budget: *OutputBudget, options: SanitizeOptions) !bool {
-    if (budget.truncated) return true;
+    if (budget.isTruncated()) return true;
 
     var index: usize = 0;
     var buffer: [4]u8 = undefined;
 
     while (index < value.len) {
         if (text_safety.nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
-            if (budget.remaining == 0 or slice.len > budget.remaining) {
-                const prefix = clipUtf8(slice, budget.remaining);
-                if (prefix.len > 0) try out.writeAll(prefix);
+            const budgeted = budget.take(slice);
+            if (budgeted.value.len > 0) try out.writeAll(budgeted.value);
+
+            if (budgeted.truncated) {
                 try out.writeAll(truncated_output_suffix);
-                budget.remaining = 0;
-                budget.truncated = true;
                 return true;
             }
-
-            try out.writeAll(slice);
-            budget.remaining -= slice.len;
         }
     }
 
@@ -322,19 +345,19 @@ test "bounded terminal writer handles zero and exact limits explicitly" {
 test "budgeted terminal writer shares limits across calls" {
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
-    var budget = OutputBudget{ .remaining = 4 };
+    var budget = OutputBudget.init(4);
 
     try std.testing.expect(!try writeSafeBudgeted(&out.writer, "ab", &budget, .{}));
     try std.testing.expectEqual(@as(usize, 2), budget.remaining);
-    try std.testing.expect(!budget.truncated);
+    try std.testing.expect(!budget.isTruncated());
 
     try std.testing.expect(!try writeSafeBudgeted(&out.writer, "cd", &budget, .{}));
     try std.testing.expectEqual(@as(usize, 0), budget.remaining);
-    try std.testing.expect(!budget.truncated);
+    try std.testing.expect(!budget.isTruncated());
 
     try std.testing.expect(try writeSafeBudgeted(&out.writer, "ef", &budget, .{}));
     try std.testing.expectEqual(@as(usize, 0), budget.remaining);
-    try std.testing.expect(budget.truncated);
+    try std.testing.expect(budget.isTruncated());
     try std.testing.expectEqualStrings("abcd" ++ truncated_output_suffix, out.writer.buffered());
 
     try std.testing.expect(try writeSafeBudgeted(&out.writer, "gh", &budget, .{}));

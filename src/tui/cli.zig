@@ -78,7 +78,7 @@ pub fn exitCodeForFailure(
             return code;
         },
         else => {
-            var budget = terminal.OutputBudget{ .remaining = max_child_output_display_bytes };
+            var budget = terminal.OutputBudget.init(max_child_output_display_bytes);
             try writeCapturedStream(out, result.stderr, &budget);
             return abnormal_child_exit_code;
         },
@@ -91,7 +91,7 @@ const CapturedWriteOrder = enum {
 };
 
 fn writeCapturedWithOrder(out: *std.Io.Writer, result: RunResult, order: CapturedWriteOrder) !void {
-    var budget = terminal.OutputBudget{ .remaining = max_child_output_display_bytes };
+    var budget = terminal.OutputBudget.init(max_child_output_display_bytes);
     switch (order) {
         .stdout_first => {
             try writeCapturedStream(out, result.stdout, &budget);
@@ -105,7 +105,7 @@ fn writeCapturedWithOrder(out: *std.Io.Writer, result: RunResult, order: Capture
 }
 
 fn writeCapturedStream(out: *std.Io.Writer, value: []const u8, budget: *terminal.OutputBudget) !void {
-    if (value.len == 0 or budget.truncated) return;
+    if (value.len == 0 or budget.isTruncated()) return;
     _ = try terminal.writeSafeBudgeted(out, value, budget, .{ .preserve_newlines = true });
 }
 
