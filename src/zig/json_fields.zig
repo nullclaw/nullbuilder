@@ -22,10 +22,15 @@ pub fn parseBoundedValue(
     json_bytes: []const u8,
     limits: ParseLimits,
 ) !std.json.Parsed(JsonValue) {
+    if (!isSafeParseLimits(limits)) return error.InvalidJsonParseLimits;
     if (json_bytes.len > limits.max_bytes) return error.JsonTooLarge;
     return std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{
         .max_value_len = limits.max_value_bytes,
     });
+}
+
+fn isSafeParseLimits(limits: ParseLimits) bool {
+    return limits.max_bytes > 0 and limits.max_value_bytes > 0 and limits.max_value_bytes <= limits.max_bytes;
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {
@@ -128,12 +133,27 @@ test "json fields parse helper bounds payloads and scalar values" {
     try std.testing.expect(objectValue(parsed.value) != null);
     try std.testing.expectError(error.JsonTooLarge, parseBoundedValue(std.testing.allocator, "{}", .{
         .max_bytes = 1,
-        .max_value_bytes = 16,
+        .max_value_bytes = 1,
     }));
 
     try std.testing.expectError(error.ValueTooLong, parseBoundedValue(std.testing.allocator, "{\"name\":\"toolong\"}", .{
         .max_bytes = 64,
         .max_value_bytes = 4,
+    }));
+}
+
+test "json fields reject unsafe parse limit policies before parsing" {
+    try std.testing.expectError(error.InvalidJsonParseLimits, parseBoundedValue(std.testing.allocator, "not-json", .{
+        .max_bytes = 0,
+        .max_value_bytes = 1,
+    }));
+    try std.testing.expectError(error.InvalidJsonParseLimits, parseBoundedValue(std.testing.allocator, "not-json", .{
+        .max_bytes = 64,
+        .max_value_bytes = 0,
+    }));
+    try std.testing.expectError(error.InvalidJsonParseLimits, parseBoundedValue(std.testing.allocator, "not-json", .{
+        .max_bytes = 16,
+        .max_value_bytes = 17,
     }));
 }
 
