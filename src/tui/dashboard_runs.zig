@@ -122,6 +122,33 @@ const workflow_conclusion_labels = [_]RunLabel{
     .stale,
 };
 
+const RunStatusField = union(enum) {
+    canonical: RunLabel,
+    invalid_text: dashboard_json.TextField,
+    unknown_label,
+
+    fn labelOrMissing(self: RunStatusField) RunLabel {
+        return switch (self) {
+            .canonical => |label| label,
+            .invalid_text, .unknown_label => .missing,
+        };
+    }
+};
+
+const RunConclusionField = union(enum) {
+    canonical: RunLabel,
+    invalid_text: dashboard_json.TextField,
+    unknown_label,
+
+    fn labelOrFallback(self: RunConclusionField, fallback: RunLabel) RunLabel {
+        return switch (self) {
+            .canonical => |label| label,
+            .invalid_text => fallback,
+            .unknown_label => .failure,
+        };
+    }
+};
+
 pub const RunStatuses = struct {
     ci: RunLabel,
     nightly: RunLabel,
@@ -192,13 +219,31 @@ fn runLabel(latest: JsonObject, slot: RunSlot) RunLabel {
 }
 
 fn runStatus(run: JsonObject) RunLabel {
-    const value = dashboard_json.requiredSafeTextField(run, "status", max_run_label_len) orelse return .missing;
-    return canonicalStatus(value) orelse .missing;
+    return classifyRunStatus(run).labelOrMissing();
 }
 
 fn runConclusion(run: JsonObject, fallback: RunLabel) RunLabel {
-    const value = dashboard_json.requiredSafeTextField(run, "conclusion", max_run_label_len) orelse return fallback;
-    return canonicalConclusion(value) orelse .failure;
+    return classifyRunConclusion(run).labelOrFallback(fallback);
+}
+
+fn classifyRunStatus(run: JsonObject) RunStatusField {
+    const text = dashboard_json.classifyRequiredSafeTextField(run, "status", max_run_label_len);
+    const value = switch (text) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_text = text },
+    };
+
+    return if (canonicalStatus(value)) |label| .{ .canonical = label } else .unknown_label;
+}
+
+fn classifyRunConclusion(run: JsonObject) RunConclusionField {
+    const text = dashboard_json.classifyRequiredSafeTextField(run, "conclusion", max_run_label_len);
+    const value = switch (text) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_text = text },
+    };
+
+    return if (canonicalConclusion(value)) |label| .{ .canonical = label } else .unknown_label;
 }
 
 fn canonicalStatus(value: []const u8) ?RunLabel {
@@ -349,6 +394,50 @@ test "workflow label registries accept only canonical labels" {
     try std.testing.expectEqual(@as(?RunLabel, null), canonicalConclusion("success\n"));
 }
 
+test "workflow run fields classify labels before fallback" {
+    var parsed = try std.json.parseFromSlice(dashboard_json.JsonValue, std.testing.allocator,
+        \\{
+        \\  "statusSafe": {"status": "queued"},
+        \\  "statusMissing": {},
+        \\  "statusNumber": {"status": 42},
+        \\  "statusControl": {"status": "queued\n"},
+        \\  "statusUnknown": {"status": "deploying-secret"},
+        \\  "conclusionSafe": {"conclusion": "success"},
+        \\  "conclusionMissing": {},
+        \\  "conclusionEmpty": {"conclusion": ""},
+        \\  "conclusionControl": {"conclusion": "failure\u001b[31m"},
+        \\  "conclusionUnknown": {"conclusion": "private-secret"}
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+    const status_safe = dashboard_json.objectField(object, "statusSafe").?;
+    switch (classifyRunStatus(status_safe)) {
+        .canonical => |label| try std.testing.expectEqual(RunLabel.queued, label),
+        else => return error.ExpectedRunStatus,
+    }
+    try std.testing.expectEqual(RunLabel.queued, classifyRunStatus(status_safe).labelOrMissing());
+    try expectRunStatusInvalidText(.missing, dashboard_json.objectField(object, "statusMissing").?);
+    try expectRunStatusInvalidText(.non_string, dashboard_json.objectField(object, "statusNumber").?);
+    try expectRunStatusInvalidText(.sanitizable_content, dashboard_json.objectField(object, "statusControl").?);
+    try expectRunStatusTag(.unknown_label, dashboard_json.objectField(object, "statusUnknown").?);
+    try std.testing.expectEqual(RunLabel.missing, classifyRunStatus(dashboard_json.objectField(object, "statusUnknown").?).labelOrMissing());
+
+    const conclusion_safe = dashboard_json.objectField(object, "conclusionSafe").?;
+    switch (classifyRunConclusion(conclusion_safe)) {
+        .canonical => |label| try std.testing.expectEqual(RunLabel.success, label),
+        else => return error.ExpectedRunConclusion,
+    }
+    try std.testing.expectEqual(RunLabel.success, classifyRunConclusion(conclusion_safe).labelOrFallback(.completed));
+    try expectRunConclusionInvalidText(.missing, dashboard_json.objectField(object, "conclusionMissing").?);
+    try expectRunConclusionInvalidText(.empty, dashboard_json.objectField(object, "conclusionEmpty").?);
+    try expectRunConclusionInvalidText(.sanitizable_content, dashboard_json.objectField(object, "conclusionControl").?);
+    try expectRunConclusionTag(.unknown_label, dashboard_json.objectField(object, "conclusionUnknown").?);
+    try std.testing.expectEqual(RunLabel.completed, classifyRunConclusion(dashboard_json.objectField(object, "conclusionMissing").?).labelOrFallback(.completed));
+    try std.testing.expectEqual(RunLabel.failure, classifyRunConclusion(dashboard_json.objectField(object, "conclusionUnknown").?).labelOrFallback(.completed));
+}
+
 test "repositoryRunStatuses falls back for empty run labels" {
     var parsed = try std.json.parseFromSlice(dashboard_json.JsonValue, std.testing.allocator,
         \\{
@@ -388,4 +477,32 @@ test "repositoryHasFailure counts only completed non-success runs" {
     defer passing.deinit();
 
     try std.testing.expect(!repositoryHasFailure(passing.value.object));
+}
+
+fn expectRunStatusTag(expected: std.meta.Tag(RunStatusField), run: JsonObject) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyRunStatus(run)));
+}
+
+fn expectRunStatusInvalidText(
+    expected: std.meta.Tag(dashboard_json.TextField),
+    run: JsonObject,
+) !void {
+    switch (classifyRunStatus(run)) {
+        .invalid_text => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidRunStatusText,
+    }
+}
+
+fn expectRunConclusionTag(expected: std.meta.Tag(RunConclusionField), run: JsonObject) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyRunConclusion(run)));
+}
+
+fn expectRunConclusionInvalidText(
+    expected: std.meta.Tag(dashboard_json.TextField),
+    run: JsonObject,
+) !void {
+    switch (classifyRunConclusion(run)) {
+        .invalid_text => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidRunConclusionText,
+    }
 }
