@@ -23,11 +23,14 @@ const originalMapKeys = Map.prototype.keys;
 const originalMapIterator = Map.prototype[Symbol.iterator];
 const originalArrayPush = Array.prototype.push;
 const originalNumberParseInt = Number.parseInt;
+const originalBufferByteLength = Buffer.byteLength;
+const originalBufferFrom = Buffer.from;
 
 afterEach(() => {
   restoreArrayPush();
   restoreMapIteration();
   restoreNumberParsing();
+  restoreBufferIntrinsics();
 });
 
 function cookiesWith(value?: string): Cookies {
@@ -61,6 +64,11 @@ function restoreArrayPush(): void {
 
 function restoreNumberParsing(): void {
   Number.parseInt = originalNumberParseInt;
+}
+
+function restoreBufferIntrinsics(): void {
+  Buffer.byteLength = originalBufferByteLength;
+  Buffer.from = originalBufferFrom;
 }
 
 test('session tokens validate signature and expiry', () => {
@@ -213,8 +221,6 @@ test('token comparison rejects malformed values before constant-time comparison'
 });
 
 test('token comparison rejects oversized strings before byte-length work', () => {
-  const originalByteLength = Buffer.byteLength;
-
   try {
     Buffer.byteLength = (() => {
       throw new Error('byteLength should not be called for oversized token strings');
@@ -223,8 +229,20 @@ test('token comparison rejects oversized strings before byte-length work', () =>
     assert.equal(isTokenMatch('a'.repeat(4097), 'a'.repeat(64)), false);
     assert.equal(isTokenMatch('a'.repeat(64), 'a'.repeat(4097)), false);
   } finally {
-    Buffer.byteLength = originalByteLength;
+    restoreBufferIntrinsics();
   }
+});
+
+test('token comparison uses captured buffer intrinsics', () => {
+  Buffer.byteLength = (() => {
+    throw new Error('Buffer.byteLength should not be called');
+  }) as typeof Buffer.byteLength;
+  Buffer.from = (() => {
+    throw new Error('Buffer.from should not be called');
+  }) as typeof Buffer.from;
+
+  assert.equal(isTokenMatch('a'.repeat(64), 'a'.repeat(64)), true);
+  assert.equal(isTokenMatch('b'.repeat(64), 'a'.repeat(64)), false);
 });
 
 test('login rate limiter blocks repeated failures and prunes old attempts', () => {

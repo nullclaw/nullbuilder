@@ -30,6 +30,8 @@ const MAX_LOGIN_RATE_LIMIT_KEYS = 100_000;
 const MAX_LOGIN_RATE_LIMIT_KEY_LENGTH = 128;
 const MAX_TOKEN_COMPARE_BYTES = 4096;
 const FALLBACK_LOGIN_RATE_LIMIT_KEY = 'unknown-client';
+const BUFFER_BYTE_LENGTH = Buffer.byteLength.bind(Buffer) as typeof Buffer.byteLength;
+const BUFFER_FROM = Buffer.from.bind(Buffer) as typeof Buffer.from;
 
 export type LoginRateLimiterOptions = {
   windowMs: number;
@@ -309,14 +311,14 @@ export function isTokenMatch(value: string, expected: string): boolean {
     return false;
   }
 
-  const valueBytes = Buffer.byteLength(value);
-  const expectedBytes = Buffer.byteLength(expected);
+  const valueBytes = BUFFER_BYTE_LENGTH(value);
+  const expectedBytes = BUFFER_BYTE_LENGTH(expected);
   if (valueBytes !== expectedBytes || valueBytes > MAX_TOKEN_COMPARE_BYTES) {
     return false;
   }
 
-  const left = Buffer.from(value);
-  const right = Buffer.from(expected);
+  const left = BUFFER_FROM(value);
+  const right = BUFFER_FROM(expected);
 
   return left.length === right.length && timingSafeEqual(left, right);
 }
