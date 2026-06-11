@@ -1,11 +1,25 @@
 const std = @import("std");
 
+pub const max_supported_arg_count: usize = 1024;
+pub const max_supported_arg_bytes: usize = 64 * 1024;
+pub const max_supported_args_total_bytes: usize = 1024 * 1024;
+
 pub const ArgVectorPolicy = struct {
     max_count: usize,
     max_arg_bytes: usize,
     max_total_bytes: usize,
     allow_empty_vector: bool = true,
     allow_empty_args: bool = false,
+
+    fn isSafe(self: ArgVectorPolicy) bool {
+        return self.max_count > 0 and
+            self.max_count <= max_supported_arg_count and
+            self.max_arg_bytes > 0 and
+            self.max_arg_bytes <= max_supported_arg_bytes and
+            self.max_total_bytes > 0 and
+            self.max_total_bytes <= max_supported_args_total_bytes and
+            self.max_arg_bytes <= self.max_total_bytes;
+    }
 };
 
 pub fn isSafeArgVector(
@@ -13,6 +27,7 @@ pub fn isSafeArgVector(
     policy: ArgVectorPolicy,
     comptime has_unsafe_text: fn ([]const u8) bool,
 ) bool {
+    if (!policy.isSafe()) return false;
     if (!policy.allow_empty_vector and args.len == 0) return false;
     if (args.len > policy.max_count) return false;
 
@@ -41,6 +56,10 @@ fn testHasNoUnsafeText(_: []const u8) bool {
     return false;
 }
 
+fn testUnexpectedUnsafeText(_: []const u8) bool {
+    @panic("unsafe text callback should not run for invalid policies");
+}
+
 test "arg safety bounds vector count and bytes" {
     const policy = ArgVectorPolicy{
         .max_count = 3,
@@ -60,17 +79,56 @@ test "arg safety bounds vector count and bytes" {
 test "arg safety accounts total bytes without underflow" {
     const policy = ArgVectorPolicy{
         .max_count = 3,
-        .max_arg_bytes = 4,
-        .max_total_bytes = 0,
+        .max_arg_bytes = 1,
+        .max_total_bytes = 1,
         .allow_empty_args = true,
     };
 
     try std.testing.expect(isSafeArgVector(&.{}, policy, testHasNoUnsafeText));
     try std.testing.expect(isSafeArgVector(&.{""}, policy, testHasNoUnsafeText));
-    try std.testing.expect(!isSafeArgVector(&.{"x"}, policy, testHasNoUnsafeText));
+    try std.testing.expect(isSafeArgVector(&.{"x"}, policy, testHasNoUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{ "x", "y" }, policy, testHasNoUnsafeText));
     try std.testing.expect(fitsTotalByteBudget(std.math.maxInt(usize), 0, std.math.maxInt(usize)));
     try std.testing.expect(!fitsTotalByteBudget(std.math.maxInt(usize), 1, std.math.maxInt(usize)));
     try std.testing.expect(!fitsTotalByteBudget(2, 0, 1));
+}
+
+test "arg safety rejects unsafe policies before scanning arguments" {
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = 0,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = 3,
+        .max_arg_bytes = 0,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 0,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = max_supported_arg_count + 1,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = 3,
+        .max_arg_bytes = max_supported_arg_bytes + 1,
+        .max_total_bytes = max_supported_arg_bytes + 1,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = max_supported_args_total_bytes + 1,
+    }, testUnexpectedUnsafeText));
+    try std.testing.expect(!isSafeArgVector(&.{"run"}, .{
+        .max_count = 3,
+        .max_arg_bytes = 9,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText));
 }
 
 test "arg safety rejects empty vectors and empty arguments when required" {
