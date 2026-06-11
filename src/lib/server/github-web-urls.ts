@@ -1,5 +1,5 @@
 import { DEFAULT_OWNER, normalizeOwner, type RepoSlug } from '../repositories';
-import { safeHttpUrlText } from '../url-safety';
+import { hasUnsafeHttpUrlPathSyntax, safeHttpUrlText } from '../url-safety';
 import { encodeGitHubPathSegment } from './github-url-encoding';
 
 const DEFAULT_GITHUB_WEB_BASE_URL = 'https://github.com';
@@ -19,14 +19,14 @@ export const EMPTY_GITHUB_WEB_URL_CONTEXT: GitHubWebUrlContext = {
 };
 
 export function githubRepositoryWebUrl(webBaseUrl: string, repo: RepoSlug): string {
-  const normalizedWebBaseUrl = webBaseUrl.replace(/\/+$/, '');
+  const normalizedWebBaseUrl = normalizedGitHubWebBaseUrl(webBaseUrl);
   const fallback = `${DEFAULT_GITHUB_WEB_BASE_URL}/${repo}`;
   return safeGitHubWebUrl(`${normalizedWebBaseUrl}/${repo}`, fallback);
 }
 
 export function githubOwnerWebUrl(webBaseUrl: string, owner: string): string {
   const normalizedOwner = safeOwner(owner);
-  const normalizedWebBaseUrl = webBaseUrl.replace(/\/+$/, '');
+  const normalizedWebBaseUrl = normalizedGitHubWebBaseUrl(webBaseUrl);
   const fallback = `${DEFAULT_GITHUB_WEB_BASE_URL}/${normalizedOwner}`;
   return safeGitHubWebUrl(`${normalizedWebBaseUrl}/${normalizedOwner}`, fallback);
 }
@@ -103,6 +103,26 @@ function safeGitHubWebUrlText(value: unknown, allowedOrigin: string, allowedPath
   }
 
   return allowedPathPrefix === '' || isPathWithinPrefix(url.pathname, allowedPathPrefix) ? safeValue : null;
+}
+
+function normalizedGitHubWebBaseUrl(webBaseUrl: string): string {
+  const safeBaseUrl = safeHttpUrlText(webBaseUrl, { maxLength: MAX_GITHUB_WEB_URL_LENGTH, trim: true });
+  if (!safeBaseUrl || hasUnsafeHttpUrlPathSyntax(safeBaseUrl)) {
+    return DEFAULT_GITHUB_WEB_BASE_URL;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(safeBaseUrl);
+  } catch {
+    return DEFAULT_GITHUB_WEB_BASE_URL;
+  }
+
+  if (url.search || url.hash) {
+    return DEFAULT_GITHUB_WEB_BASE_URL;
+  }
+
+  return url.toString().replace(/\/$/, '');
 }
 
 function safeOwner(owner: string): string {

@@ -38,6 +38,31 @@ test('github web URL helpers build repository owner and mutation URLs', () => {
   );
 });
 
+test('github web URL helpers normalize unsafe configured bases before composing hrefs', () => {
+  for (const [value, secret] of [
+    ['https://github.example.test?token=secret-query-value', 'secret-query-value'],
+    ['https://github.example.test#secret-fragment-value', 'secret-fragment-value'],
+    ['https://user:pass@github.example.test/base', 'user'],
+    ['https://github.example.test/base/../secret-path', 'secret-path'],
+    ['https://github.example.test/base/%2e%2e/secret-path', 'secret-path'],
+    ['https://github.example.test/base//secret-path', 'secret-path'],
+    ['http://github.example.test/base', 'github.example.test']
+  ] as const) {
+    const repositoryUrl = githubRepositoryWebUrl(value, REPO);
+    const ownerUrl = githubOwnerWebUrl(value, 'nullclaw');
+    const context = githubRepositoryUrlContext(value, REPO);
+
+    assert.equal(repositoryUrl, 'https://github.com/nullclaw/nullbuilder');
+    assert.equal(ownerUrl, 'https://github.com/nullclaw');
+    assert.equal(context.repositoryUrl, 'https://github.com/nullclaw/nullbuilder');
+    assert.equal(context.repositoryOrigin, 'https://github.com');
+    assert.equal(context.repositoryPathPrefix, '/nullclaw/nullbuilder');
+    assert.equal(repositoryUrl.includes(secret), false);
+    assert.equal(ownerUrl.includes(secret), false);
+    assert.equal(context.repositoryUrl.includes(secret), false);
+  }
+});
+
 test('safeGitHubWebUrl rejects unsafe URLs before they become hrefs', () => {
   const fallback = 'https://github.example.test/nullclaw/nullbuilder';
   const allowedOrigin = 'https://github.example.test';

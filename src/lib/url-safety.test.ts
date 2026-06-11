@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
+  hasUnsafeHttpUrlPathSyntax,
   hasEncodedTextControlCharacter,
   isCanonicalLoopbackHttpUrl,
   readSafeUrlText,
@@ -74,6 +75,30 @@ test('safeHttpUrlText accepts HTTPS and canonical loopback-only HTTP URLs', () =
     null
   ]) {
     assert.equal(safeHttpUrlText(value, { maxLength: 2048 }), null);
+  }
+});
+
+test('hasUnsafeHttpUrlPathSyntax rejects ambiguous raw path segments', () => {
+  for (const value of [
+    'https://github.example.test',
+    'https://github.example.test/',
+    'https://github.example.test/api/v3/',
+    'https://github.example.test/api/v3?query=1',
+    'https://github.example.test/api/v3#fragment'
+  ]) {
+    assert.equal(hasUnsafeHttpUrlPathSyntax(value), false, value);
+  }
+
+  for (const value of [
+    'https://github.example.test/api//v3',
+    'https://github.example.test/api/./v3',
+    'https://github.example.test/api/../secret',
+    'https://github.example.test/api/%2e/v3',
+    'https://github.example.test/api/%2E%2e/secret',
+    'https://github.example.test/api//secret?token=value',
+    'https://github.example.test/api/%2e%2e/secret#fragment'
+  ]) {
+    assert.equal(hasUnsafeHttpUrlPathSyntax(value), true, value);
   }
 });
 
