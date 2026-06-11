@@ -79,6 +79,26 @@ test('buildChildArgs rejects hostile forwarded argument array traps', () => {
   assert.equal(buildChildArgs(paths, hostileItem, true), null);
 });
 
+test('buildChildArgs rejects hostile cli path traps', () => {
+  const paths = new Proxy(
+    {
+      bundledCli: '/repo/dist/cli/nullbuilder.js',
+      sourceCli: '/repo/src/cli/nullbuilder.ts'
+    },
+    {
+      get(target, property, receiver) {
+        if (property === 'bundledCli') {
+          throw new Error('secret bundled path trap');
+        }
+
+        return Reflect.get(target, property, receiver);
+      }
+    }
+  );
+
+  assert.equal(buildChildArgs(paths, ['repos'], true), null);
+});
+
 test('buildChildArgs copies forwarded args before prefixing', () => {
   const paths = {
     bundledCli: '/repo/dist/cli/nullbuilder.js',
@@ -337,6 +357,31 @@ test('runLauncher rejects hostile argv traps without spawning', () => {
   }
 });
 
+test('runLauncher rejects invalid module urls without spawning', () => {
+  const stderr = writableBuffer();
+  let existsCalled = false;
+  let spawned = false;
+  const status = runLauncher({
+    argv: ['node', 'bin/nullbuilder.js', 'repos'],
+    moduleUrl: 'https://example.test/secret-token/nullbuilder.js',
+    exists: () => {
+      existsCalled = true;
+      return true;
+    },
+    stderr,
+    spawn: () => {
+      spawned = true;
+      return { status: 0 };
+    }
+  });
+
+  assert.equal(status, 2);
+  assert.equal(existsCalled, false);
+  assert.equal(spawned, false);
+  assert.equal(stderr.value, 'Invalid launcher environment.\n');
+  assert.doesNotMatch(stderr.value, /secret|https/u);
+});
+
 test('runLauncher rejects unsafe launcher environment without spawning', () => {
   for (const unsafeEnvironment of [
     { execPath: '--eval=process.exit(1)', cwd: '/worktree' },
@@ -364,6 +409,28 @@ test('runLauncher rejects unsafe launcher environment without spawning', () => {
   }
 });
 
+test('runLauncher rejects bundled cli existence probe failures without spawning', () => {
+  const stderr = writableBuffer();
+  let spawned = false;
+  const status = runLauncher({
+    argv: ['node', 'bin/nullbuilder.js', 'repos'],
+    moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+    exists: () => {
+      throw new Error('secret bundle probe failed');
+    },
+    stderr,
+    spawn: () => {
+      spawned = true;
+      return { status: 0 };
+    }
+  });
+
+  assert.equal(status, 2);
+  assert.equal(spawned, false);
+  assert.equal(stderr.value, 'Invalid launcher environment.\n');
+  assert.doesNotMatch(stderr.value, /secret|bundle/u);
+});
+
 test('runLauncher maps spawn errors to a generic failure exit', () => {
   const stderr = writableBuffer();
   const status = runLauncher({
@@ -377,6 +444,50 @@ test('runLauncher maps spawn errors to a generic failure exit', () => {
   assert.equal(status, 1);
   assert.equal(stderr.value, 'Failed to launch nullbuilder CLI.\n');
   assert.doesNotMatch(stderr.value, /private|token|\x1b/);
+});
+
+test('runLauncher maps thrown spawn failures to a generic failure exit', () => {
+  const stderr = writableBuffer();
+  const status = runLauncher({
+    argv: ['node', 'bin/nullbuilder.js', 'repos'],
+    moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+    exists: () => true,
+    stderr,
+    spawn: () => {
+      throw new Error('spawn failed /private/path/token');
+    }
+  });
+
+  assert.equal(status, 1);
+  assert.equal(stderr.value, 'Failed to launch nullbuilder CLI.\n');
+  assert.doesNotMatch(stderr.value, /private|token/);
+});
+
+test('runLauncher rejects hostile spawn result traps', () => {
+  const stderr = writableBuffer();
+  const status = runLauncher({
+    argv: ['node', 'bin/nullbuilder.js', 'repos'],
+    moduleUrl: new URL('./nullbuilder-launcher.js', import.meta.url).href,
+    exists: () => true,
+    stderr,
+    spawn: () =>
+      new Proxy(
+        { status: 0 },
+        {
+          get(target, property, receiver) {
+            if (property === 'error') {
+              throw new Error('secret spawn result trap');
+            }
+
+            return Reflect.get(target, property, receiver);
+          }
+        }
+      )
+  });
+
+  assert.equal(status, 1);
+  assert.equal(stderr.value, 'Failed to launch nullbuilder CLI.\n');
+  assert.doesNotMatch(stderr.value, /secret|trap/);
 });
 
 function writableBuffer() {

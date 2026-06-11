@@ -21,15 +21,25 @@ export function resolveLauncherPaths(moduleUrl) {
   };
 }
 
-export function buildChildArgs(paths, userArgs, bundledExists = existsSync(paths.bundledCli)) {
+export function buildChildArgs(paths, userArgs, bundledExists) {
+  const childCliPaths = readChildCliPaths(paths);
   const forwardedArgs = readSafeForwardedArgs(userArgs);
-  if (!isSafeChildCliPath(paths.bundledCli) || !isSafeChildCliPath(paths.sourceCli) || forwardedArgs === null) {
+  if (childCliPaths === null || forwardedArgs === null) {
     return null;
   }
 
-  return bundledExists
-    ? prefixedArgs([paths.bundledCli], forwardedArgs)
-    : prefixedArgs(['--import', 'tsx', paths.sourceCli], forwardedArgs);
+  if (!isSafeChildCliPath(childCliPaths.bundledCli) || !isSafeChildCliPath(childCliPaths.sourceCli)) {
+    return null;
+  }
+
+  const useBundledCli = readBundledCliPreference(existsSync, childCliPaths.bundledCli, bundledExists);
+  if (useBundledCli === null) {
+    return null;
+  }
+
+  return useBundledCli
+    ? prefixedArgs([childCliPaths.bundledCli], forwardedArgs)
+    : prefixedArgs(['--import', 'tsx', childCliPaths.sourceCli], forwardedArgs);
 }
 
 export function runLauncher({
@@ -41,9 +51,25 @@ export function runLauncher({
   spawn = spawnSync,
   exists = existsSync
 }) {
-  const paths = resolveLauncherPaths(moduleUrl);
+  const paths = readLauncherPaths(moduleUrl);
+  if (paths === null) {
+    stderr.write('Invalid launcher environment.\n');
+    return 2;
+  }
+
   const userArgs = readArgTail(argv, 2);
-  const childArgs = userArgs === null ? null : buildChildArgs(paths, userArgs, exists(paths.bundledCli));
+  if (userArgs === null) {
+    stderr.write('Invalid command arguments.\n');
+    return 2;
+  }
+
+  const bundledExists = readBundledCliExists(exists, paths.bundledCli);
+  if (bundledExists === null) {
+    stderr.write('Invalid launcher environment.\n');
+    return 2;
+  }
+
+  const childArgs = buildChildArgs(paths, userArgs, bundledExists);
 
   if (!childArgs) {
     stderr.write('Invalid command arguments.\n');
@@ -55,17 +81,90 @@ export function runLauncher({
     return 2;
   }
 
-  const result = spawn(execPath, childArgs, {
-    cwd,
-    stdio: 'inherit'
-  });
-
-  if (result.error) {
+  const childStatus = runChildProcess(spawn, execPath, childArgs, cwd);
+  if (childStatus === null) {
     stderr.write('Failed to launch nullbuilder CLI.\n');
     return 1;
   }
 
-  return result.status ?? 1;
+  return childStatus;
+}
+
+function readLauncherPaths(moduleUrl) {
+  try {
+    return resolveLauncherPaths(moduleUrl);
+  } catch {
+    return null;
+  }
+}
+
+function readChildCliPaths(paths) {
+  try {
+    if (paths === null || typeof paths !== 'object') {
+      return null;
+    }
+
+    return {
+      bundledCli: paths.bundledCli,
+      sourceCli: paths.sourceCli
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readBundledCliPreference(exists, bundledCli, bundledExists) {
+  if (bundledExists !== undefined) {
+    return typeof bundledExists === 'boolean' ? bundledExists : null;
+  }
+
+  return readBundledCliExists(exists, bundledCli);
+}
+
+function readBundledCliExists(exists, bundledCli) {
+  try {
+    return exists(bundledCli) === true;
+  } catch {
+    return null;
+  }
+}
+
+function runChildProcess(spawn, execPath, childArgs, cwd) {
+  try {
+    const result = spawn(execPath, childArgs, {
+      cwd,
+      stdio: 'inherit'
+    });
+
+    return readChildStatus(result);
+  } catch {
+    return null;
+  }
+}
+
+function readChildStatus(result) {
+  try {
+    if (result === null || typeof result !== 'object') {
+      return null;
+    }
+
+    if (result.error) {
+      return null;
+    }
+
+    const status = result.status;
+    if (status === null || status === undefined) {
+      return 1;
+    }
+
+    return isExitStatus(status) ? status : null;
+  } catch {
+    return null;
+  }
+}
+
+function isExitStatus(value) {
+  return Number.isSafeInteger(value) && value >= 0 && value <= 255;
 }
 
 function readSafeForwardedArgs(args) {
