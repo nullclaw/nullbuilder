@@ -17,16 +17,47 @@ const MAX_RUN_EVENT_BYTES = 64;
 const MAX_RUN_CONCLUSION_BYTES = 64;
 const MAX_RUN_HEAD_SHA_BYTES = 40;
 
-const NIGHTLY_EVENTS = [_][]const u8{ "schedule", "workflow_dispatch" };
+const NIGHTLY_EVENT_LABELS = [_][]const u8{ "schedule", "workflow_dispatch" };
 const TEST_HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
 const TEST_OTHER_HEAD_SHA = "89abcdef0123456789abcdef0123456789abcdef";
+
+const RunEvent = enum {
+    nightly,
+    other,
+
+    fn fromText(value: []const u8) RunEvent {
+        for (NIGHTLY_EVENT_LABELS) |candidate| {
+            if (std.mem.eql(u8, value, candidate)) return .nightly;
+        }
+
+        return .other;
+    }
+
+    fn isNightly(self: RunEvent) bool {
+        return self == .nightly;
+    }
+};
+
+const RunConclusion = enum {
+    success,
+    other,
+
+    fn fromText(value: ?[]const u8) RunConclusion {
+        const label = value orelse return .other;
+        return if (std.mem.eql(u8, label, "success")) .success else .other;
+    }
+
+    fn isSuccess(self: RunConclusion) bool {
+        return self == .success;
+    }
+};
 
 const Run = struct {
     id: u64 = 0,
     name: []const u8 = "",
-    event: []const u8 = "",
+    event: RunEvent = .other,
     head_sha: []const u8 = "",
-    conclusion: ?[]const u8 = null,
+    conclusion: RunConclusion = .other,
     html_url: []const u8 = "",
 };
 
@@ -51,13 +82,6 @@ const DecideValidationError = error{
     InvalidHeadSha,
     InvalidWorkflowName,
 };
-
-fn isNightlyEvent(event: []const u8) bool {
-    for (NIGHTLY_EVENTS) |candidate| {
-        if (std.mem.eql(u8, event, candidate)) return true;
-    }
-    return false;
-}
 
 fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
     if (!action_paths.isSafeRelativePath(options.runs_json_path)) return error.InvalidRunsJsonPath;
@@ -156,11 +180,10 @@ fn matchingSuccessfulRun(run: Run, current_id: ?u64, head_sha: []const u8, workf
         if (run.id == id) return false;
     }
     if (workflow_name.len > 0 and !std.mem.eql(u8, run.name, workflow_name)) return false;
-    if (!isNightlyEvent(run.event)) return false;
+    if (!run.event.isNightly()) return false;
     if (!action_values.isFullHexSha(run.head_sha)) return false;
     if (!std.mem.eql(u8, run.head_sha, head_sha)) return false;
-    const conclusion = run.conclusion orelse return false;
-    if (!std.mem.eql(u8, conclusion, "success")) return false;
+    if (!run.conclusion.isSuccess()) return false;
     return true;
 }
 
@@ -195,11 +218,20 @@ fn runFromObject(object: JsonObject) Run {
     return .{
         .id = action_json.safePositiveIntegerField(object, "id"),
         .name = action_json.optionalSafeTextField(object, "name", MAX_WORKFLOW_NAME_BYTES) orelse "",
-        .event = action_json.optionalSafeTextField(object, "event", MAX_RUN_EVENT_BYTES) orelse "",
+        .event = runEventField(object),
         .head_sha = safeHeadShaField(object),
-        .conclusion = action_json.optionalSafeTextField(object, "conclusion", MAX_RUN_CONCLUSION_BYTES),
+        .conclusion = runConclusionField(object),
         .html_url = action_json.optionalSafeTextField(object, "html_url", MAX_OUTPUT_VALUE_BYTES) orelse "",
     };
+}
+
+fn runEventField(object: JsonObject) RunEvent {
+    const value = action_json.optionalSafeTextField(object, "event", MAX_RUN_EVENT_BYTES) orelse return .other;
+    return RunEvent.fromText(value);
+}
+
+fn runConclusionField(object: JsonObject) RunConclusion {
+    return RunConclusion.fromText(action_json.optionalSafeTextField(object, "conclusion", MAX_RUN_CONCLUSION_BYTES));
 }
 
 fn safeHeadShaField(object: JsonObject) []const u8 {
@@ -368,9 +400,9 @@ test "nightly decide skips successful previous nightly for same sha and workflow
     const decision = decideShouldBuild(&.{.{
         .id = 9,
         .name = "Nightly",
-        .event = "schedule",
+        .event = .nightly,
         .head_sha = TEST_HEAD_SHA,
-        .conclusion = "success",
+        .conclusion = .success,
         .html_url = "https://github.com/nullclaw/nullbuilder/actions/runs/9",
     }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
@@ -385,35 +417,35 @@ test "nightly decide ignores other workflows current run failed runs and non nig
         .{
             .id = 10,
             .name = "Nightly",
-            .event = "schedule",
+            .event = .nightly,
             .head_sha = TEST_HEAD_SHA,
-            .conclusion = "success",
+            .conclusion = .success,
         },
         .{
             .id = 8,
             .name = "Nightly",
-            .event = "schedule",
+            .event = .nightly,
             .head_sha = TEST_HEAD_SHA,
-            .conclusion = "failure",
+            .conclusion = .other,
         },
         .{
             .id = 7,
             .name = "CI",
-            .event = "schedule",
+            .event = .nightly,
             .head_sha = TEST_HEAD_SHA,
-            .conclusion = "success",
+            .conclusion = .success,
         },
         .{
             .id = 6,
             .name = "Nightly",
-            .event = "push",
+            .event = .other,
             .head_sha = TEST_HEAD_SHA,
-            .conclusion = "success",
+            .conclusion = .success,
         },
         .{
             .id = 5,
             .name = "Nightly",
-            .event = "schedule",
+            .event = .nightly,
             .head_sha = TEST_HEAD_SHA,
         },
     };
@@ -427,9 +459,9 @@ test "nightly decide force overrides existing success" {
     const decision = decideShouldBuild(&.{.{
         .id = 9,
         .name = "Nightly",
-        .event = "workflow_dispatch",
+        .event = .nightly,
         .head_sha = TEST_HEAD_SHA,
-        .conclusion = "success",
+        .conclusion = .success,
     }}, "10", TEST_HEAD_SHA, "Nightly", true);
 
     try std.testing.expect(decision.should_build);
@@ -455,17 +487,17 @@ test "nightly decide scans only bounded workflow history" {
     var runs = [_]Run{.{
         .id = 1,
         .name = "Nightly",
-        .event = "schedule",
+        .event = .nightly,
         .head_sha = TEST_OTHER_HEAD_SHA,
-        .conclusion = "failure",
+        .conclusion = .other,
     }} ** (MAX_WORKFLOW_RUNS_TO_SCAN + 1);
 
     runs[MAX_WORKFLOW_RUNS_TO_SCAN] = .{
         .id = 200,
         .name = "Nightly",
-        .event = "schedule",
+        .event = .nightly,
         .head_sha = TEST_HEAD_SHA,
-        .conclusion = "success",
+        .conclusion = .success,
     };
 
     var decision = decideShouldBuild(&runs, "999", TEST_HEAD_SHA, "Nightly", false);
@@ -475,9 +507,9 @@ test "nightly decide scans only bounded workflow history" {
     runs[MAX_WORKFLOW_RUNS_TO_SCAN - 1] = .{
         .id = 199,
         .name = "Nightly",
-        .event = "schedule",
+        .event = .nightly,
         .head_sha = TEST_HEAD_SHA,
-        .conclusion = "success",
+        .conclusion = .success,
     };
 
     decision = decideShouldBuild(&runs, "999", TEST_HEAD_SHA, "Nightly", false);
@@ -489,9 +521,9 @@ test "nightly decide ignores matching API runs without a positive id" {
     const decision = decideShouldBuild(&.{.{
         .id = 0,
         .name = "Nightly",
-        .event = "schedule",
+        .event = .nightly,
         .head_sha = TEST_HEAD_SHA,
-        .conclusion = "success",
+        .conclusion = .success,
         .html_url = "https://github.com/nullclaw/nullbuilder/actions/runs/0",
     }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
@@ -657,6 +689,34 @@ test "nightly parses workflow run API payload with unknown fields" {
     const decision = decideShouldBuildFromPayload(parsed.value, "43", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(!decision.should_build);
     try std.testing.expectEqual(@as(?u64, 42), decision.matched_run_id);
+}
+
+test "nightly normalizes workflow dispatch event and unsafe labels from API payload" {
+    const dispatch_json =
+        \\{"workflow_runs":[{"id":42,"name":"Nightly","event":"workflow_dispatch","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/42"}]}
+    ;
+    var dispatch = try parseRunsPayload(std.testing.allocator, dispatch_json);
+    defer dispatch.deinit();
+
+    const dispatch_decision = decideShouldBuildFromPayload(dispatch.value, "43", TEST_HEAD_SHA, "Nightly", false);
+    try std.testing.expect(!dispatch_decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 42), dispatch_decision.matched_run_id);
+
+    const unsafe_json =
+        \\{
+        \\  "workflow_runs": [
+        \\    {"id":42,"name":"Nightly","event":"workflow_dispatch\n","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/42"},
+        \\    {"id":43,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success\n","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/43"},
+        \\    {"id":44,"name":"Nightly","event":"schedule","head_sha":"0123456789abcdef0123456789abcdef01234567","conclusion":"success","html_url":"https://github.com/nullclaw/nullbuilder/actions/runs/44"}
+        \\  ]
+        \\}
+    ;
+    var unsafe = try parseRunsPayload(std.testing.allocator, unsafe_json);
+    defer unsafe.deinit();
+
+    const unsafe_decision = decideShouldBuildFromPayload(unsafe.value, "45", TEST_HEAD_SHA, "Nightly", false);
+    try std.testing.expect(!unsafe_decision.should_build);
+    try std.testing.expectEqual(@as(?u64, 44), unsafe_decision.matched_run_id);
 }
 
 test "nightly skips malformed workflow run API entries" {
