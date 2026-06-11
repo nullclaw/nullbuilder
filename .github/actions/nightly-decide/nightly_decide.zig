@@ -194,16 +194,16 @@ fn runFromValue(value: JsonValue) ?Run {
 fn runFromObject(object: JsonObject) Run {
     return .{
         .id = action_json.safePositiveIntegerField(object, "id"),
-        .name = action_json.safeTextField(object, "name", "", MAX_WORKFLOW_NAME_BYTES),
-        .event = action_json.safeTextField(object, "event", "", MAX_RUN_EVENT_BYTES),
+        .name = action_json.optionalSafeTextField(object, "name", MAX_WORKFLOW_NAME_BYTES) orelse "",
+        .event = action_json.optionalSafeTextField(object, "event", MAX_RUN_EVENT_BYTES) orelse "",
         .head_sha = safeHeadShaField(object),
         .conclusion = action_json.optionalSafeTextField(object, "conclusion", MAX_RUN_CONCLUSION_BYTES),
-        .html_url = action_json.safeTextField(object, "html_url", "", MAX_OUTPUT_VALUE_BYTES),
+        .html_url = action_json.optionalSafeTextField(object, "html_url", MAX_OUTPUT_VALUE_BYTES) orelse "",
     };
 }
 
 fn safeHeadShaField(object: JsonObject) []const u8 {
-    const value = action_json.safeTextField(object, "head_sha", "", MAX_RUN_HEAD_SHA_BYTES);
+    const value = action_json.optionalSafeTextField(object, "head_sha", MAX_RUN_HEAD_SHA_BYTES) orelse "";
     return if (action_values.isFullHexSha(value)) value else "";
 }
 

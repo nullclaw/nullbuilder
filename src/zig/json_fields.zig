@@ -92,17 +92,6 @@ pub fn boundedPositiveIntegerField(object: JsonObject, field_name: []const u8, m
     return if (value <= max_value) value else 0;
 }
 
-pub fn safeTextField(
-    object: JsonObject,
-    field_name: []const u8,
-    fallback: []const u8,
-    max_len: usize,
-    comptime isSafeText: fn ([]const u8, usize) bool,
-) []const u8 {
-    const value = object.get(field_name) orelse return fallback;
-    return safeTextValue(value, max_len, isSafeText) orelse fallback;
-}
-
 pub fn optionalSafeTextField(
     object: JsonObject,
     field_name: []const u8,
@@ -239,9 +228,9 @@ test "json fields validate safe integer domains and caller text policy" {
 
     try std.testing.expectEqualStrings(
         "repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82",
-        safeTextField(object, "safe", "fallback", 64, json_safety.isNonEmptyTextWithoutControl),
+        optionalSafeTextField(object, "safe", 64, json_safety.isNonEmptyTextWithoutControl).?,
     );
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "safe", "fallback", 4, json_safety.isNonEmptyTextWithoutControl));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "empty", "fallback", 64, json_safety.isNonEmptyTextWithoutControl));
+    try std.testing.expectEqual(null, optionalSafeTextField(object, "safe", 4, json_safety.isNonEmptyTextWithoutControl));
+    try std.testing.expectEqual(null, optionalSafeTextField(object, "empty", 64, json_safety.isNonEmptyTextWithoutControl));
     try std.testing.expectEqual(null, optionalSafeTextField(object, "control", 64, json_safety.isNonEmptyTextWithoutControl));
 }

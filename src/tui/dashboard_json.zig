@@ -37,15 +37,6 @@ pub fn objectField(object: JsonObject, field_name: []const u8) ?JsonObject {
     return json_fields.objectField(object, field_name);
 }
 
-pub fn safeTextField(
-    object: JsonObject,
-    field_name: []const u8,
-    fallback: []const u8,
-    max_len: usize,
-) []const u8 {
-    return json_fields.safeTextField(object, field_name, fallback, max_len, json_safety.isNonEmptyTextWithoutControl);
-}
-
 pub fn requiredSafeTextField(
     object: JsonObject,
     field_name: []const u8,
@@ -62,7 +53,7 @@ pub fn safeIntegerField(object: JsonObject, field_name: []const u8) u64 {
     return boundedIntField(object, field_name, max_safe_json_integer);
 }
 
-test "field helpers return typed values and fallbacks" {
+test "field helpers return typed values" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
         \\  "items": [1, 2],
@@ -78,7 +69,7 @@ test "field helpers return typed values and fallbacks" {
     try std.testing.expectEqual(@as(usize, 0), emptyValues().len);
     try std.testing.expectEqual(@as(usize, 2), boundedArrayField(object, "items", 99).?.len);
     try std.testing.expect(objectField(object, "owner") != null);
-    try std.testing.expectEqualStrings("nullbuilder", safeTextField(object, "name", "fallback", 64));
+    try std.testing.expectEqualStrings("nullbuilder", requiredSafeTextField(object, "name", 64).?);
     try std.testing.expectEqual(null, boundedArrayField(object, "name", 2));
     try std.testing.expectEqual(null, objectField(object, "items"));
 }
@@ -109,7 +100,7 @@ test "boundedArrayFieldOrEmpty returns empty slices for missing and malformed ar
     try std.testing.expectEqual(@as(usize, 0), boundedArrayFieldOrEmpty(object, "missing", 2).len);
 }
 
-test "safeTextField rejects oversized and control-bearing strings" {
+test "requiredSafeTextField rejects oversized and control-bearing strings" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{
         \\  "safe": "repo-\u043f\u0440\u0438\u0432\u0435\u0442",
@@ -123,14 +114,14 @@ test "safeTextField rejects oversized and control-bearing strings" {
     defer parsed.deinit();
     const object = parsed.value.object;
 
-    try std.testing.expectEqualStrings("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", safeTextField(object, "safe", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "safe", "fallback", 4));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "blank", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "newline", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "escape", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "c1", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "empty", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "missing", "fallback", 64));
+    try std.testing.expectEqualStrings("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", requiredSafeTextField(object, "safe", 64).?);
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "safe", 4));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "blank", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "newline", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "escape", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "c1", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "empty", 64));
+    try std.testing.expectEqual(null, requiredSafeTextField(object, "missing", 64));
 }
 
 test "requiredSafeTextField rejects missing empty and unsafe strings" {

@@ -33,15 +33,6 @@ pub fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 
     return json_fields.safePositiveIntegerField(object, field_name);
 }
 
-pub fn safeTextField(
-    object: JsonObject,
-    field_name: []const u8,
-    fallback: []const u8,
-    max_len: usize,
-) []const u8 {
-    return json_fields.safeTextField(object, field_name, fallback, max_len, action_values.isSafeActionOutputValue);
-}
-
 pub fn optionalSafeTextField(object: JsonObject, field_name: []const u8, max_len: usize) ?[]const u8 {
     return json_fields.optionalSafeTextField(object, field_name, max_len, action_values.isSafeActionOutputValue);
 }
@@ -90,13 +81,13 @@ test "action json safe text fields reject empty oversized and control text" {
     defer parsed.deinit();
     const object = parsed.value.object;
 
-    try std.testing.expectEqualStrings("Nightly", safeTextField(object, "safe", "fallback", 64));
-    try std.testing.expectEqualStrings("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", safeTextField(object, "unicode", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "safe", "fallback", 4));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "empty", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "newline", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "escape", "fallback", 64));
-    try std.testing.expectEqualStrings("fallback", safeTextField(object, "number", "fallback", 64));
+    try std.testing.expectEqualStrings("Nightly", optionalSafeTextField(object, "safe", 64).?);
+    try std.testing.expectEqualStrings("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", optionalSafeTextField(object, "unicode", 64).?);
+    try std.testing.expectEqual(null, optionalSafeTextField(object, "safe", 4));
+    try std.testing.expectEqual(null, optionalSafeTextField(object, "empty", 64));
+    try std.testing.expectEqual(null, optionalSafeTextField(object, "newline", 64));
+    try std.testing.expectEqual(null, optionalSafeTextField(object, "escape", 64));
+    try std.testing.expectEqual(null, optionalSafeTextField(object, "number", 64));
     try std.testing.expectEqual(null, optionalSafeTextField(object, "missing", 64));
     try std.testing.expectEqual(null, optionalSafeTextField(object, "empty", 64));
     try std.testing.expectEqualStrings("Nightly", optionalSafeTextField(object, "safe", 64).?);
