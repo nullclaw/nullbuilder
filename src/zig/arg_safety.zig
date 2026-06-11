@@ -27,6 +27,21 @@ pub const ArgVectorPolicy = struct {
     }
 };
 
+pub const ArgVectorValidation = enum {
+    safe,
+    invalid_policy,
+    empty_vector,
+    too_many_args,
+    empty_arg,
+    arg_too_large,
+    total_bytes_exceeded,
+    unsafe_text,
+
+    pub fn accepts(self: ArgVectorValidation) bool {
+        return self == .safe;
+    }
+};
+
 const ValidatedArgVectorPolicy = struct {
     max_count: usize,
     max_arg_bytes: usize,
@@ -34,38 +49,38 @@ const ValidatedArgVectorPolicy = struct {
     allow_empty_vector: bool,
     allow_empty_args: bool,
 
-    fn acceptsVectorLength(self: ValidatedArgVectorPolicy, length: usize) bool {
-        if (!self.allow_empty_vector and length == 0) return false;
-        return length <= self.max_count;
-    }
-
-    fn acceptsArg(self: ValidatedArgVectorPolicy, arg: []const u8) bool {
-        if (!self.allow_empty_args and arg.len == 0) return false;
-        return arg.len <= self.max_arg_bytes;
-    }
-
     fn fitsTotalByteBudget(self: ValidatedArgVectorPolicy, used_bytes: usize, next_bytes: usize) bool {
         return argFitsTotalByteBudget(used_bytes, next_bytes, self.max_total_bytes);
     }
 };
+
+pub fn classifyArgVector(
+    args: []const []const u8,
+    policy: ArgVectorPolicy,
+    comptime has_unsafe_text: fn ([]const u8) bool,
+) ArgVectorValidation {
+    const safe_policy = policy.normalized() orelse return .invalid_policy;
+    if (!safe_policy.allow_empty_vector and args.len == 0) return .empty_vector;
+    if (args.len > safe_policy.max_count) return .too_many_args;
+
+    var total_bytes: usize = 0;
+    for (args) |arg| {
+        if (!safe_policy.allow_empty_args and arg.len == 0) return .empty_arg;
+        if (arg.len > safe_policy.max_arg_bytes) return .arg_too_large;
+        if (!safe_policy.fitsTotalByteBudget(total_bytes, arg.len)) return .total_bytes_exceeded;
+        if (has_unsafe_text(arg)) return .unsafe_text;
+        total_bytes += arg.len;
+    }
+
+    return .safe;
+}
 
 pub fn isSafeArgVector(
     args: []const []const u8,
     policy: ArgVectorPolicy,
     comptime has_unsafe_text: fn ([]const u8) bool,
 ) bool {
-    const safe_policy = policy.normalized() orelse return false;
-    if (!safe_policy.acceptsVectorLength(args.len)) return false;
-
-    var total_bytes: usize = 0;
-    for (args) |arg| {
-        if (!safe_policy.acceptsArg(arg)) return false;
-        if (!safe_policy.fitsTotalByteBudget(total_bytes, arg.len)) return false;
-        if (has_unsafe_text(arg)) return false;
-        total_bytes += arg.len;
-    }
-
-    return true;
+    return classifyArgVector(args, policy, has_unsafe_text).accepts();
 }
 
 fn fitsTotalByteBudget(used_bytes: usize, next_bytes: usize, max_total_bytes: usize) bool {
@@ -110,6 +125,46 @@ test "arg safety bounds vector count and bytes" {
     try std.testing.expect(!isSafeArgVector(&.{ "one", "two", "three", "four" }, policy, testHasUnsafeText));
     try std.testing.expect(!isSafeArgVector(&.{"abcde"}, policy, testHasUnsafeText));
     try std.testing.expect(!isSafeArgVector(&.{ "abcd", "efgh", "i" }, policy, testHasUnsafeText));
+}
+
+test "arg safety classifies validation outcomes" {
+    const policy = ArgVectorPolicy{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    };
+
+    try expectArgVectorValidation(.safe, &.{}, policy, testHasUnsafeText);
+    try expectArgVectorValidation(.safe, &.{ "run", "test" }, policy, testHasUnsafeText);
+    try expectArgVectorValidation(.too_many_args, &.{ "one", "two", "three", "four" }, policy, testHasUnsafeText);
+    try expectArgVectorValidation(.empty_arg, &.{""}, policy, testHasUnsafeText);
+    try expectArgVectorValidation(.arg_too_large, &.{"abcde"}, policy, testHasUnsafeText);
+    try expectArgVectorValidation(.total_bytes_exceeded, &.{ "abcd", "efgh", "i" }, policy, testHasUnsafeText);
+    try expectArgVectorValidation(.unsafe_text, &.{"b\n"}, policy, testHasUnsafeText);
+    try expectArgVectorValidation(.invalid_policy, &.{"run"}, .{
+        .max_count = 0,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    }, testUnexpectedUnsafeText);
+    try expectArgVectorValidation(.empty_vector, &.{}, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+        .allow_empty_vector = false,
+    }, testUnexpectedUnsafeText);
+
+    try std.testing.expect(ArgVectorValidation.safe.accepts());
+    try std.testing.expect(!ArgVectorValidation.invalid_policy.accepts());
+    try std.testing.expect(!ArgVectorValidation.unsafe_text.accepts());
+}
+
+fn expectArgVectorValidation(
+    expected: ArgVectorValidation,
+    args: []const []const u8,
+    policy: ArgVectorPolicy,
+    comptime has_unsafe_text: fn ([]const u8) bool,
+) !void {
+    try std.testing.expectEqual(expected, classifyArgVector(args, policy, has_unsafe_text));
 }
 
 test "arg safety accounts total bytes without underflow" {
