@@ -233,3 +233,28 @@ test('DASHBOARD_SECTIONS defines stable in-page navigation ids', () => {
     ['repos', 'audit', 'issues', 'prs', 'build-pr', 'release-tag']
   );
 });
+
+test('DASHBOARD_SECTIONS cannot be mutated by callers', () => {
+  assert.throws(() => {
+    (DASHBOARD_SECTIONS as unknown as Array<{ id: string; label: string }>).push({
+      id: 'unsafe',
+      label: 'Unsafe'
+    });
+  }, TypeError);
+
+  assert.throws(() => {
+    (DASHBOARD_SECTIONS[0] as { id: string; label: string }).label = 'Unsafe';
+  }, TypeError);
+
+  assert.deepEqual(
+    DASHBOARD_SECTIONS.map((section) => [section.id, section.label]),
+    [
+      ['repos', 'Overview'],
+      ['audit', 'Audit'],
+      ['issues', 'Issues'],
+      ['prs', 'PRs'],
+      ['build-pr', 'Build PR'],
+      ['release-tag', 'Release Tag']
+    ]
+  );
+});

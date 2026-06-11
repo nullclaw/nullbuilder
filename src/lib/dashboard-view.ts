@@ -1,13 +1,22 @@
 import { safeHttpUrlText } from './url-safety';
 
-export const DASHBOARD_SECTIONS = [
-  { id: 'repos', label: 'Overview' },
-  { id: 'audit', label: 'Audit' },
-  { id: 'issues', label: 'Issues' },
-  { id: 'prs', label: 'PRs' },
-  { id: 'build-pr', label: 'Build PR' },
-  { id: 'release-tag', label: 'Release Tag' }
-] as const;
+export type DashboardSection = Readonly<{
+  id: string;
+  label: string;
+}>;
+
+function dashboardSection(id: string, label: string): DashboardSection {
+  return Object.freeze({ id, label });
+}
+
+export const DASHBOARD_SECTIONS: ReadonlyArray<DashboardSection> = Object.freeze([
+  dashboardSection('repos', 'Overview'),
+  dashboardSection('audit', 'Audit'),
+  dashboardSection('issues', 'Issues'),
+  dashboardSection('prs', 'PRs'),
+  dashboardSection('build-pr', 'Build PR'),
+  dashboardSection('release-tag', 'Release Tag')
+]);
 
 const DEFAULT_DASHBOARD_OWNER = 'nullclaw';
 const MAX_DASHBOARD_HREF_LENGTH = 2048;
