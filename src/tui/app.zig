@@ -69,6 +69,22 @@ const Command = union(enum) {
     invalid,
 };
 
+const CliPathSegment = enum {
+    root,
+    current_dir_prefix,
+    normal,
+    empty,
+    current_dir,
+    parent_dir,
+
+    fn isAllowed(self: CliPathSegment) bool {
+        return switch (self) {
+            .root, .current_dir_prefix, .normal => true,
+            .empty, .current_dir, .parent_dir => false,
+        };
+    }
+};
+
 pub fn run(
     gpa: std.mem.Allocator,
     arena: std.mem.Allocator,
@@ -151,7 +167,7 @@ fn hasUnsafeCliPathSyntax(value: []const u8) bool {
         }
 
         const segment = value[segment_start..segment_end];
-        if (!isSafeCliPathSegment(value, segment, segment_index, segment_end)) {
+        if (!classifyCliPathSegment(value, segment, segment_index, segment_end).isAllowed()) {
             return true;
         }
 
@@ -163,20 +179,20 @@ fn hasUnsafeCliPathSyntax(value: []const u8) bool {
     return false;
 }
 
-fn isSafeCliPathSegment(
+fn classifyCliPathSegment(
     path: []const u8,
     segment: []const u8,
     segment_index: usize,
     segment_end: usize,
-) bool {
+) CliPathSegment {
     if (segment.len == 0) {
-        return segment_index == 0 and path[0] == '/';
+        return if (segment_index == 0 and path.len > 0 and path[0] == '/') .root else .empty;
     }
-    if (std.mem.eql(u8, segment, "..")) return false;
+    if (std.mem.eql(u8, segment, "..")) return .parent_dir;
     if (std.mem.eql(u8, segment, ".")) {
-        return segment_index == 0 and segment_end < path.len;
+        return if (segment_index == 0 and segment_end < path.len) .current_dir_prefix else .current_dir;
     }
-    return true;
+    return .normal;
 }
 
 fn hasWindowsDrivePrefix(value: []const u8) bool {
@@ -412,6 +428,22 @@ test "node cli path rejects option injection and controls" {
     try std.testing.expect(!isSafeCliPath("bad\x00path"));
     try std.testing.expect(!isSafeCliPath("bad\xc2\x85path"));
     try std.testing.expect(!isSafeCliPath(oversized[0..]));
+}
+
+test "node cli path segments classify traversal and roots explicitly" {
+    try std.testing.expectEqual(CliPathSegment.current_dir_prefix, classifyCliPathSegment("./bin/nullbuilder.js", ".", 0, 1));
+    try std.testing.expectEqual(CliPathSegment.root, classifyCliPathSegment("/tmp/nullbuilder.js", "", 0, 0));
+    try std.testing.expectEqual(CliPathSegment.normal, classifyCliPathSegment("bin/nullbuilder.js", "bin", 0, 3));
+    try std.testing.expectEqual(CliPathSegment.current_dir, classifyCliPathSegment("bin/./nullbuilder.js", ".", 1, 5));
+    try std.testing.expectEqual(CliPathSegment.parent_dir, classifyCliPathSegment("../bin/nullbuilder.js", "..", 0, 2));
+    try std.testing.expectEqual(CliPathSegment.empty, classifyCliPathSegment("bin//nullbuilder.js", "", 1, 4));
+
+    try std.testing.expect(CliPathSegment.current_dir_prefix.isAllowed());
+    try std.testing.expect(CliPathSegment.root.isAllowed());
+    try std.testing.expect(CliPathSegment.normal.isAllowed());
+    try std.testing.expect(!CliPathSegment.current_dir.isAllowed());
+    try std.testing.expect(!CliPathSegment.parent_dir.isAllowed());
+    try std.testing.expect(!CliPathSegment.empty.isAllowed());
 }
 
 test "node cli path rejects traversal and ambiguous path segments" {
