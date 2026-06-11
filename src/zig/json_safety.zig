@@ -3,6 +3,7 @@ const std = @import("std");
 const text_safety = @import("text_safety");
 
 pub const max_safe_json_integer: u64 = 9_007_199_254_740_991;
+pub const TextValidation = text_safety.NonEmptyTextValidation;
 
 pub const PositiveIntegerValue = union(enum) {
     safe: u64,
@@ -47,6 +48,28 @@ pub const BoundedPositiveIntegerValue = union(enum) {
     }
 };
 
+pub const TextValue = union(enum) {
+    safe: []const u8,
+    non_string,
+    empty,
+    oversized,
+    sanitizable_content: usize,
+
+    pub fn accepts(self: TextValue) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+
+    pub fn valueOrNull(self: TextValue) ?[]const u8 {
+        return switch (self) {
+            .safe => |value| value,
+            else => null,
+        };
+    }
+};
+
 pub fn safePositiveIntegerValue(value: std.json.Value) u64 {
     return classifyPositiveIntegerValue(value).valueOrZero();
 }
@@ -82,14 +105,42 @@ pub fn safeTextValue(
     };
 }
 
+pub fn classifyTextValue(
+    value: std.json.Value,
+    max_len: usize,
+    comptime classifyText: fn ([]const u8, usize) TextValidation,
+) TextValue {
+    return switch (value) {
+        .string => |string| textValueFromValidation(string, classifyText(string, max_len)),
+        else => .non_string,
+    };
+}
+
 pub fn isNonEmptyTextWithoutControl(value: []const u8, max_len: usize) bool {
     return text_safety.isNonEmptyTextWithoutControl(value, max_len);
+}
+
+pub fn classifyNonEmptyTextWithoutControl(value: []const u8, max_len: usize) TextValidation {
+    return text_safety.classifyNonEmptyTextWithoutControl(value, max_len);
+}
+
+pub fn classifyNonEmptyTextValue(value: std.json.Value, max_len: usize) TextValue {
+    return classifyTextValue(value, max_len, classifyNonEmptyTextWithoutControl);
 }
 
 fn classifyPositiveInteger(integer: i64) PositiveIntegerValue {
     if (integer <= 0) return .non_positive;
     const unsigned = std.math.cast(u64, integer) orelse return .unsafe_integer;
     return if (unsigned <= max_safe_json_integer) .{ .safe = unsigned } else .unsafe_integer;
+}
+
+fn textValueFromValidation(value: []const u8, validation: TextValidation) TextValue {
+    return switch (validation) {
+        .safe => .{ .safe = value },
+        .empty => .empty,
+        .oversized => .oversized,
+        .sanitizable_content => |index| .{ .sanitizable_content = index },
+    };
 }
 
 test "json safety accepts only positive integers in the producer safe domain" {
@@ -200,4 +251,49 @@ test "json safety accepts text only through the caller validator" {
     try std.testing.expectEqual(null, safeTextValue(object.get("empty").?, 64, isNonEmptyTextWithoutControl));
     try std.testing.expectEqual(null, safeTextValue(object.get("newline").?, 64, isNonEmptyTextWithoutControl));
     try std.testing.expectEqual(null, safeTextValue(object.get("number").?, 64, isNonEmptyTextWithoutControl));
+}
+
+test "json safety classifies text values through the caller validator" {
+    var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"safe":"repo-\u043f\u0440\u0438\u0432\u0435\u0442","empty":"","newline":"bad\ntext","number":42}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try expectTextValueSafe("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", object.get("safe").?, 64);
+    try expectTextValueTag(.oversized, object.get("safe").?, 4);
+    try expectTextValueTag(.empty, object.get("empty").?, 64);
+    try expectTextValueIndex(.sanitizable_content, object.get("newline").?, 64, 3);
+    try expectTextValueTag(.non_string, object.get("number").?, 64);
+
+    try std.testing.expect((TextValue{ .safe = "ok" }).accepts());
+    try std.testing.expect(!(TextValue{ .non_string = {} }).accepts());
+    try std.testing.expectEqualStrings("ok", (TextValue{ .safe = "ok" }).valueOrNull().?);
+    try std.testing.expectEqual(@as(?[]const u8, null), (TextValue{ .empty = {} }).valueOrNull());
+}
+
+fn expectTextValueSafe(expected: []const u8, value: std.json.Value, max_len: usize) !void {
+    switch (classifyNonEmptyTextValue(value, max_len)) {
+        .safe => |actual| try std.testing.expectEqualStrings(expected, actual),
+        else => return error.ExpectedTextValue,
+    }
+}
+
+fn expectTextValueTag(expected: std.meta.Tag(TextValue), value: std.json.Value, max_len: usize) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyNonEmptyTextValue(value, max_len)));
+}
+
+fn expectTextValueIndex(
+    expected: std.meta.Tag(TextValue),
+    value: std.json.Value,
+    max_len: usize,
+    expected_index: usize,
+) !void {
+    const actual = classifyNonEmptyTextValue(value, max_len);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .sanitizable_content => |index| index,
+        else => return error.ExpectedTextValueIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
 }

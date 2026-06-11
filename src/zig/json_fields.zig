@@ -82,6 +82,29 @@ pub const BoundedPositiveIntegerField = union(enum) {
     }
 };
 
+pub const TextField = union(enum) {
+    safe: []const u8,
+    missing,
+    non_string,
+    empty,
+    oversized,
+    sanitizable_content: usize,
+
+    pub fn accepts(self: TextField) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+
+    pub fn valueOrNull(self: TextField) ?[]const u8 {
+        return switch (self) {
+            .safe => |value| value,
+            else => null,
+        };
+    }
+};
+
 const ValidatedParseLimits = struct {
     max_bytes: usize,
     max_value_bytes: usize,
@@ -189,6 +212,16 @@ pub fn optionalSafeTextField(
     return safeTextValue(value, max_len, isSafeText);
 }
 
+pub fn classifyTextField(
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+    comptime classifyText: fn ([]const u8, usize) json_safety.TextValidation,
+) TextField {
+    const value = object.get(field_name) orelse return .missing;
+    return textFieldFromValue(json_safety.classifyTextValue(value, max_len, classifyText));
+}
+
 pub fn safeTextValue(
     value: JsonValue,
     max_len: usize,
@@ -217,6 +250,16 @@ fn boundedPositiveIntegerFieldFromValue(value: json_safety.BoundedPositiveIntege
         .non_positive => .non_positive,
         .unsafe_integer => .unsafe_integer,
         .above_bound => .above_bound,
+    };
+}
+
+fn textFieldFromValue(value: json_safety.TextValue) TextField {
+    return switch (value) {
+        .safe => |safe_value| .{ .safe = safe_value },
+        .non_string => .non_string,
+        .empty => .empty,
+        .oversized => .oversized,
+        .sanitizable_content => |index| .{ .sanitizable_content = index },
     };
 }
 
@@ -438,6 +481,31 @@ test "json fields classify bounded positive integer fields" {
     try std.testing.expectEqual(@as(u64, 0), (BoundedPositiveIntegerField{ .missing = {} }).valueOrZero());
 }
 
+test "json fields classify text fields" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": "repo-\u043f\u0440\u0438\u0432\u0435\u0442",
+        \\  "empty": "",
+        \\  "control": "repo\u001b[31m",
+        \\  "number": 42
+        \\}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try expectTextFieldSafe("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", object, "safe", 64);
+    try expectTextFieldTag(.missing, object, "missing", 64);
+    try expectTextFieldTag(.non_string, object, "number", 64);
+    try expectTextFieldTag(.empty, object, "empty", 64);
+    try expectTextFieldTag(.oversized, object, "safe", 4);
+    try expectTextFieldIndex(.sanitizable_content, object, "control", 64, 4);
+
+    try std.testing.expect((TextField{ .safe = "ok" }).accepts());
+    try std.testing.expect(!(TextField{ .missing = {} }).accepts());
+    try std.testing.expectEqualStrings("ok", (TextField{ .safe = "ok" }).valueOrNull().?);
+    try std.testing.expectEqual(@as(?[]const u8, null), (TextField{ .non_string = {} }).valueOrNull());
+}
+
 fn expectPositiveIntegerFieldSafe(expected: u64, object: JsonObject, field_name: []const u8) !void {
     switch (classifyPositiveIntegerField(object, field_name)) {
         .safe => |actual| try std.testing.expectEqual(expected, actual),
@@ -472,4 +540,39 @@ fn expectBoundedPositiveIntegerFieldTag(
     max_value: u64,
 ) !void {
     try std.testing.expectEqual(expected, std.meta.activeTag(classifyBoundedPositiveIntegerField(object, field_name, max_value)));
+}
+
+fn expectTextFieldSafe(expected: []const u8, object: JsonObject, field_name: []const u8, max_len: usize) !void {
+    switch (classifyTextField(object, field_name, max_len, json_safety.classifyNonEmptyTextWithoutControl)) {
+        .safe => |actual| try std.testing.expectEqualStrings(expected, actual),
+        else => return error.ExpectedTextField,
+    }
+}
+
+fn expectTextFieldTag(
+    expected: std.meta.Tag(TextField),
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+) !void {
+    try std.testing.expectEqual(
+        expected,
+        std.meta.activeTag(classifyTextField(object, field_name, max_len, json_safety.classifyNonEmptyTextWithoutControl)),
+    );
+}
+
+fn expectTextFieldIndex(
+    expected: std.meta.Tag(TextField),
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+    expected_index: usize,
+) !void {
+    const actual = classifyTextField(object, field_name, max_len, json_safety.classifyNonEmptyTextWithoutControl);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .sanitizable_content => |index| index,
+        else => return error.ExpectedTextFieldIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
 }

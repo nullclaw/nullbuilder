@@ -9,6 +9,7 @@ pub const ParseLimits = json_fields.ParseLimits;
 pub const ParseRequestValidation = json_fields.ParseRequestValidation;
 pub const PositiveIntegerField = json_fields.PositiveIntegerField;
 pub const BoundedPositiveIntegerField = json_fields.BoundedPositiveIntegerField;
+pub const TextField = json_fields.TextField;
 pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
 pub const max_supported_json_array_items: usize = json_fields.max_supported_json_array_items;
 
@@ -49,7 +50,15 @@ pub fn requiredSafeTextField(
     field_name: []const u8,
     max_len: usize,
 ) ?[]const u8 {
-    return json_fields.optionalSafeTextField(object, field_name, max_len, json_safety.isNonEmptyTextWithoutControl);
+    return classifyRequiredSafeTextField(object, field_name, max_len).valueOrNull();
+}
+
+pub fn classifyRequiredSafeTextField(
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+) TextField {
+    return json_fields.classifyTextField(object, field_name, max_len, json_safety.classifyNonEmptyTextWithoutControl);
 }
 
 pub fn boundedIntField(object: JsonObject, field_name: []const u8, max_value: u64) u64 {
@@ -195,6 +204,29 @@ test "requiredSafeTextField rejects missing empty and unsafe strings" {
     try std.testing.expectEqual(null, requiredSafeTextField(object, "control", 64));
 }
 
+test "requiredSafeTextField classifies missing empty and unsafe strings" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": "repo-\u043f\u0440\u0438\u0432\u0435\u0442",
+        \\  "empty": "",
+        \\  "number": 42,
+        \\  "control": "repo\u001b[31m"
+        \\}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try expectTextFieldSafe("repo-\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82", object, "safe", 64);
+    try expectTextFieldTag(.missing, object, "missing", 64);
+    try expectTextFieldTag(.non_string, object, "number", 64);
+    try expectTextFieldTag(.empty, object, "empty", 64);
+    try expectTextFieldTag(.oversized, object, "safe", 4);
+    try expectTextFieldIndex(.sanitizable_content, object, "control", 64, 4);
+
+    try std.testing.expect((TextField{ .safe = "ok" }).accepts());
+    try std.testing.expect(!(TextField{ .missing = {} }).accepts());
+}
+
 test "safeIntegerField accepts only safe positive integers" {
     var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
         \\{"positive":42,"floatInteger":4.0,"negative":-42,"fractional":4.8,"unsafe":18446744073709551616.0}
@@ -291,6 +323,38 @@ fn expectBoundedPositiveIntegerFieldTag(
     max_value: u64,
 ) !void {
     try std.testing.expectEqual(expected, std.meta.activeTag(classifyBoundedIntField(object, field_name, max_value)));
+}
+
+fn expectTextFieldSafe(expected: []const u8, object: JsonObject, field_name: []const u8, max_len: usize) !void {
+    switch (classifyRequiredSafeTextField(object, field_name, max_len)) {
+        .safe => |actual| try std.testing.expectEqualStrings(expected, actual),
+        else => return error.ExpectedTextField,
+    }
+}
+
+fn expectTextFieldTag(
+    expected: std.meta.Tag(TextField),
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyRequiredSafeTextField(object, field_name, max_len)));
+}
+
+fn expectTextFieldIndex(
+    expected: std.meta.Tag(TextField),
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+    expected_index: usize,
+) !void {
+    const actual = classifyRequiredSafeTextField(object, field_name, max_len);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .sanitizable_content => |index| index,
+        else => return error.ExpectedTextFieldIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
 }
 
 test "safeIntegerField matches the JSON producer safe integer domain" {

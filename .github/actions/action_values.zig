@@ -684,7 +684,11 @@ pub fn classifyUtcTimestamp(value: []const u8) UtcTimestampValidation {
 }
 
 pub fn isSafeActionOutputValue(value: []const u8, max_len: usize) bool {
-    return isSafeSingleLineText(value, max_len);
+    return classifySafeActionOutputValue(value, max_len).accepts();
+}
+
+pub fn classifySafeActionOutputValue(value: []const u8, max_len: usize) text_safety.NonEmptyTextValidation {
+    return text_safety.classifyNonEmptyTextWithoutControl(value, max_len);
 }
 
 fn isSafeSingleLineText(value: []const u8, max_len: usize) bool {
@@ -1341,4 +1345,37 @@ test "action values validate single-line GitHub output values" {
     try std.testing.expect(!isSafeActionOutputValue("c1\xc2\x85break", 64));
     try std.testing.expect(!isSafeActionOutputValue("raw\x85control", 64));
     try std.testing.expect(!isSafeActionOutputValue("too-long", 3));
+}
+
+test "action values classify single-line GitHub output values" {
+    try expectActionOutputValueValidation(.safe, "scheduled build", 64);
+    try expectActionOutputValueValidation(.empty, "", 64);
+    try expectActionOutputValueValidation(.oversized, "too-long", 3);
+    try expectActionOutputValueIndex(.sanitizable_content, "line\nbreak", 64, 4);
+
+    try std.testing.expect(classifySafeActionOutputValue("ok", 64).accepts());
+    try std.testing.expect(!classifySafeActionOutputValue("line\nbreak", 64).accepts());
+}
+
+fn expectActionOutputValueValidation(
+    expected: std.meta.Tag(text_safety.NonEmptyTextValidation),
+    value: []const u8,
+    max_len: usize,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifySafeActionOutputValue(value, max_len)));
+}
+
+fn expectActionOutputValueIndex(
+    expected: std.meta.Tag(text_safety.NonEmptyTextValidation),
+    value: []const u8,
+    max_len: usize,
+    expected_index: usize,
+) !void {
+    const actual = classifySafeActionOutputValue(value, max_len);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .sanitizable_content => |index| index,
+        else => return error.ExpectedActionOutputValueIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
 }

@@ -8,6 +8,7 @@ pub const JsonObject = json_fields.JsonObject;
 pub const ParseLimits = json_fields.ParseLimits;
 pub const ParseRequestValidation = json_fields.ParseRequestValidation;
 pub const PositiveIntegerField = json_fields.PositiveIntegerField;
+pub const TextField = json_fields.TextField;
 pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
 pub const max_supported_json_array_items: usize = json_fields.max_supported_json_array_items;
 
@@ -44,7 +45,11 @@ pub fn classifyPositiveIntegerField(object: JsonObject, field_name: []const u8) 
 }
 
 pub fn optionalSafeTextField(object: JsonObject, field_name: []const u8, max_len: usize) ?[]const u8 {
-    return json_fields.optionalSafeTextField(object, field_name, max_len, action_values.isSafeActionOutputValue);
+    return classifyOptionalSafeTextField(object, field_name, max_len).valueOrNull();
+}
+
+pub fn classifyOptionalSafeTextField(object: JsonObject, field_name: []const u8, max_len: usize) TextField {
+    return json_fields.classifyTextField(object, field_name, max_len, action_values.classifySafeActionOutputValue);
 }
 
 test "action json exposes typed objects arrays and empty slices" {
@@ -163,4 +168,54 @@ test "action json safe text fields reject empty oversized and control text" {
     try std.testing.expectEqual(null, optionalSafeTextField(object, "missing", 64));
     try std.testing.expectEqual(null, optionalSafeTextField(object, "empty", 64));
     try std.testing.expectEqualStrings("Nightly", optionalSafeTextField(object, "safe", 64).?);
+}
+
+test "action json classifies safe text fields" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{"safe":"Nightly","empty":"","newline":"Nightly\nInjected","number":42}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try expectTextFieldSafe("Nightly", object, "safe", 64);
+    try expectTextFieldTag(.missing, object, "missing", 64);
+    try expectTextFieldTag(.non_string, object, "number", 64);
+    try expectTextFieldTag(.empty, object, "empty", 64);
+    try expectTextFieldTag(.oversized, object, "safe", 4);
+    try expectTextFieldIndex(.sanitizable_content, object, "newline", 64, 7);
+
+    try std.testing.expect((TextField{ .safe = "ok" }).accepts());
+    try std.testing.expect(!(TextField{ .missing = {} }).accepts());
+}
+
+fn expectTextFieldSafe(expected: []const u8, object: JsonObject, field_name: []const u8, max_len: usize) !void {
+    switch (classifyOptionalSafeTextField(object, field_name, max_len)) {
+        .safe => |actual| try std.testing.expectEqualStrings(expected, actual),
+        else => return error.ExpectedTextField,
+    }
+}
+
+fn expectTextFieldTag(
+    expected: std.meta.Tag(TextField),
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyOptionalSafeTextField(object, field_name, max_len)));
+}
+
+fn expectTextFieldIndex(
+    expected: std.meta.Tag(TextField),
+    object: JsonObject,
+    field_name: []const u8,
+    max_len: usize,
+    expected_index: usize,
+) !void {
+    const actual = classifyOptionalSafeTextField(object, field_name, max_len);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .sanitizable_content => |index| index,
+        else => return error.ExpectedTextFieldIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
 }
