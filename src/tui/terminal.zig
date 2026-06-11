@@ -20,23 +20,45 @@ pub const OutputBudget = struct {
     }
 
     fn take(self: *OutputBudget, slice: []const u8) BudgetedOutputSlice {
-        if (self.truncated) return .{ .value = "", .truncated = true };
+        if (self.truncated) return .already_truncated;
 
         if (slice.len <= self.remaining) {
             self.remaining -= slice.len;
-            return .{ .value = slice, .truncated = false };
+            return .{ .accepted = slice };
         }
 
         const prefix = clipUtf8(slice, self.remaining);
         self.remaining = 0;
         self.truncated = true;
-        return .{ .value = prefix, .truncated = true };
+        return .{ .truncated = prefix };
     }
 };
 
-const BudgetedOutputSlice = struct {
-    value: []const u8,
-    truncated: bool,
+const BudgetedOutputSlice = union(enum) {
+    accepted: []const u8,
+    truncated: []const u8,
+    already_truncated,
+
+    fn value(self: BudgetedOutputSlice) []const u8 {
+        return switch (self) {
+            .accepted, .truncated => |slice| slice,
+            .already_truncated => "",
+        };
+    }
+
+    fn didTruncate(self: BudgetedOutputSlice) bool {
+        return switch (self) {
+            .accepted => false,
+            .truncated, .already_truncated => true,
+        };
+    }
+
+    fn shouldWriteSuffix(self: BudgetedOutputSlice) bool {
+        return switch (self) {
+            .truncated => true,
+            .accepted, .already_truncated => false,
+        };
+    }
 };
 
 pub const SanitizedText = struct {
@@ -114,10 +136,11 @@ pub fn writeSafeBudgeted(out: *std.Io.Writer, value: []const u8, budget: *Output
     while (index < value.len) {
         if (text_safety.nextSanitizedSlice(value, &index, options, &buffer)) |slice| {
             const budgeted = budget.take(slice);
-            if (budgeted.value.len > 0) try out.writeAll(budgeted.value);
+            const output = budgeted.value();
+            if (output.len > 0) try out.writeAll(output);
 
-            if (budgeted.truncated) {
-                try out.writeAll(truncated_output_suffix);
+            if (budgeted.didTruncate()) {
+                if (budgeted.shouldWriteSuffix()) try out.writeAll(truncated_output_suffix);
                 return true;
             }
         }
@@ -340,6 +363,41 @@ test "bounded terminal writer handles zero and exact limits explicitly" {
     const removed_only = try writeSafeBounded(&out.writer, "\x1b[31m\x1b[0m", 0, .{});
     try std.testing.expect(!removed_only);
     try std.testing.expectEqualStrings("", out.writer.buffered());
+}
+
+test "terminal output budget classifies accepted and truncated slices" {
+    var budget = OutputBudget.init(3);
+
+    const accepted = budget.take("ab");
+    try std.testing.expectEqual(std.meta.Tag(BudgetedOutputSlice).accepted, std.meta.activeTag(accepted));
+    try std.testing.expectEqualStrings("ab", accepted.value());
+    try std.testing.expect(!accepted.didTruncate());
+    try std.testing.expect(!accepted.shouldWriteSuffix());
+    try std.testing.expectEqual(@as(usize, 1), budget.remaining);
+
+    const truncated = budget.take("cd");
+    try std.testing.expectEqual(std.meta.Tag(BudgetedOutputSlice).truncated, std.meta.activeTag(truncated));
+    try std.testing.expectEqualStrings("c", truncated.value());
+    try std.testing.expect(truncated.didTruncate());
+    try std.testing.expect(truncated.shouldWriteSuffix());
+    try std.testing.expectEqual(@as(usize, 0), budget.remaining);
+    try std.testing.expect(budget.isTruncated());
+
+    const already_truncated = budget.take("ef");
+    try std.testing.expectEqual(std.meta.Tag(BudgetedOutputSlice).already_truncated, std.meta.activeTag(already_truncated));
+    try std.testing.expectEqualStrings("", already_truncated.value());
+    try std.testing.expect(already_truncated.didTruncate());
+    try std.testing.expect(!already_truncated.shouldWriteSuffix());
+}
+
+test "terminal output budget classifies UTF-8 clipping before truncation" {
+    var budget = OutputBudget.init(5);
+
+    const truncated = budget.take("ok🙂done");
+    try std.testing.expectEqual(std.meta.Tag(BudgetedOutputSlice).truncated, std.meta.activeTag(truncated));
+    try std.testing.expectEqualStrings("ok", truncated.value());
+    try std.testing.expect(truncated.didTruncate());
+    try std.testing.expect(budget.isTruncated());
 }
 
 test "budgeted terminal writer shares limits across calls" {
