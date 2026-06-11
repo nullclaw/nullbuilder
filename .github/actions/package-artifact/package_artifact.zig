@@ -108,7 +108,7 @@ fn formatSha256Line(allocator: std.mem.Allocator, digest: Sha256Digest, binary_p
     return try std.fmt.allocPrint(allocator, "{s}  {s}\n", .{ hex_buf[0..], name });
 }
 
-fn formatRunUrl(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
+fn manifestRunUrlLength(options: PackageOptions) ManifestBuildError!usize {
     if (!action_values.isHttpUrlBase(options.server_url) or
         !action_values.isRepositorySlug(options.repository) or
         !action_values.isDecimalId(options.run_id))
@@ -116,14 +116,31 @@ fn formatRunUrl(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
         return ManifestBuildError.InvalidManifestRunUrl;
     }
 
-    const run_url = try std.fmt.allocPrint(allocator, "{s}/{s}/actions/runs/{s}", .{
+    var length: usize = 0;
+    try addManifestRunUrlBytes(&length, options.server_url.len);
+    try addManifestRunUrlBytes(&length, "/".len);
+    try addManifestRunUrlBytes(&length, options.repository.len);
+    try addManifestRunUrlBytes(&length, "/actions/runs/".len);
+    try addManifestRunUrlBytes(&length, options.run_id.len);
+    return length;
+}
+
+fn addManifestRunUrlBytes(length: *usize, bytes: usize) ManifestBuildError!void {
+    if (bytes > MAX_MANIFEST_URL_BYTES - length.*) return ManifestBuildError.InvalidManifestRunUrl;
+    length.* += bytes;
+}
+
+fn formatRunUrl(buffer: []u8, options: PackageOptions) ManifestBuildError![]const u8 {
+    const run_url_len = try manifestRunUrlLength(options);
+    if (buffer.len < run_url_len) return ManifestBuildError.InvalidManifestRunUrl;
+
+    const run_url = std.fmt.bufPrint(buffer[0..run_url_len], "{s}/{s}/actions/runs/{s}", .{
         options.server_url,
         options.repository,
         options.run_id,
-    });
-    errdefer allocator.free(run_url);
+    }) catch return ManifestBuildError.InvalidManifestRunUrl;
 
-    if (!action_values.isGitHubActionsRunUrl(run_url, MAX_MANIFEST_URL_BYTES)) {
+    if (run_url.len != run_url_len or !action_values.isGitHubActionsRunUrl(run_url, MAX_MANIFEST_URL_BYTES)) {
         return ManifestBuildError.InvalidManifestRunUrl;
     }
 
@@ -133,8 +150,8 @@ fn formatRunUrl(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
 fn buildManifest(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
     const binary_name = artifactNameFromPath(options.binary_path) catch return ManifestBuildError.InvalidManifestBinaryPath;
     try validateManifestMetadata(options);
-    const run_url = try formatRunUrl(allocator, options);
-    defer allocator.free(run_url);
+    var run_url_buffer: [MAX_MANIFEST_URL_BYTES]u8 = undefined;
+    const run_url = try formatRunUrl(run_url_buffer[0..], options);
 
     return try std.fmt.allocPrint(allocator,
         \\{{
@@ -517,29 +534,32 @@ test "package artifact validates manifest run URL fields at the formatter bounda
         .built_at = "2026-05-04T02:23:00Z",
     };
 
-    const run_url = try formatRunUrl(std.testing.allocator, valid_options);
-    defer std.testing.allocator.free(run_url);
+    var run_url_buffer: [MAX_MANIFEST_URL_BYTES]u8 = undefined;
+    const run_url = try formatRunUrl(run_url_buffer[0..], valid_options);
     try std.testing.expectEqualStrings("https://github.com/nullclaw/nullclaw/actions/runs/123", run_url);
 
     var enterprise_url_options = valid_options;
     enterprise_url_options.server_url = "https://github.example.test";
-    const enterprise_run_url = try formatRunUrl(std.testing.allocator, enterprise_url_options);
-    defer std.testing.allocator.free(enterprise_run_url);
+    var enterprise_run_url_buffer: [MAX_MANIFEST_URL_BYTES]u8 = undefined;
+    const enterprise_run_url = try formatRunUrl(enterprise_run_url_buffer[0..], enterprise_url_options);
     try std.testing.expectEqualStrings("https://github.example.test/nullclaw/nullclaw/actions/runs/123", enterprise_run_url);
+
+    var tiny_run_url_buffer: [8]u8 = undefined;
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(tiny_run_url_buffer[0..], valid_options));
 
     var unsafe_url_options = valid_options;
     unsafe_url_options.server_url = "https://github.com/path";
-    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_url_options));
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_url_options));
 
     var unsafe_repository_options = valid_options;
     unsafe_repository_options.repository = "nullclaw/nullclaw/extra";
-    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_repository_options));
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_repository_options));
 
     var unsafe_run_options = valid_options;
     unsafe_run_options.run_id = "0";
-    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_run_options));
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_run_options));
     unsafe_run_options.run_id = "01";
-    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(std.testing.allocator, unsafe_run_options));
+    try std.testing.expectError(error.InvalidManifestRunUrl, formatRunUrl(run_url_buffer[0..], unsafe_run_options));
 
     var unsafe_binary_options = valid_options;
     unsafe_binary_options.binary_path = "../nullclaw-linux-x86_64";
