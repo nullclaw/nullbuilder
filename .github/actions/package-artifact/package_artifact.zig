@@ -275,6 +275,8 @@ fn writeNewGeneratedFile(io: std.Io, dir: std.Io.Dir, path: []const u8, data: []
 
 fn writePackageOutputs(io: std.Io, dir: std.Io.Dir, output_plan: PackageOutputPlan, sha_text: []const u8) !void {
     try writeNewGeneratedFile(io, dir, output_plan.sha_path, sha_text);
+    errdefer dir.deleteFile(io, output_plan.sha_path) catch {};
+
     try writeNewGeneratedFile(io, dir, output_plan.manifest_path, output_plan.manifest);
 }
 
@@ -820,6 +822,44 @@ test "package artifact rejects unsafe generated paths at filesystem boundaries" 
             writeNewGeneratedFile(std.testing.io, tmp.dir, path, "data"),
         );
     }
+}
+
+test "package artifact removes partial checksum output when manifest write fails" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const output_plan = try preparePackageOutputPlan(std.testing.allocator, .{
+        .binary_path = "artifact.bin",
+        .target = "linux-x86_64",
+        .zig_target = "x86_64-linux-musl",
+        .version = "nightly-20260504-abcdef0",
+        .repository = "nullclaw/nullclaw",
+        .commit = "abcdef0123456789abcdef0123456789abcdef01",
+        .run_id = "123",
+        .server_url = "https://github.com",
+        .built_at = "2026-05-04T02:23:00Z",
+    });
+    defer output_plan.deinit(std.testing.allocator);
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = output_plan.manifest_path,
+        .data = "existing manifest",
+    });
+
+    try std.testing.expectError(
+        error.PathAlreadyExists,
+        writePackageOutputs(std.testing.io, tmp.dir, output_plan, "checksum text"),
+    );
+    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(std.testing.io, output_plan.sha_path, .{}));
+
+    const manifest = try tmp.dir.readFileAlloc(
+        std.testing.io,
+        output_plan.manifest_path,
+        std.testing.allocator,
+        .limited(32),
+    );
+    defer std.testing.allocator.free(manifest);
+    try std.testing.expectEqualStrings("existing manifest", manifest);
 }
 
 test "package artifact writes generated outputs with exclusive creation" {
