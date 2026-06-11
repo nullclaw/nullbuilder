@@ -31,6 +31,7 @@ const originalDateNow = Date.now;
 const originalJsonParse = JSON.parse;
 const originalNumberParseInt = Number.parseInt;
 const originalStructuredClone = globalThis.structuredClone;
+const originalObjectGetOwnPropertyNames = Object.getOwnPropertyNames;
 const originalArrayPush = Array.prototype.push;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalMapKeys = Map.prototype.keys;
@@ -48,6 +49,7 @@ afterEach(() => {
   JSON.parse = originalJsonParse;
   Number.parseInt = originalNumberParseInt;
   globalThis.structuredClone = originalStructuredClone;
+  restoreObjectGetOwnPropertyNames();
   restoreArrayPush();
   Array.prototype[Symbol.iterator] = originalArrayIterator;
   restoreMapIteration();
@@ -60,6 +62,14 @@ function restoreArrayPush(): void {
     configurable: true,
     writable: true,
     value: originalArrayPush
+  });
+}
+
+function restoreObjectGetOwnPropertyNames(): void {
+  Object.defineProperty(Object, 'getOwnPropertyNames', {
+    configurable: true,
+    writable: true,
+    value: originalObjectGetOwnPropertyNames
   });
 }
 
@@ -873,6 +883,47 @@ test('githubRequest validates caller request headers before fetching GitHub', as
     /^Error: Invalid GitHub request header\.$/
   );
   assert.equal(fetched, false);
+});
+
+test('githubRequest reads record headers with captured own-property names', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://captured-header-names.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const requests: Array<{ traceId: string | null }> = [];
+  const response = new Response(JSON.stringify({ ok: true }));
+  let result: unknown;
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (!(init?.headers instanceof Headers)) {
+      throw new Error('expected normalized headers');
+    }
+    requests[requests.length] = {
+      traceId: init.headers.get('X-Trace-Id')
+    };
+    return response;
+  }) as typeof fetch;
+  Object.defineProperty(Object, 'getOwnPropertyNames', {
+    configurable: true,
+    writable: true,
+    value() {
+      throw new Error('Object.getOwnPropertyNames should not be called');
+    }
+  });
+
+  try {
+    result = await githubRequest(config, '/repos/nullclaw/nullbuilder', {
+      headers: {
+        'X-Trace-Id': 'trace-1'
+      }
+    });
+  } finally {
+    restoreObjectGetOwnPropertyNames();
+  }
+
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(requests, [{ traceId: 'trace-1' }]);
 });
 
 test('githubRequest rejects hostile caller header traps before fetching GitHub', async () => {

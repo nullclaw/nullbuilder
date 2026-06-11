@@ -65,6 +65,7 @@ const HEADERS_ENTRIES = Headers.prototype.entries;
 const HEADERS_ENTRIES_NEXT = Object.getPrototypeOf(HEADERS_ENTRIES.call(new Headers())).next as ReturnType<
   Headers['entries']
 >['next'];
+const OBJECT_GET_OWN_PROPERTY_NAMES = Object.getOwnPropertyNames.bind(Object) as typeof Object.getOwnPropertyNames;
 const STRUCTURED_CLONE = globalThis.structuredClone;
 const UTF8_RESPONSE_DECODER = new TextDecoder('utf-8', { fatal: true });
 const UTF8_RESPONSE_DECODE = UTF8_RESPONSE_DECODER.decode.bind(UTF8_RESPONSE_DECODER) as TextDecoder['decode'];
@@ -414,7 +415,7 @@ function readGitHubRequestHeaderArrayItem(value: unknown[], index: number): unkn
 
 function readGitHubRequestHeaderNames(record: Record<string, unknown>): string[] {
   try {
-    return Object.getOwnPropertyNames(record);
+    return OBJECT_GET_OWN_PROPERTY_NAMES(record);
   } catch {
     invalidGitHubRequestHeader();
   }
