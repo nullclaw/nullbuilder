@@ -99,6 +99,32 @@ pub const Repository = struct {
     pull_requests: []const JsonValue,
 };
 
+const RepositorySlugField = union(enum) {
+    safe: []const u8,
+    invalid_text: dashboard_json.TextField,
+    invalid_slug: repository_safety.RepositorySlugValidation,
+
+    fn valueOrNull(self: RepositorySlugField) ?[]const u8 {
+        return switch (self) {
+            .safe => |slug| slug,
+            else => null,
+        };
+    }
+};
+
+const RepositoryRow = union(enum) {
+    safe: Repository,
+    non_object,
+    invalid_slug: RepositorySlugField,
+
+    fn valueOrNull(self: RepositoryRow) ?Repository {
+        return switch (self) {
+            .safe => |repo| repo,
+            else => null,
+        };
+    }
+};
+
 pub const RepositoryIterator = struct {
     items: []const JsonValue,
     index: usize = 0,
@@ -218,6 +244,20 @@ pub const LoadError = struct {
     message: []const u8,
 };
 
+const LoadErrorRow = union(enum) {
+    safe: LoadError,
+    non_object,
+    invalid_repo: RepositorySlugField,
+    invalid_message: dashboard_json.TextField,
+
+    fn valueOrNull(self: LoadErrorRow) ?LoadError {
+        return switch (self) {
+            .safe => |load_error| load_error,
+            else => null,
+        };
+    }
+};
+
 pub const LoadErrorIterator = struct {
     errors: []const JsonValue,
     index: usize = 0,
@@ -240,17 +280,25 @@ pub const LoadErrorIterator = struct {
 };
 
 pub fn repositoryFromValue(value: JsonValue) ?Repository {
-    const repo = dashboard_json.objectValue(value) orelse return null;
-    return repositoryFromObject(repo);
+    return classifyRepositoryValue(value).valueOrNull();
 }
 
-fn repositoryFromObject(repo: JsonObject) ?Repository {
-    const slug = safeRepoSlugField(repo, "slug") orelse return null;
+fn classifyRepositoryValue(value: JsonValue) RepositoryRow {
+    const repo = dashboard_json.objectValue(value) orelse return .non_object;
+    return classifyRepositoryObject(repo);
+}
+
+fn classifyRepositoryObject(repo: JsonObject) RepositoryRow {
+    const slug_field = classifyRepoSlugField(repo, "slug");
+    const slug = switch (slug_field) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_slug = slug_field },
+    };
     const status = RepositoryStatus.fromObject(repo);
     const loaded = status.isLoaded();
     const latest = dashboard_json.objectField(repo, "latestRuns");
 
-    return .{
+    return .{ .safe = .{
         .slug = slug,
         .loaded = loaded,
         .open_issues = if (loaded) dashboard_json.safeIntegerField(repo, "openIssues") else 0,
@@ -260,7 +308,7 @@ fn repositoryFromObject(repo: JsonObject) ?Repository {
         .has_failure = loaded and dashboard_runs.repositoryHasFailure(latest),
         .issues = if (loaded) dashboard_json.boundedArrayFieldOrEmpty(repo, "issues", max_work_items_per_repository) else dashboard_json.emptyValues(),
         .pull_requests = if (loaded) dashboard_json.boundedArrayFieldOrEmpty(repo, "pullRequests", max_work_items_per_repository) else dashboard_json.emptyValues(),
-    };
+    } };
 }
 
 fn workItemFromValue(value: JsonValue, repo_slug: []const u8) ?WorkItem {
@@ -293,27 +341,53 @@ fn classifyWorkItemObject(work: JsonObject, repo_slug: []const u8) WorkItemRow {
 }
 
 fn loadErrorFromValue(value: JsonValue) ?LoadError {
-    const load_error = dashboard_json.objectValue(value) orelse return null;
-    return loadErrorFromObject(load_error);
+    return classifyLoadErrorValue(value).valueOrNull();
 }
 
-fn loadErrorFromObject(load_error: JsonObject) ?LoadError {
-    const repo = safeRepoSlugField(load_error, "repo") orelse return null;
-    const message = dashboard_json.requiredSafeTextField(load_error, "error", max_error_message_len) orelse return null;
+fn classifyLoadErrorValue(value: JsonValue) LoadErrorRow {
+    const load_error = dashboard_json.objectValue(value) orelse return .non_object;
+    return classifyLoadErrorObject(load_error);
+}
 
-    return .{
-        .repo = repo,
-        .message = message,
+fn classifyLoadErrorObject(load_error: JsonObject) LoadErrorRow {
+    const repo_field = classifyRepoSlugField(load_error, "repo");
+    const repo = switch (repo_field) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_repo = repo_field },
     };
+
+    const message = dashboard_json.classifyRequiredSafeTextField(load_error, "error", max_error_message_len);
+    const safe_message = switch (message) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_message = message },
+    };
+
+    return .{ .safe = .{
+        .repo = repo,
+        .message = safe_message,
+    } };
 }
 
 fn safeRepoSlugField(object: JsonObject, field_name: []const u8) ?[]const u8 {
-    const slug = dashboard_json.requiredSafeTextField(
+    return classifyRepoSlugField(object, field_name).valueOrNull();
+}
+
+fn classifyRepoSlugField(object: JsonObject, field_name: []const u8) RepositorySlugField {
+    const text = dashboard_json.classifyRequiredSafeTextField(
         object,
         field_name,
         repository_safety.max_repository_slug_bytes,
-    ) orelse return null;
-    return if (repository_safety.isRepositorySlug(slug)) slug else null;
+    );
+    const slug = switch (text) {
+        .safe => |field_value| field_value,
+        else => return .{ .invalid_text = text },
+    };
+
+    const validation = repository_safety.classifyRepositorySlug(slug);
+    return switch (validation) {
+        .safe => .{ .safe = slug },
+        else => .{ .invalid_slug = validation },
+    };
 }
 
 fn saturatingSafeIntegerAdd(a: u64, b: u64) u64 {
@@ -490,6 +564,95 @@ test "repository iterator yields only repositories with safe slugs" {
     try std.testing.expectEqual(@as(u64, 0), errored.open_issues);
 
     try std.testing.expectEqual(null, repo_iter.next());
+}
+
+test "dashboard model classifies repository slug fields" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": "nullclaw/alpha",
+        \\  "number": 42,
+        \\  "control": "nullclaw/alpha\n",
+        \\  "unqualified": "alpha",
+        \\  "badOwner": "owner_name/repo",
+        \\  "git": "nullclaw/repo.git"
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+    const safe = classifyRepoSlugField(object, "safe");
+    switch (safe) {
+        .safe => |slug| try std.testing.expectEqualStrings("nullclaw/alpha", slug),
+        else => return error.ExpectedRepositorySlug,
+    }
+    try std.testing.expectEqualStrings("nullclaw/alpha", safeRepoSlugField(object, "safe").?);
+    try std.testing.expectEqual(null, safeRepoSlugField(object, "missing"));
+
+    try expectRepoSlugFieldInvalidText(.missing, object, "missing");
+    try expectRepoSlugFieldInvalidText(.non_string, object, "number");
+    try expectRepoSlugFieldInvalidText(.sanitizable_content, object, "control");
+    try expectRepoSlugFieldInvalidSlug(.missing_separator, object, "unqualified");
+    try expectRepoSlugFieldInvalidOwner(.invalid_character, object, "badOwner");
+    try expectRepoSlugFieldInvalidRepo(.git_suffix, object, "git");
+}
+
+test "dashboard model classifies repository rows before iterator fallback" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": {"slug": "nullclaw/alpha", "openIssues": 2},
+        \\  "nonObject": "invalid",
+        \\  "missingSlug": {"openIssues": 99},
+        \\  "badSlug": {"slug": "alpha", "openIssues": 99}
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+    const safe = classifyRepositoryValue(object.get("safe").?);
+    switch (safe) {
+        .safe => |repo| {
+            try std.testing.expectEqualStrings("nullclaw/alpha", repo.slug);
+            try std.testing.expect(repo.loaded);
+            try std.testing.expectEqual(@as(u64, 2), repo.open_issues);
+        },
+        else => return error.ExpectedRepositoryRow,
+    }
+    try std.testing.expect(safe.valueOrNull() != null);
+
+    try expectRepositoryRowTag(.non_object, object.get("nonObject").?);
+    try expectRepositoryRowInvalidSlugText(.missing, object.get("missingSlug").?);
+    try expectRepositoryRowInvalidSlugValidation(.missing_separator, object.get("badSlug").?);
+}
+
+test "dashboard model classifies load error rows before iterator fallback" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "safe": {"repo": "nullclaw/beta", "error": "rate limited"},
+        \\  "nonObject": "invalid",
+        \\  "missingRepo": {"error": "missing repo"},
+        \\  "badRepo": {"repo": "beta", "error": "bad repo"},
+        \\  "missingError": {"repo": "nullclaw/beta"},
+        \\  "controlError": {"repo": "nullclaw/beta", "error": "bad\nerror"}
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+    const safe = classifyLoadErrorValue(object.get("safe").?);
+    switch (safe) {
+        .safe => |load_error| {
+            try std.testing.expectEqualStrings("nullclaw/beta", load_error.repo);
+            try std.testing.expectEqualStrings("rate limited", load_error.message);
+        },
+        else => return error.ExpectedLoadErrorRow,
+    }
+    try std.testing.expect(safe.valueOrNull() != null);
+
+    try expectLoadErrorRowTag(.non_object, object.get("nonObject").?);
+    try expectLoadErrorInvalidRepoText(.missing, object.get("missingRepo").?);
+    try expectLoadErrorInvalidRepoSlug(.missing_separator, object.get("badRepo").?);
+    try expectLoadErrorInvalidMessage(.missing, object.get("missingError").?);
+    try expectLoadErrorInvalidMessage(.sanitizable_content, object.get("controlError").?);
 }
 
 test "dashboard totals and work iterators ignore errored repository payload counters" {
@@ -861,5 +1024,125 @@ fn expectWorkItemInvalidTitle(
     switch (classifyWorkItemValue(value, "nullclaw/alpha")) {
         .invalid_title => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
         else => return error.ExpectedInvalidWorkItemTitle,
+    }
+}
+
+fn expectRepoSlugFieldInvalidText(
+    expected: std.meta.Tag(dashboard_json.TextField),
+    object: JsonObject,
+    field_name: []const u8,
+) !void {
+    switch (classifyRepoSlugField(object, field_name)) {
+        .invalid_text => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidRepositorySlugText,
+    }
+}
+
+fn expectRepoSlugFieldInvalidSlug(
+    expected: std.meta.Tag(repository_safety.RepositorySlugValidation),
+    object: JsonObject,
+    field_name: []const u8,
+) !void {
+    switch (classifyRepoSlugField(object, field_name)) {
+        .invalid_slug => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidRepositorySlug,
+    }
+}
+
+fn expectRepoSlugFieldInvalidOwner(
+    expected: repository_safety.OwnerSegmentValidation,
+    object: JsonObject,
+    field_name: []const u8,
+) !void {
+    switch (classifyRepoSlugField(object, field_name)) {
+        .invalid_slug => |actual| switch (actual) {
+            .invalid_owner => |owner| try std.testing.expectEqual(expected, owner),
+            else => return error.ExpectedInvalidRepositoryOwner,
+        },
+        else => return error.ExpectedInvalidRepositorySlug,
+    }
+}
+
+fn expectRepoSlugFieldInvalidRepo(
+    expected: repository_safety.RepoSegmentValidation,
+    object: JsonObject,
+    field_name: []const u8,
+) !void {
+    switch (classifyRepoSlugField(object, field_name)) {
+        .invalid_slug => |actual| switch (actual) {
+            .invalid_repo => |repo| try std.testing.expectEqual(expected, repo),
+            else => return error.ExpectedInvalidRepositoryRepo,
+        },
+        else => return error.ExpectedInvalidRepositorySlug,
+    }
+}
+
+fn expectRepositoryRowTag(expected: std.meta.Tag(RepositoryRow), value: JsonValue) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyRepositoryValue(value)));
+}
+
+fn expectRepositoryRowInvalidSlugText(
+    expected: std.meta.Tag(dashboard_json.TextField),
+    value: JsonValue,
+) !void {
+    switch (classifyRepositoryValue(value)) {
+        .invalid_slug => |actual| switch (actual) {
+            .invalid_text => |text| try std.testing.expectEqual(expected, std.meta.activeTag(text)),
+            else => return error.ExpectedInvalidRepositorySlugText,
+        },
+        else => return error.ExpectedInvalidRepositorySlug,
+    }
+}
+
+fn expectRepositoryRowInvalidSlugValidation(
+    expected: std.meta.Tag(repository_safety.RepositorySlugValidation),
+    value: JsonValue,
+) !void {
+    switch (classifyRepositoryValue(value)) {
+        .invalid_slug => |actual| switch (actual) {
+            .invalid_slug => |slug| try std.testing.expectEqual(expected, std.meta.activeTag(slug)),
+            else => return error.ExpectedInvalidRepositorySlug,
+        },
+        else => return error.ExpectedInvalidRepositorySlug,
+    }
+}
+
+fn expectLoadErrorRowTag(expected: std.meta.Tag(LoadErrorRow), value: JsonValue) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyLoadErrorValue(value)));
+}
+
+fn expectLoadErrorInvalidRepoText(
+    expected: std.meta.Tag(dashboard_json.TextField),
+    value: JsonValue,
+) !void {
+    switch (classifyLoadErrorValue(value)) {
+        .invalid_repo => |actual| switch (actual) {
+            .invalid_text => |text| try std.testing.expectEqual(expected, std.meta.activeTag(text)),
+            else => return error.ExpectedInvalidLoadErrorRepoText,
+        },
+        else => return error.ExpectedInvalidLoadErrorRepo,
+    }
+}
+
+fn expectLoadErrorInvalidRepoSlug(
+    expected: std.meta.Tag(repository_safety.RepositorySlugValidation),
+    value: JsonValue,
+) !void {
+    switch (classifyLoadErrorValue(value)) {
+        .invalid_repo => |actual| switch (actual) {
+            .invalid_slug => |slug| try std.testing.expectEqual(expected, std.meta.activeTag(slug)),
+            else => return error.ExpectedInvalidLoadErrorRepoSlug,
+        },
+        else => return error.ExpectedInvalidLoadErrorRepo,
+    }
+}
+
+fn expectLoadErrorInvalidMessage(
+    expected: std.meta.Tag(dashboard_json.TextField),
+    value: JsonValue,
+) !void {
+    switch (classifyLoadErrorValue(value)) {
+        .invalid_message => |actual| try std.testing.expectEqual(expected, std.meta.activeTag(actual)),
+        else => return error.ExpectedInvalidLoadErrorMessage,
     }
 }
