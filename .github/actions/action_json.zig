@@ -5,10 +5,19 @@ const json_fields = @import("json_fields");
 
 pub const JsonValue = json_fields.JsonValue;
 pub const JsonObject = json_fields.JsonObject;
+pub const ParseLimits = json_fields.ParseLimits;
 pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
 
 pub fn emptyValues() []const JsonValue {
     return json_fields.emptyValues();
+}
+
+pub fn parseBoundedValue(
+    allocator: std.mem.Allocator,
+    json_bytes: []const u8,
+    limits: ParseLimits,
+) !std.json.Parsed(JsonValue) {
+    return json_fields.parseBoundedValue(allocator, json_bytes, limits);
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {

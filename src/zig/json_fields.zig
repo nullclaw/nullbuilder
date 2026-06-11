@@ -6,10 +6,26 @@ pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
 pub const max_safe_json_integer: u64 = json_safety.max_safe_json_integer;
 
+pub const ParseLimits = struct {
+    max_bytes: usize,
+    max_value_bytes: usize,
+};
+
 const empty_json_values = [_]JsonValue{};
 
 pub fn emptyValues() []const JsonValue {
     return empty_json_values[0..];
+}
+
+pub fn parseBoundedValue(
+    allocator: std.mem.Allocator,
+    json_bytes: []const u8,
+    limits: ParseLimits,
+) !std.json.Parsed(JsonValue) {
+    if (json_bytes.len > limits.max_bytes) return error.JsonTooLarge;
+    return std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{
+        .max_value_len = limits.max_value_bytes,
+    });
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {
@@ -100,6 +116,25 @@ test "json fields expose typed values and bounded arrays" {
     try std.testing.expectEqual(@as(usize, 0), boundedArrayFieldOrEmpty(object, "missing", 2).len);
     try std.testing.expect(objectField(object, "child") != null);
     try std.testing.expectEqual(null, objectField(object, "items"));
+}
+
+test "json fields parse helper bounds payloads and scalar values" {
+    var parsed = try parseBoundedValue(std.testing.allocator, "{\"name\":\"ok\"}", .{
+        .max_bytes = 64,
+        .max_value_bytes = 16,
+    });
+    defer parsed.deinit();
+
+    try std.testing.expect(objectValue(parsed.value) != null);
+    try std.testing.expectError(error.JsonTooLarge, parseBoundedValue(std.testing.allocator, "{}", .{
+        .max_bytes = 1,
+        .max_value_bytes = 16,
+    }));
+
+    try std.testing.expectError(error.ValueTooLong, parseBoundedValue(std.testing.allocator, "{\"name\":\"toolong\"}", .{
+        .max_bytes = 64,
+        .max_value_bytes = 4,
+    }));
 }
 
 test "json fields validate safe integer domains and caller text policy" {

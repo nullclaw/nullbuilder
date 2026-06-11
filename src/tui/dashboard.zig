@@ -5,7 +5,6 @@ const dashboard_json = @import("dashboard_json.zig");
 const dashboard_runs = @import("dashboard_runs.zig");
 const terminal = @import("terminal.zig");
 
-const JsonValue = dashboard_json.JsonValue;
 const Dashboard = dashboard_model.Dashboard;
 const WorkKind = dashboard_model.WorkKind;
 
@@ -33,11 +32,7 @@ pub fn render(
     json: []const u8,
     no_color: bool,
 ) !void {
-    if (json.len > max_json_bytes) return error.DashboardJsonTooLarge;
-
-    var parsed = try std.json.parseFromSlice(JsonValue, arena, json, .{
-        .max_value_len = max_json_value_bytes,
-    });
+    var parsed = try parseDashboardJson(arena, json);
     defer parsed.deinit();
 
     const root = dashboard_json.objectValue(parsed.value) orelse return error.InvalidDashboardJson;
@@ -96,6 +91,16 @@ pub fn render(
     try printWorkItems(arena, out, dashboard, .pull_requests, "open pull requests");
 
     try printLoadErrors(arena, out, dashboard);
+}
+
+fn parseDashboardJson(arena: std.mem.Allocator, json: []const u8) !std.json.Parsed(dashboard_json.JsonValue) {
+    return dashboard_json.parseBoundedValue(arena, json, .{
+        .max_bytes = max_json_bytes,
+        .max_value_bytes = max_json_value_bytes,
+    }) catch |err| switch (err) {
+        error.JsonTooLarge => error.DashboardJsonTooLarge,
+        else => err,
+    };
 }
 
 fn printWorkItems(

@@ -69,10 +69,13 @@ fn validateDecideOptions(options: DecideOptions) DecideValidationError!void {
 }
 
 fn parseRunsPayload(allocator: std.mem.Allocator, json_bytes: []const u8) !std.json.Parsed(JsonValue) {
-    if (json_bytes.len > MAX_RUNS_JSON_BYTES) return error.RunsJsonTooLarge;
-    return try std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{
-        .max_value_len = MAX_RUNS_JSON_VALUE_BYTES,
-    });
+    return action_json.parseBoundedValue(allocator, json_bytes, .{
+        .max_bytes = MAX_RUNS_JSON_BYTES,
+        .max_value_bytes = MAX_RUNS_JSON_VALUE_BYTES,
+    }) catch |err| switch (err) {
+        error.JsonTooLarge => error.RunsJsonTooLarge,
+        else => err,
+    };
 }
 
 fn readRunsJsonBytes(
