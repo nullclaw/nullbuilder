@@ -3,6 +3,7 @@ import { readSafeTextInput, type SafeTextInputOptions } from './text-safety';
 const ENCODED_TEXT_CONTROL_CHARACTER_PATTERN =
   /%(?:0[0-9a-f]|1[0-9a-f]|7f)|%c2%(?:8[0-9a-f]|9[0-9a-f])|%d8%9c|%e2%80%(?:8[ef]|a[a-e])|%e2%81%a[6-9]/i;
 const UNSAFE_HTTP_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007f-\u009f"'<>`\\{}|]/;
+const MAX_HTTP_PORT = 65_535;
 
 export function readSafeUrlText(value: unknown, options: SafeTextInputOptions): string | null {
   const safe = readSafeTextInput(value, options);
@@ -188,12 +189,28 @@ function isSafeOptionalPort(port: string | null): boolean {
     return true;
   }
 
-  if (!/^[1-9]\d{0,4}$/.test(port)) {
-    return false;
+  return parseCanonicalHttpPort(port) !== null;
+}
+
+function parseCanonicalHttpPort(port: string): number | null {
+  if (port.length === 0 || port.length > 5) {
+    return null;
   }
 
-  const parsed = Number.parseInt(port, 10);
-  return parsed <= 65_535;
+  let value = 0;
+  for (let index = 0; index < port.length; index += 1) {
+    const digit = port.charCodeAt(index) - 48;
+    if (digit < 0 || digit > 9 || (index === 0 && digit === 0)) {
+      return null;
+    }
+
+    value = value * 10 + digit;
+    if (value > MAX_HTTP_PORT) {
+      return null;
+    }
+  }
+
+  return value;
 }
 
 function isLoopbackIpv4(hostname: string): boolean {

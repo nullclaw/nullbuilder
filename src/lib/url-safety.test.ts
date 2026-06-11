@@ -8,6 +8,8 @@ import {
   safeHttpUrlText
 } from './url-safety';
 
+const originalNumberParseInt = Number.parseInt;
+
 test('readSafeUrlText rejects raw and encoded text controls', () => {
   assert.equal(
     readSafeUrlText('https://github.example.test/nullclaw/nullbuilder', { maxLength: 2048 }),
@@ -48,6 +50,10 @@ test('safeHttpUrlText accepts HTTPS and canonical loopback-only HTTP URLs', () =
     'http://localhost/nullclaw/nullbuilder'
   );
   assert.equal(
+    safeHttpUrlText('http://localhost:1/nullclaw/nullbuilder', { maxLength: 2048 }),
+    'http://localhost:1/nullclaw/nullbuilder'
+  );
+  assert.equal(
     safeHttpUrlText('http://127.255.255.255:65535/nullclaw/nullbuilder', { maxLength: 2048 }),
     'http://127.255.255.255:65535/nullclaw/nullbuilder'
   );
@@ -65,7 +71,10 @@ test('safeHttpUrlText accepts HTTPS and canonical loopback-only HTTP URLs', () =
     'http://0177.0.0.1/nullclaw/nullbuilder',
     'http://[::2]/nullclaw/nullbuilder',
     'http://localhost:08080/nullclaw/nullbuilder',
+    'http://localhost:00001/nullclaw/nullbuilder',
     'http://127.0.0.1:0/nullclaw/nullbuilder',
+    'http://127.0.0.1:65536/nullclaw/nullbuilder',
+    'http://127.0.0.1:99999/nullclaw/nullbuilder',
     'https://user:pass@github.example.test/nullclaw/nullbuilder',
     'https://github.example.test/nullclaw/nullbuilder bad',
     'https://github.example.test/nullclaw/nullbuilder"bad',
@@ -122,7 +131,9 @@ test('isCanonicalLoopbackHttpUrl validates raw loopback syntax before URL normal
     'http://user@localhost',
     'http://localhost:0',
     'http://localhost:08080',
+    'http://localhost:00001',
     'http://localhost:65536',
+    'http://localhost:99999',
     'http://127.0.0.01',
     'http://0177.0.0.1',
     'http://127.0.0.256',
@@ -131,5 +142,23 @@ test('isCanonicalLoopbackHttpUrl validates raw loopback syntax before URL normal
     'http://::1'
   ]) {
     assert.equal(isCanonicalLoopbackHttpUrl(value), false, value);
+  }
+});
+
+test('loopback port validation uses checked decimal parsing', () => {
+  Number.parseInt = function parseIntShouldNotBeCalled(): never {
+    throw new Error('Number.parseInt should not be called');
+  };
+
+  try {
+    assert.equal(isCanonicalLoopbackHttpUrl('http://localhost:1/path'), true);
+    assert.equal(isCanonicalLoopbackHttpUrl('http://localhost:65535/path'), true);
+    assert.equal(isCanonicalLoopbackHttpUrl('http://localhost:0/path'), false);
+    assert.equal(isCanonicalLoopbackHttpUrl('http://localhost:00001/path'), false);
+    assert.equal(isCanonicalLoopbackHttpUrl('http://localhost:65536/path'), false);
+    assert.equal(isCanonicalLoopbackHttpUrl('http://localhost:99999/path'), false);
+    assert.equal(isCanonicalLoopbackHttpUrl('http://localhost:123456/path'), false);
+  } finally {
+    Number.parseInt = originalNumberParseInt;
   }
 });
