@@ -47,6 +47,8 @@ runs:
         DECIDE_WORKFLOW_NAME: ${{ inputs.workflow_name }}
         FORCE_NIGHTLY: ${{ inputs.force }}
       run: |
+        set -euo pipefail
+
         temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
         case "$temp_root" in
           "" | -* | *$'\n'* | *$'\r'*)

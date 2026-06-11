@@ -100,6 +100,23 @@ test('nightly decide validates temp root before creating decision output files',
   assert.ok(!source.includes('mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nightly-decision.XXXXXX"'));
 });
 
+test('composite action bash blocks enable strict mode explicitly', () => {
+  const missingStrictMode: string[] = [];
+
+  for (const actionFile of actionYamlFiles(actionsRoot)) {
+    const source = readFileSync(actionFile, 'utf8');
+
+    for (const block of literalRunBlocks(source)) {
+      const firstCommand = block.lines.map((line) => line.trim()).find((line) => line.length > 0);
+      if (firstCommand !== 'set -euo pipefail') {
+        missingStrictMode.push(`${relative(projectRoot, actionFile)}:${block.line}`);
+      }
+    }
+  }
+
+  assert.deepEqual(missingStrictMode, []);
+});
+
 test('release workflow validates downloaded artifact targets before staging assets', () => {
   const source = readFileSync(join(workflowsRoot, 'zig-release.yml'), 'utf8');
 
@@ -231,6 +248,42 @@ function workflowStepBlock(lines: string[], startIndex: number): string[] {
   }
 
   return block;
+}
+
+function literalRunBlocks(source: string): { line: number; lines: string[] }[] {
+  const lines = source.split('\n');
+  const blocks: { line: number; lines: string[] }[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^(\s*)run:\s*\|-?\s*$/.exec(lines[index]);
+    if (!match) {
+      continue;
+    }
+
+    const runIndent = match[1].length;
+    const blockLines: string[] = [];
+
+    for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
+      const line = lines[blockIndex];
+      if (line.trim() === '') {
+        blockLines[blockLines.length] = line;
+        continue;
+      }
+
+      if (leadingWhitespaceLength(line) <= runIndent) {
+        break;
+      }
+
+      blockLines[blockLines.length] = line;
+    }
+
+    blocks[blocks.length] = {
+      line: index + 1,
+      lines: blockLines
+    };
+  }
+
+  return blocks;
 }
 
 function leadingWhitespaceLength(value: string): number {

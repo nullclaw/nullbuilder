@@ -46,6 +46,8 @@ runs:
         PACKAGE_SERVER_URL: ${{ inputs.server_url }}
         PACKAGE_BUILT_AT: ${{ inputs.built_at }}
       run: |
+        set -euo pipefail
+
         zig run \
           --dep action_args \
           --dep action_json \
