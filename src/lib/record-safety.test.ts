@@ -3,6 +3,10 @@ import { test } from 'node:test';
 import { readArray, readBoundedArray, readObjectRecord } from './record-safety';
 
 const originalArrayPush = Array.prototype.push;
+const originalArrayIsArray = Array.isArray;
+const originalMathMin = Math.min;
+const originalNumber = Number;
+const originalObject = Object;
 
 test('readObjectRecord accepts plain data records only', () => {
   const object = { name: 'nullbuilder' };
@@ -134,4 +138,63 @@ test('readBoundedArray does not call global array push hooks', () => {
   }
 
   assert.deepEqual(bounded, ['a', 'b']);
+});
+
+test('record safety helpers use captured runtime intrinsics', () => {
+  const record = { name: 'nullbuilder' };
+  const values = ['a', 'b', 'c'];
+
+  let recordResult: Record<string, unknown> | null = null;
+  let arrayResult: unknown[] = [];
+  let boundedResult: unknown[] = [];
+
+  try {
+    globalThis.Object = new Proxy(originalObject, {
+      get(target, property, receiver) {
+        if (property === 'getPrototypeOf' || property === 'prototype') {
+          throw new Error('Object static properties should not be read');
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+      apply(): never {
+        throw new Error('Object constructor should not be called');
+      },
+      construct(): never {
+        throw new Error('Object constructor should not be called');
+      }
+    }) as ObjectConstructor;
+    globalThis.Number = new Proxy(originalNumber, {
+      get(target, property, receiver) {
+        if (property === 'isSafeInteger') {
+          throw new Error('Number.isSafeInteger should not be read');
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+      apply(): never {
+        throw new Error('Number constructor should not be called');
+      },
+      construct(): never {
+        throw new Error('Number constructor should not be called');
+      }
+    }) as NumberConstructor;
+    Array.isArray = function isArrayShouldNotBeCalled(_arg: unknown): _arg is unknown[] {
+      throw new Error('Array.isArray should not be called');
+    };
+    Math.min = function minShouldNotBeCalled(): never {
+      throw new Error('Math.min should not be called');
+    };
+
+    recordResult = readObjectRecord(record);
+    arrayResult = readArray(values);
+    boundedResult = readBoundedArray(values, 2);
+  } finally {
+    globalThis.Object = originalObject;
+    globalThis.Number = originalNumber;
+    Array.isArray = originalArrayIsArray;
+    Math.min = originalMathMin;
+  }
+
+  assert.equal(recordResult, record);
+  assert.equal(arrayResult, values);
+  assert.deepEqual(boundedResult, ['a', 'b']);
 });

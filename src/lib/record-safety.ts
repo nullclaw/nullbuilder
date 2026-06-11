@@ -1,3 +1,10 @@
+import { isSafePositiveInteger } from './number-safety';
+
+const ARRAY_IS_ARRAY = Array.isArray.bind(Array) as typeof Array.isArray;
+const MATH_MIN = Math.min.bind(Math) as typeof Math.min;
+const OBJECT_GET_PROTOTYPE_OF = Object.getPrototypeOf.bind(Object) as typeof Object.getPrototypeOf;
+const OBJECT_PROTOTYPE = Object.prototype;
+
 export function readObjectRecord(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== 'object' || isRuntimeArray(value)) {
     return null;
@@ -8,7 +15,7 @@ export function readObjectRecord(value: unknown): Record<string, unknown> | null
     return null;
   }
 
-  return prototype === Object.prototype || prototype === null ? (value as Record<string, unknown>) : null;
+  return prototype === OBJECT_PROTOTYPE || prototype === null ? (value as Record<string, unknown>) : null;
 }
 
 export function readArray(value: unknown): unknown[] {
@@ -36,12 +43,12 @@ export function readBoundedArray(value: unknown, maxItems: unknown): unknown[] {
 }
 
 function normalizeArrayLimit(value: unknown): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0;
+  return isSafePositiveInteger(value) ? value : 0;
 }
 
 function isRuntimeArray(value: unknown): value is unknown[] {
   try {
-    return Array.isArray(value);
+    return ARRAY_IS_ARRAY(value);
   } catch {
     return false;
   }
@@ -49,7 +56,7 @@ function isRuntimeArray(value: unknown): value is unknown[] {
 
 function boundedArrayLength(value: unknown[], limit: number): number {
   try {
-    return Math.min(value.length, limit);
+    return MATH_MIN(value.length, limit);
   } catch {
     return 0;
   }
@@ -57,7 +64,7 @@ function boundedArrayLength(value: unknown[], limit: number): number {
 
 function objectPrototype(value: object): object | null | undefined {
   try {
-    return Object.getPrototypeOf(value) as object | null;
+    return OBJECT_GET_PROTOTYPE_OF(value) as object | null;
   } catch {
     return undefined;
   }
