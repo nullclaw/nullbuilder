@@ -369,6 +369,16 @@ jobs:
           SOURCE_ARCHIVE_EXCLUDES: ${{ inputs.source_archive_excludes }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
         run: |
+          set -euo pipefail
+
+          temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+          case "$temp_root" in
+            "" | -* | *$'\n'* | *$'\r'*)
+              echo "invalid temporary directory" >&2
+              exit 1
+              ;;
+          esac
+
           archive_name="${RAW_ARCHIVE_NAME}"
           if [ -z "${archive_name}" ]; then
             archive_name="${ARTIFACT_PREFIX}-source-${GITHUB_REF_NAME}.tar.gz"
@@ -378,14 +388,23 @@ jobs:
             exit 1
           fi
 
+          archive_dir="$(mktemp -d "${temp_root}/source-archive.XXXXXX")"
+          trap 'rm -rf "${archive_dir}"' EXIT
+          archive_path="${archive_dir}/${archive_name}"
+
           tar_args=()
           while IFS= read -r pattern; do
             [ -n "${pattern}" ] || continue
             tar_args+=("--exclude=${pattern}")
           done <<< "${SOURCE_ARCHIVE_EXCLUDES}"
 
-          tar "${tar_args[@]}" -czf "/tmp/${archive_name}" .
-          mv "/tmp/${archive_name}" .
+          if [ -e "${archive_name}" ]; then
+            echo "source archive already exists: ${archive_name}" >&2
+            exit 1
+          fi
+
+          tar "${tar_args[@]}" -czf "${archive_path}" .
+          mv "${archive_path}" "${archive_name}"
           printf 'archive_name=%s\n' "${archive_name}" >> "$GITHUB_ENV"
 
       - name: Upload source archive

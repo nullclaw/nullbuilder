@@ -145,6 +145,22 @@ test('release workflow validates downloaded artifact targets before staging asse
   assert.ok(source.includes('invalid downloaded artifact target'));
 });
 
+test('release workflow stages source archives in validated runner temp', () => {
+  const source = readFileSync(join(workflowsRoot, 'zig-release.yml'), 'utf8');
+
+  assert.ok(source.includes('temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"'));
+  assert.ok(source.includes('"" | -* | *$\'\\n\'* | *$\'\\r\'*)'));
+  assert.ok(source.includes('archive_dir="$(mktemp -d "${temp_root}/source-archive.XXXXXX")"'));
+  assert.ok(source.includes('trap \'rm -rf "${archive_dir}"\' EXIT'));
+  assert.ok(source.includes('archive_path="${archive_dir}/${archive_name}"'));
+  assert.ok(source.includes('if [ -e "${archive_name}" ]; then'));
+  assert.ok(source.includes('source archive already exists: ${archive_name}'));
+  assert.ok(source.includes('tar "${tar_args[@]}" -czf "${archive_path}" .'));
+  assert.ok(source.includes('mv "${archive_path}" "${archive_name}"'));
+  assert.ok(!source.includes('tar "${tar_args[@]}" -czf "/tmp/${archive_name}" .'));
+  assert.ok(!source.includes('mv "/tmp/${archive_name}" .'));
+});
+
 test('workflow matrix target labels use the action label contract', () => {
   const weakTargetGuards: string[] = [];
 
