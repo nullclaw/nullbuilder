@@ -4,12 +4,49 @@ const text_safety = @import("text_safety");
 pub const MAX_LABEL_BYTES = 128;
 pub const MAX_RELATIVE_PATH_BYTES = 1024;
 
-const RelativePathSegment = enum {
+pub const LabelValidation = enum {
+    safe,
+    empty,
+    oversized,
+    windows_reserved,
+    invalid_character,
+    leading_symbol,
+    repeated_dot,
+    trailing_dot,
+
+    pub fn accepts(self: LabelValidation) bool {
+        return self == .safe;
+    }
+};
+
+pub const RelativePathSegment = enum {
     safe_label,
     empty,
     current_dir,
     parent_dir,
     unsafe_label,
+};
+
+pub const InvalidRelativePathSegment = struct {
+    start: usize,
+    validation: RelativePathSegment,
+};
+
+pub const RelativePathValidation = union(enum) {
+    safe,
+    empty,
+    oversized,
+    absolute_path,
+    backslash: usize,
+    windows_drive_prefix,
+    invalid_segment: InvalidRelativePathSegment,
+
+    pub fn accepts(self: RelativePathValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
 };
 
 fn isAsciiAlpha(byte: u8) bool {
@@ -21,8 +58,13 @@ fn isAsciiDigit(byte: u8) bool {
 }
 
 pub fn isSafeLabel(value: []const u8) bool {
-    if (value.len == 0 or value.len > MAX_LABEL_BYTES) return false;
-    if (isWindowsReservedDeviceName(value)) return false;
+    return classifyLabel(value).accepts();
+}
+
+pub fn classifyLabel(value: []const u8) LabelValidation {
+    if (value.len == 0) return .empty;
+    if (value.len > MAX_LABEL_BYTES) return .oversized;
+    if (isWindowsReservedDeviceName(value)) return .windows_reserved;
 
     var previous_dot = false;
     for (value, 0..) |byte, index| {
@@ -30,13 +72,13 @@ pub fn isSafeLabel(value: []const u8) bool {
         const is_digit = isAsciiDigit(byte);
         const is_safe_symbol = byte == '.' or byte == '_' or byte == '-';
 
-        if (!is_alpha and !is_digit and !is_safe_symbol) return false;
-        if (index == 0 and !is_alpha and !is_digit) return false;
-        if (byte == '.' and previous_dot) return false;
+        if (!is_alpha and !is_digit and !is_safe_symbol) return .invalid_character;
+        if (index == 0 and !is_alpha and !is_digit) return .leading_symbol;
+        if (byte == '.' and previous_dot) return .repeated_dot;
         previous_dot = byte == '.';
     }
 
-    return !previous_dot;
+    return if (previous_dot) .trailing_dot else .safe;
 }
 
 fn isWindowsReservedDeviceName(value: []const u8) bool {
@@ -59,24 +101,39 @@ fn hasWindowsDrivePrefix(path: []const u8) bool {
 }
 
 pub fn isSafeRelativePath(path: []const u8) bool {
-    if (path.len == 0 or path.len > MAX_RELATIVE_PATH_BYTES) return false;
-    if (path[0] == '/') return false;
-    if (std.mem.indexOfScalar(u8, path, '\\') != null) return false;
-    if (hasWindowsDrivePrefix(path)) return false;
+    return classifyRelativePath(path).accepts();
+}
 
-    var segments = std.mem.splitScalar(u8, path, '/');
-    while (segments.next()) |segment| {
-        if (classifyRelativePathSegment(segment) != .safe_label) return false;
+pub fn classifyRelativePath(path: []const u8) RelativePathValidation {
+    if (path.len == 0) return .empty;
+    if (path.len > MAX_RELATIVE_PATH_BYTES) return .oversized;
+    if (path[0] == '/') return .absolute_path;
+    if (std.mem.indexOfScalar(u8, path, '\\')) |index| return .{ .backslash = index };
+    if (hasWindowsDrivePrefix(path)) return .windows_drive_prefix;
+
+    var segment_start: usize = 0;
+    while (segment_start <= path.len) {
+        const relative_end = std.mem.indexOfScalar(u8, path[segment_start..], '/') orelse path.len - segment_start;
+        const segment_end = segment_start + relative_end;
+        const validation = classifyRelativePathSegment(path[segment_start..segment_end]);
+        if (validation != .safe_label) {
+            return .{ .invalid_segment = .{
+                .start = segment_start,
+                .validation = validation,
+            } };
+        }
+        if (segment_end == path.len) break;
+        segment_start = segment_end + 1;
     }
 
-    return true;
+    return .safe;
 }
 
 fn classifyRelativePathSegment(segment: []const u8) RelativePathSegment {
     if (segment.len == 0) return .empty;
     if (std.mem.eql(u8, segment, ".")) return .current_dir;
     if (std.mem.eql(u8, segment, "..")) return .parent_dir;
-    return if (isSafeLabel(segment)) .safe_label else .unsafe_label;
+    return if (classifyLabel(segment).accepts()) .safe_label else .unsafe_label;
 }
 
 pub fn eqlSafeRelativePath(left: []const u8, right: []const u8) bool {
@@ -103,6 +160,24 @@ test "action paths rejects unsafe labels" {
     try std.testing.expect(!isSafeLabel("lpt9.log"));
     try std.testing.expect(!isSafeLabel(oversized_label[0..]));
     try std.testing.expect(isSafeLabel("com10"));
+}
+
+test "action paths classify safe labels" {
+    const oversized_label = [_]u8{'a'} ** (MAX_LABEL_BYTES + 1);
+
+    try std.testing.expectEqual(LabelValidation.safe, classifyLabel("linux-x86_64"));
+    try std.testing.expectEqual(LabelValidation.empty, classifyLabel(""));
+    try std.testing.expectEqual(LabelValidation.oversized, classifyLabel(oversized_label[0..]));
+    try std.testing.expectEqual(LabelValidation.windows_reserved, classifyLabel("CON"));
+    try std.testing.expectEqual(LabelValidation.windows_reserved, classifyLabel("nul.txt"));
+    try std.testing.expectEqual(LabelValidation.invalid_character, classifyLabel("linux/amd64"));
+    try std.testing.expectEqual(LabelValidation.leading_symbol, classifyLabel("-leading-dash"));
+    try std.testing.expectEqual(LabelValidation.leading_symbol, classifyLabel(".hidden"));
+    try std.testing.expectEqual(LabelValidation.repeated_dot, classifyLabel("double..dot"));
+    try std.testing.expectEqual(LabelValidation.trailing_dot, classifyLabel("trailing."));
+
+    try std.testing.expect(LabelValidation.safe.accepts());
+    try std.testing.expect(!LabelValidation.windows_reserved.accepts());
 }
 
 test "action paths classify relative path segments before accepting paths" {
@@ -134,6 +209,52 @@ test "action paths accepts only safe relative paths" {
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/nullclaw."));
     try std.testing.expect(!isSafeRelativePath("nightly-artifacts/CON"));
     try std.testing.expect(!isSafeRelativePath(oversized_path[0..]));
+}
+
+test "action paths classify relative path validation outcomes" {
+    const oversized_path = [_]u8{'a'} ** (MAX_RELATIVE_PATH_BYTES + 1);
+
+    try expectRelativePathValidation(.safe, "previous-nightly-runs.json");
+    try expectRelativePathValidation(.safe, "nightly-artifacts/nullclaw-linux-x86_64");
+    try expectRelativePathValidation(.empty, "");
+    try expectRelativePathValidation(.oversized, oversized_path[0..]);
+    try expectRelativePathValidation(.absolute_path, "/tmp/nullclaw");
+    try expectRelativePathValidation(.windows_drive_prefix, "C:/temp/nullclaw");
+    try expectRelativePathBackslash("C:\\temp\\nullclaw", 2);
+    try expectRelativePathSegment(.parent_dir, "../outside", 0);
+    try expectRelativePathSegment(.parent_dir, "nightly-artifacts/../outside", 18);
+    try expectRelativePathSegment(.empty, "nightly-artifacts//nullclaw", 18);
+    try expectRelativePathSegment(.unsafe_label, "nightly-artifacts/.hidden", 18);
+    try expectRelativePathSegment(.unsafe_label, "nightly-artifacts/nullclaw.", 18);
+    try expectRelativePathSegment(.unsafe_label, "nightly-artifacts/CON", 18);
+
+    try std.testing.expect((RelativePathValidation{ .safe = {} }).accepts());
+    try std.testing.expect(!(RelativePathValidation{ .absolute_path = {} }).accepts());
+    try std.testing.expect(!(RelativePathValidation{ .invalid_segment = .{
+        .start = 0,
+        .validation = .parent_dir,
+    } }).accepts());
+}
+
+fn expectRelativePathValidation(expected: std.meta.Tag(RelativePathValidation), path: []const u8) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyRelativePath(path)));
+}
+
+fn expectRelativePathBackslash(path: []const u8, expected_index: usize) !void {
+    switch (classifyRelativePath(path)) {
+        .backslash => |index| try std.testing.expectEqual(expected_index, index),
+        else => return error.ExpectedRelativePathBackslash,
+    }
+}
+
+fn expectRelativePathSegment(expected: RelativePathSegment, path: []const u8, expected_start: usize) !void {
+    switch (classifyRelativePath(path)) {
+        .invalid_segment => |actual| {
+            try std.testing.expectEqual(expected_start, actual.start);
+            try std.testing.expectEqual(expected, actual.validation);
+        },
+        else => return error.ExpectedInvalidRelativePathSegment,
+    }
 }
 
 test "action paths compare safe relative paths for case-insensitive filesystems" {
