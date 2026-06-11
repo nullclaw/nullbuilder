@@ -84,6 +84,19 @@ pub const DecimalIdValidation = union(enum) {
     }
 };
 
+pub const FullHexShaValidation = union(enum) {
+    safe,
+    invalid_length: usize,
+    invalid_hex: usize,
+
+    pub fn accepts(self: FullHexShaValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+};
+
 const KnownHostLiteral = enum {
     github_dot_com,
     localhost,
@@ -204,13 +217,17 @@ pub fn classifyDecimalId(value: []const u8) DecimalIdValidation {
 }
 
 pub fn isFullHexSha(value: []const u8) bool {
-    if (value.len != full_sha_bytes) return false;
+    return classifyFullHexSha(value).accepts();
+}
 
-    for (value) |byte| {
-        if (!std.ascii.isHex(byte)) return false;
+pub fn classifyFullHexSha(value: []const u8) FullHexShaValidation {
+    if (value.len != full_sha_bytes) return .{ .invalid_length = value.len };
+
+    for (value, 0..) |byte, index| {
+        if (!std.ascii.isHex(byte)) return .{ .invalid_hex = index };
     }
 
-    return true;
+    return .safe;
 }
 
 pub fn isRepositorySlug(value: []const u8) bool {
@@ -726,6 +743,22 @@ test "action values classify decimal ids" {
     try std.testing.expectEqual(@as(?u64, null), (DecimalIdValidation{ .overflow = {} }).valueOrNull());
 }
 
+test "action values classify full hex SHAs" {
+    try expectFullHexShaValidation(.safe, "abcdef0123456789abcdef0123456789abcdef01");
+    try expectFullHexShaInvalidLength("abcdef0", 7);
+    try expectFullHexShaInvalidLength("", 0);
+    try expectFullHexShaInvalidLength(
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        64,
+    );
+    try expectFullHexShaInvalidHex("abcdef0123456789abcdef0123456789abcdef0g", 39);
+    try expectFullHexShaInvalidHex("not-a-sha-not-a-sha-not-a-sha-not-a-sha-", 0);
+
+    try std.testing.expect((FullHexShaValidation{ .safe = {} }).accepts());
+    try std.testing.expect(!(FullHexShaValidation{ .invalid_length = 7 }).accepts());
+    try std.testing.expect(!(FullHexShaValidation{ .invalid_hex = 3 }).accepts());
+}
+
 fn expectDecimalIdSafe(expected: u64, value: []const u8) !void {
     switch (classifyDecimalId(value)) {
         .safe => |actual| try std.testing.expectEqual(expected, actual),
@@ -741,6 +774,24 @@ fn expectDecimalIdInvalidDigit(value: []const u8, expected_index: usize) !void {
     switch (classifyDecimalId(value)) {
         .invalid_digit => |index| try std.testing.expectEqual(expected_index, index),
         else => return error.ExpectedInvalidDigit,
+    }
+}
+
+fn expectFullHexShaValidation(expected: std.meta.Tag(FullHexShaValidation), value: []const u8) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyFullHexSha(value)));
+}
+
+fn expectFullHexShaInvalidLength(value: []const u8, expected_len: usize) !void {
+    switch (classifyFullHexSha(value)) {
+        .invalid_length => |actual_len| try std.testing.expectEqual(expected_len, actual_len),
+        else => return error.ExpectedInvalidLength,
+    }
+}
+
+fn expectFullHexShaInvalidHex(value: []const u8, expected_index: usize) !void {
+    switch (classifyFullHexSha(value)) {
+        .invalid_hex => |index| try std.testing.expectEqual(expected_index, index),
+        else => return error.ExpectedInvalidHex,
     }
 }
 
