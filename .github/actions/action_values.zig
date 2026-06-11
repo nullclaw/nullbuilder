@@ -63,29 +63,32 @@ pub fn isHttpUrlBase(value: []const u8) bool {
 }
 
 pub fn isHttpUrl(value: []const u8, max_len: usize) bool {
-    if (!isSafeSingleLineText(value, max_len)) return false;
-    for (value) |byte| {
-        if (byte == ' ') return false;
-    }
-
-    const parsed = parseHttpUrlParts(value) orelse return false;
-    if (!isAllowedHttpAuthority(parsed.scheme, parsed.authority)) return false;
-
-    return isSafeHttpUrlTail(parsed.tail);
+    return parseSafeHttpUrl(value, max_len) != null;
 }
 
 pub fn isGitHubActionsRunUrl(value: []const u8, max_len: usize) bool {
-    if (!isHttpUrl(value, max_len)) return false;
-
-    const parsed = parseHttpUrlParts(value) orelse return false;
+    const parsed = parseSafeHttpUrl(value, max_len) orelse return false;
     return isGitHubActionsRunUrlTail(parsed.tail);
 }
 
 pub fn isGitHubDotComActionsRunUrl(value: []const u8, max_len: usize) bool {
-    if (!isGitHubActionsRunUrl(value, max_len)) return false;
-    const parsed = parseHttpUrlParts(value) orelse return false;
+    const parsed = parseSafeHttpUrl(value, max_len) orelse return false;
+    return parsed.scheme == .https and
+        std.mem.eql(u8, parsed.authority, "github.com") and
+        isGitHubActionsRunUrlTail(parsed.tail);
+}
 
-    return parsed.scheme == .https and std.mem.eql(u8, parsed.authority, "github.com");
+fn parseSafeHttpUrl(value: []const u8, max_len: usize) ?ParsedHttpUrlParts {
+    if (!isSafeSingleLineText(value, max_len)) return null;
+    for (value) |byte| {
+        if (byte == ' ') return null;
+    }
+
+    const parsed = parseHttpUrlParts(value) orelse return null;
+    if (!isAllowedHttpAuthority(parsed.scheme, parsed.authority)) return null;
+    if (!isSafeHttpUrlTail(parsed.tail)) return null;
+
+    return parsed;
 }
 
 fn parseHttpPrefix(value: []const u8) ?ParsedHttpUrl {
@@ -586,6 +589,22 @@ test "action values validate UTC timestamps" {
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:60:00Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:60Z"));
     try std.testing.expect(!isUtcTimestamp("2026-05-04T02:23:00Z\n"));
+}
+
+test "action values parse safe HTTP URL components at the validation boundary" {
+    const parsed = parseSafeHttpUrl(
+        "https://github.com:8443/nullclaw/nullbuilder/actions/runs/123?check=true",
+        256,
+    ) orelse return error.ExpectedSafeHttpUrl;
+
+    try std.testing.expectEqual(HttpScheme.https, parsed.scheme);
+    try std.testing.expectEqualStrings("github.com:8443", parsed.authority);
+    try std.testing.expectEqualStrings("/nullclaw/nullbuilder/actions/runs/123?check=true", parsed.tail);
+
+    try std.testing.expect(parseSafeHttpUrl("http://github.example.local/runs/1", 256) == null);
+    try std.testing.expect(parseSafeHttpUrl("https://github.com/actions//runs/123", 256) == null);
+    try std.testing.expect(parseSafeHttpUrl("https://github.com/actions/runs/123%0a", 256) == null);
+    try std.testing.expect(parseSafeHttpUrl("https://github.com/runs/1", 10) == null);
 }
 
 test "action values validate HTTP URLs with paths" {
