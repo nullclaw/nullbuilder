@@ -69,6 +69,8 @@ test('safeHttpUrlText accepts HTTPS and canonical loopback-only HTTP URLs', () =
     'https://user:pass@github.example.test/nullclaw/nullbuilder',
     'https://github.example.test/nullclaw/nullbuilder bad',
     'https://github.example.test/nullclaw/nullbuilder"bad',
+    'https://github.example.test/nullclaw//nullbuilder',
+    'https://github.example.test/nullclaw/%2e%2e/secret',
     'https://github.example.test/nullclaw/nullbuilder%0asecret',
     'https://github.example.test/nullclaw/nullbuilder\u202esecret',
     42,

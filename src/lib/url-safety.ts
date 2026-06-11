@@ -23,6 +23,10 @@ export function safeHttpUrlText(value: unknown, options: SafeTextInputOptions): 
     return null;
   }
 
+  if (hasUnsafeHttpUrlPathSyntax(safeValue)) {
+    return null;
+  }
+
   let url: URL;
   try {
     url = new URL(safeValue);

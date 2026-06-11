@@ -187,6 +187,11 @@ test('dashboardExternalHref applies a safe fallback before the local fallback', 
   );
 });
 
+test('dashboardExternalHref rejects browser-normalized path ambiguities', () => {
+  assert.equal(dashboardExternalHref('https://github.example.test/nullclaw//nullbuilder', '#audit'), '#audit');
+  assert.equal(dashboardExternalHref('https://github.example.test/nullclaw/%2e%2e/secret', '#audit'), '#audit');
+});
+
 test('mutation result messages share dry-run move and create wording', () => {
   assert.equal(
     buildPrResultMessage({
