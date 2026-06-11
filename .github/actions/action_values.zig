@@ -407,7 +407,15 @@ fn isCanonicalDecimalText(value: []const u8, max_digits: usize) bool {
 
 fn parseCanonicalDecimal(comptime T: type, value: []const u8, max_digits: usize) ?T {
     if (!isCanonicalDecimalText(value, max_digits)) return null;
-    return std.fmt.parseUnsigned(T, value, 10) catch null;
+
+    var parsed: T = 0;
+    for (value) |byte| {
+        const digit: T = @intCast(decimalValue(byte).?);
+        const shifted = std.math.mul(T, parsed, 10) catch return null;
+        parsed = std.math.add(T, shifted, digit) catch return null;
+    }
+
+    return parsed;
 }
 
 fn twoDigitValue(value: []const u8, index: usize) ?u8 {
@@ -510,6 +518,7 @@ test "action values validate URL bases" {
     try std.testing.expect(!isHttpUrlBase("github.com"));
     try std.testing.expect(!isHttpUrlBase("http://github.example.local"));
     try std.testing.expect(!isHttpUrlBase("http://127.0.0.999"));
+    try std.testing.expect(!isHttpUrlBase("http://127.0.0.256"));
     try std.testing.expect(!isHttpUrlBase("http://127.0.0.01"));
     try std.testing.expect(!isHttpUrlBase("http://::1"));
     try std.testing.expect(!isHttpUrlBase("http://[::2]"));
