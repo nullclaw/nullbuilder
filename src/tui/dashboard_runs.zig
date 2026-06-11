@@ -10,6 +10,80 @@ const failure_conclusion = "failure";
 const missing_status = "n/a";
 const success_conclusion = "success";
 const max_run_label_len = 64;
+
+pub const RunLabel = enum {
+    completed,
+    queued,
+    in_progress,
+    requested,
+    waiting,
+    pending,
+    success,
+    failure,
+    neutral,
+    cancelled,
+    skipped,
+    timed_out,
+    action_required,
+    startup_failure,
+    stale,
+    missing,
+    errored,
+
+    pub fn text(self: RunLabel) []const u8 {
+        return switch (self) {
+            .completed => completed_status,
+            .queued => "queued",
+            .in_progress => "in_progress",
+            .requested => "requested",
+            .waiting => "waiting",
+            .pending => "pending",
+            .success => success_conclusion,
+            .failure => failure_conclusion,
+            .neutral => "neutral",
+            .cancelled => "cancelled",
+            .skipped => "skipped",
+            .timed_out => "timed_out",
+            .action_required => "action_required",
+            .startup_failure => "startup_failure",
+            .stale => "stale",
+            .missing => missing_status,
+            .errored => error_status,
+        };
+    }
+
+    pub fn isSuccess(self: RunLabel) bool {
+        return self == .success;
+    }
+
+    pub fn isRunning(self: RunLabel) bool {
+        return switch (self) {
+            .queued, .in_progress, .requested, .waiting, .pending => true,
+            else => false,
+        };
+    }
+
+    pub fn isMissing(self: RunLabel) bool {
+        return self == .missing;
+    }
+
+    pub fn isFailure(self: RunLabel) bool {
+        return switch (self) {
+            .errored,
+            .failure,
+            .neutral,
+            .cancelled,
+            .skipped,
+            .timed_out,
+            .action_required,
+            .startup_failure,
+            .stale,
+            => true,
+            else => false,
+        };
+    }
+};
+
 const RunSlot = enum {
     ci,
     nightly,
@@ -24,30 +98,30 @@ const RunSlot = enum {
     }
 };
 const run_slots = [_]RunSlot{ .ci, .nightly, .release };
-const workflow_status_labels = [_][]const u8{
-    completed_status,
-    "queued",
-    "in_progress",
-    "requested",
-    "waiting",
-    "pending",
+const workflow_status_labels = [_]RunLabel{
+    .completed,
+    .queued,
+    .in_progress,
+    .requested,
+    .waiting,
+    .pending,
 };
-const workflow_conclusion_labels = [_][]const u8{
-    success_conclusion,
-    failure_conclusion,
-    "neutral",
-    "cancelled",
-    "skipped",
-    "timed_out",
-    "action_required",
-    "startup_failure",
-    "stale",
+const workflow_conclusion_labels = [_]RunLabel{
+    .success,
+    .failure,
+    .neutral,
+    .cancelled,
+    .skipped,
+    .timed_out,
+    .action_required,
+    .startup_failure,
+    .stale,
 };
 
 pub const RunStatuses = struct {
-    ci: []const u8,
-    nightly: []const u8,
-    release: []const u8,
+    ci: RunLabel,
+    nightly: RunLabel,
+    release: RunLabel,
 
     fn fromLatest(latest_runs: JsonObject) RunStatuses {
         return .{
@@ -65,8 +139,8 @@ pub const RepositoryRunState = enum {
 
 pub fn repositoryRunStatuses(repository_state: RepositoryRunState, latest: ?JsonObject) RunStatuses {
     return switch (repository_state) {
-        .loaded => if (latest) |latest_runs| RunStatuses.fromLatest(latest_runs) else repeatedStatus(missing_status),
-        .errored => repeatedStatus(error_status),
+        .loaded => if (latest) |latest_runs| RunStatuses.fromLatest(latest_runs) else repeatedStatus(.missing),
+        .errored => repeatedStatus(.errored),
     };
 }
 
@@ -79,64 +153,61 @@ pub fn repositoryHasFailure(latest: ?JsonObject) bool {
     return false;
 }
 
-pub fn isSuccessLabel(label: []const u8) bool {
-    return std.mem.eql(u8, label, success_conclusion);
+pub fn isSuccessLabel(label: RunLabel) bool {
+    return label.isSuccess();
 }
 
-pub fn isRunningLabel(label: []const u8) bool {
-    const status = canonicalStatus(label) orelse return false;
-    return !std.mem.eql(u8, status, completed_status);
+pub fn isRunningLabel(label: RunLabel) bool {
+    return label.isRunning();
 }
 
-pub fn isMissingLabel(label: []const u8) bool {
-    return std.mem.eql(u8, label, missing_status);
+pub fn isMissingLabel(label: RunLabel) bool {
+    return label.isMissing();
 }
 
-pub fn isFailureLabel(label: []const u8) bool {
-    if (std.mem.eql(u8, label, error_status)) return true;
-    const conclusion = canonicalConclusion(label) orelse return false;
-    return !std.mem.eql(u8, conclusion, success_conclusion);
+pub fn isFailureLabel(label: RunLabel) bool {
+    return label.isFailure();
 }
 
-fn repeatedStatus(label: []const u8) RunStatuses {
+fn repeatedStatus(label: RunLabel) RunStatuses {
     return .{ .ci = label, .nightly = label, .release = label };
 }
 
 fn isFailedRun(latest: JsonObject, slot: RunSlot) bool {
     const run = dashboard_json.objectField(latest, slot.fieldName()) orelse return false;
     const status = runStatus(run);
-    if (!std.mem.eql(u8, status, completed_status)) return false;
-    return !std.mem.eql(u8, runConclusion(run, ""), success_conclusion);
+    if (status != .completed) return false;
+    return !runConclusion(run, .failure).isSuccess();
 }
 
-fn runLabel(latest: JsonObject, slot: RunSlot) []const u8 {
-    const run = dashboard_json.objectField(latest, slot.fieldName()) orelse return missing_status;
+fn runLabel(latest: JsonObject, slot: RunSlot) RunLabel {
+    const run = dashboard_json.objectField(latest, slot.fieldName()) orelse return .missing;
     const status = runStatus(run);
-    if (!std.mem.eql(u8, status, completed_status)) return status;
-    return runConclusion(run, completed_status);
+    if (status != .completed) return status;
+    return runConclusion(run, .completed);
 }
 
-fn runStatus(run: JsonObject) []const u8 {
-    const value = dashboard_json.requiredSafeTextField(run, "status", max_run_label_len) orelse return missing_status;
-    return canonicalStatus(value) orelse missing_status;
+fn runStatus(run: JsonObject) RunLabel {
+    const value = dashboard_json.requiredSafeTextField(run, "status", max_run_label_len) orelse return .missing;
+    return canonicalStatus(value) orelse .missing;
 }
 
-fn runConclusion(run: JsonObject, fallback: []const u8) []const u8 {
+fn runConclusion(run: JsonObject, fallback: RunLabel) RunLabel {
     const value = dashboard_json.requiredSafeTextField(run, "conclusion", max_run_label_len) orelse return fallback;
-    return canonicalConclusion(value) orelse failure_conclusion;
+    return canonicalConclusion(value) orelse .failure;
 }
 
-fn canonicalStatus(value: []const u8) ?[]const u8 {
+fn canonicalStatus(value: []const u8) ?RunLabel {
     return canonicalLabel(value, &workflow_status_labels);
 }
 
-fn canonicalConclusion(value: []const u8) ?[]const u8 {
+fn canonicalConclusion(value: []const u8) ?RunLabel {
     return canonicalLabel(value, &workflow_conclusion_labels);
 }
 
-fn canonicalLabel(value: []const u8, labels: []const []const u8) ?[]const u8 {
+fn canonicalLabel(value: []const u8, labels: []const RunLabel) ?RunLabel {
     for (labels) |label| {
-        if (std.mem.eql(u8, value, label)) return label;
+        if (std.mem.eql(u8, value, label.text())) return label;
     }
 
     return null;
@@ -153,19 +224,19 @@ test "repositoryRunStatuses maps active completed missing and error runs" {
     defer parsed.deinit();
 
     const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
-    try std.testing.expectEqualStrings(success_conclusion, statuses.ci);
-    try std.testing.expectEqualStrings("in_progress", statuses.nightly);
-    try std.testing.expectEqualStrings(completed_status, statuses.release);
+    try std.testing.expectEqual(RunLabel.success, statuses.ci);
+    try std.testing.expectEqual(RunLabel.in_progress, statuses.nightly);
+    try std.testing.expectEqual(RunLabel.completed, statuses.release);
 
     const missing = repositoryRunStatuses(.loaded, null);
-    try std.testing.expectEqualStrings(missing_status, missing.ci);
-    try std.testing.expectEqualStrings(missing_status, missing.nightly);
-    try std.testing.expectEqualStrings(missing_status, missing.release);
+    try std.testing.expectEqual(RunLabel.missing, missing.ci);
+    try std.testing.expectEqual(RunLabel.missing, missing.nightly);
+    try std.testing.expectEqual(RunLabel.missing, missing.release);
 
     const errored = repositoryRunStatuses(.errored, null);
-    try std.testing.expectEqualStrings(error_status, errored.ci);
-    try std.testing.expectEqualStrings(error_status, errored.nightly);
-    try std.testing.expectEqualStrings(error_status, errored.release);
+    try std.testing.expectEqual(RunLabel.errored, errored.ci);
+    try std.testing.expectEqual(RunLabel.errored, errored.nightly);
+    try std.testing.expectEqual(RunLabel.errored, errored.release);
 }
 
 test "workflow run slots define the dashboard JSON field contract" {
@@ -189,8 +260,8 @@ test "repositoryRunStatuses rejects oversized run labels" {
     defer parsed.deinit();
 
     const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
-    try std.testing.expectEqualStrings(missing_status, statuses.ci);
-    try std.testing.expectEqualStrings(completed_status, statuses.nightly);
+    try std.testing.expectEqual(RunLabel.missing, statuses.ci);
+    try std.testing.expectEqual(RunLabel.completed, statuses.nightly);
 }
 
 test "repositoryRunStatuses rejects control-bearing run labels" {
@@ -204,9 +275,9 @@ test "repositoryRunStatuses rejects control-bearing run labels" {
     defer parsed.deinit();
 
     const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
-    try std.testing.expectEqualStrings(missing_status, statuses.ci);
-    try std.testing.expectEqualStrings(completed_status, statuses.nightly);
-    try std.testing.expectEqualStrings(success_conclusion, statuses.release);
+    try std.testing.expectEqual(RunLabel.missing, statuses.ci);
+    try std.testing.expectEqual(RunLabel.completed, statuses.nightly);
+    try std.testing.expectEqual(RunLabel.success, statuses.release);
     try std.testing.expect(repositoryHasFailure(parsed.value.object));
 }
 
@@ -221,53 +292,53 @@ test "repositoryRunStatuses rejects unknown run labels without echoing them" {
     defer parsed.deinit();
 
     const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
-    try std.testing.expectEqualStrings(missing_status, statuses.ci);
-    try std.testing.expectEqualStrings(failure_conclusion, statuses.nightly);
-    try std.testing.expectEqualStrings("action_required", statuses.release);
+    try std.testing.expectEqual(RunLabel.missing, statuses.ci);
+    try std.testing.expectEqual(RunLabel.failure, statuses.nightly);
+    try std.testing.expectEqual(RunLabel.action_required, statuses.release);
     try std.testing.expect(repositoryHasFailure(parsed.value.object));
 }
 
 test "run label classifiers share the workflow display policy" {
-    try std.testing.expect(isSuccessLabel("success"));
-    try std.testing.expect(isRunningLabel("queued"));
-    try std.testing.expect(isRunningLabel("in_progress"));
-    try std.testing.expect(isRunningLabel("requested"));
-    try std.testing.expect(isRunningLabel("waiting"));
-    try std.testing.expect(isRunningLabel("pending"));
-    try std.testing.expect(isMissingLabel("n/a"));
-    try std.testing.expect(isFailureLabel("failure"));
-    try std.testing.expect(isFailureLabel("neutral"));
-    try std.testing.expect(isFailureLabel("cancelled"));
-    try std.testing.expect(isFailureLabel("skipped"));
-    try std.testing.expect(isFailureLabel("timed_out"));
-    try std.testing.expect(isFailureLabel("action_required"));
-    try std.testing.expect(isFailureLabel("startup_failure"));
-    try std.testing.expect(isFailureLabel("stale"));
-    try std.testing.expect(isFailureLabel("error"));
+    try std.testing.expect(isSuccessLabel(.success));
+    try std.testing.expect(isRunningLabel(.queued));
+    try std.testing.expect(isRunningLabel(.in_progress));
+    try std.testing.expect(isRunningLabel(.requested));
+    try std.testing.expect(isRunningLabel(.waiting));
+    try std.testing.expect(isRunningLabel(.pending));
+    try std.testing.expect(isMissingLabel(.missing));
+    try std.testing.expect(isFailureLabel(.failure));
+    try std.testing.expect(isFailureLabel(.neutral));
+    try std.testing.expect(isFailureLabel(.cancelled));
+    try std.testing.expect(isFailureLabel(.skipped));
+    try std.testing.expect(isFailureLabel(.timed_out));
+    try std.testing.expect(isFailureLabel(.action_required));
+    try std.testing.expect(isFailureLabel(.startup_failure));
+    try std.testing.expect(isFailureLabel(.stale));
+    try std.testing.expect(isFailureLabel(.errored));
 
-    try std.testing.expect(!isRunningLabel("completed"));
-    try std.testing.expect(!isFailureLabel("success"));
-    try std.testing.expect(!isFailureLabel("private-secret"));
-    try std.testing.expect(!isRunningLabel("deploying-secret"));
+    try std.testing.expect(!isRunningLabel(.completed));
+    try std.testing.expect(!isFailureLabel(.success));
+    try std.testing.expect(!isFailureLabel(.completed));
+    try std.testing.expect(!isRunningLabel(.failure));
 }
 
 test "workflow label registries accept only canonical labels" {
     for (workflow_status_labels) |label| {
-        try std.testing.expectEqualStrings(label, canonicalStatus(label).?);
-        try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion(label));
+        try std.testing.expectEqual(label, canonicalStatus(label.text()).?);
+        try std.testing.expectEqual(@as(?RunLabel, null), canonicalConclusion(label.text()));
     }
 
     for (workflow_conclusion_labels) |label| {
-        try std.testing.expectEqualStrings(label, canonicalConclusion(label).?);
-        try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus(label));
+        try std.testing.expectEqual(label, canonicalConclusion(label.text()).?);
+        try std.testing.expectEqual(@as(?RunLabel, null), canonicalStatus(label.text()));
     }
 
-    try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus(""));
-    try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus("deploying-secret"));
-    try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus("completed\n"));
-    try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion(""));
-    try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion("private-secret"));
-    try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion("success\n"));
+    try std.testing.expectEqual(@as(?RunLabel, null), canonicalStatus(""));
+    try std.testing.expectEqual(@as(?RunLabel, null), canonicalStatus("deploying-secret"));
+    try std.testing.expectEqual(@as(?RunLabel, null), canonicalStatus("completed\n"));
+    try std.testing.expectEqual(@as(?RunLabel, null), canonicalConclusion(""));
+    try std.testing.expectEqual(@as(?RunLabel, null), canonicalConclusion("private-secret"));
+    try std.testing.expectEqual(@as(?RunLabel, null), canonicalConclusion("success\n"));
 }
 
 test "repositoryRunStatuses falls back for empty run labels" {
@@ -281,9 +352,9 @@ test "repositoryRunStatuses falls back for empty run labels" {
     defer parsed.deinit();
 
     const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
-    try std.testing.expectEqualStrings(missing_status, statuses.ci);
-    try std.testing.expectEqualStrings(completed_status, statuses.nightly);
-    try std.testing.expectEqualStrings(success_conclusion, statuses.release);
+    try std.testing.expectEqual(RunLabel.missing, statuses.ci);
+    try std.testing.expectEqual(RunLabel.completed, statuses.nightly);
+    try std.testing.expectEqual(RunLabel.success, statuses.release);
     try std.testing.expect(repositoryHasFailure(parsed.value.object));
 }
 

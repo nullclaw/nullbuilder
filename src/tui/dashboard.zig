@@ -77,11 +77,11 @@ pub fn render(
             repo_column_width,
             count_column_width,
         });
-        try printStatus(arena, out, no_color, repo.runs.ci, status_column_width);
+        try printStatus(out, no_color, repo.runs.ci, status_column_width);
         try out.writeByte(' ');
-        try printStatus(arena, out, no_color, repo.runs.nightly, status_column_width);
+        try printStatus(out, no_color, repo.runs.nightly, status_column_width);
         try out.writeByte(' ');
-        try printStatus(arena, out, no_color, repo.runs.release, status_column_width);
+        try printStatus(out, no_color, repo.runs.release, status_column_width);
         try out.writeByte('\n');
     }
 
@@ -167,16 +167,13 @@ fn printLoadError(arena: std.mem.Allocator, out: *std.Io.Writer, load_error: das
     });
 }
 
-fn printStatus(arena: std.mem.Allocator, out: *std.Io.Writer, no_color: bool, status: []const u8, width: usize) !void {
-    const safe_status = try sanitizeTerminalText(arena, status);
-    defer safe_status.deinit(arena);
-
-    try out.writeAll(statusColor(no_color, safe_status.value));
-    try out.print("{s:<[1]}", .{ terminal.clipUtf8(safe_status.value, width), width });
+fn printStatus(out: *std.Io.Writer, no_color: bool, status: dashboard_runs.RunLabel, width: usize) !void {
+    try out.writeAll(statusColor(no_color, status));
+    try out.print("{s:<[1]}", .{ terminal.clipUtf8(status.text(), width), width });
     try out.writeAll(color(no_color, reset));
 }
 
-fn statusColor(no_color: bool, status: []const u8) []const u8 {
+fn statusColor(no_color: bool, status: dashboard_runs.RunLabel) []const u8 {
     if (no_color) return "";
     if (dashboard_runs.isSuccessLabel(status)) return green;
     if (dashboard_runs.isRunningLabel(status)) return yellow;
@@ -223,11 +220,11 @@ test "printStatus honors requested display width" {
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try printStatus(std.testing.allocator, &out.writer, true, "queued", 8);
+    try printStatus(&out.writer, true, .queued, 8);
     try std.testing.expectEqualStrings("queued  ", out.writer.buffered());
 
     out.clearRetainingCapacity();
-    try printStatus(std.testing.allocator, &out.writer, true, "in_progress", 4);
+    try printStatus(&out.writer, true, .in_progress, 4);
     try std.testing.expectEqualStrings("in_p", out.writer.buffered());
 }
 

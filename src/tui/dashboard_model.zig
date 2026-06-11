@@ -322,15 +322,15 @@ test "dashboard model collects repository totals and run statuses" {
 
     const alpha = repositoryFromValue(dashboard.items[0]).?;
     try std.testing.expect(alpha.loaded);
-    try std.testing.expectEqualStrings("failure", alpha.runs.ci);
-    try std.testing.expectEqualStrings("in_progress", alpha.runs.nightly);
-    try std.testing.expectEqualStrings("n/a", alpha.runs.release);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.failure, alpha.runs.ci);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.in_progress, alpha.runs.nightly);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.missing, alpha.runs.release);
 
     const beta = repositoryFromValue(dashboard.items[1]).?;
     try std.testing.expect(!beta.loaded);
-    try std.testing.expectEqualStrings("error", beta.runs.ci);
-    try std.testing.expectEqualStrings("error", beta.runs.nightly);
-    try std.testing.expectEqualStrings("error", beta.runs.release);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.errored, beta.runs.ci);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.errored, beta.runs.nightly);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.errored, beta.runs.release);
 
     var errors = LoadErrorIterator.init(dashboard);
     const load_error = errors.next().?;
@@ -523,9 +523,9 @@ test "dashboard model treats malformed repository statuses as unloaded" {
 
     const unknown = repositoryFromValue(dashboard.items[2]).?;
     try std.testing.expect(!unknown.loaded);
-    try std.testing.expectEqualStrings(error_status, unknown.runs.ci);
-    try std.testing.expectEqualStrings(error_status, unknown.runs.nightly);
-    try std.testing.expectEqualStrings(error_status, unknown.runs.release);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.errored, unknown.runs.ci);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.errored, unknown.runs.nightly);
+    try std.testing.expectEqual(dashboard_runs.RunLabel.errored, unknown.runs.release);
 
     const control = repositoryFromValue(dashboard.items[3]).?;
     try std.testing.expect(!control.loaded);
