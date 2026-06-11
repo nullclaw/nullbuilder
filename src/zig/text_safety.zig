@@ -6,19 +6,14 @@ pub const SanitizeOptions = struct {
     preserve_newlines: bool = false,
 };
 
+const SanitizedSegment = union(enum) {
+    keep: usize,
+    replace: usize,
+    skip: usize,
+};
+
 pub fn hasControl(value: []const u8) bool {
-    var index: usize = 0;
-    while (index < value.len) {
-        if (isControlByte(value[index]) or
-            isUtf8C1Control(value, index) or
-            utf8BidiControlSequenceLength(value, index) != null or
-            isInvalidUtf8SequenceStart(value, index))
-        {
-            return true;
-        }
-        index += utf8SequenceLength(value, index);
-    }
-    return false;
+    return firstSanitizableIndex(value, .{}) != null;
 }
 
 pub fn isNonEmptyTextWithoutControl(value: []const u8, max_len: usize) bool {
@@ -28,16 +23,10 @@ pub fn isNonEmptyTextWithoutControl(value: []const u8, max_len: usize) bool {
 pub fn firstSanitizableIndex(value: []const u8, options: SanitizeOptions) ?usize {
     var index: usize = 0;
     while (index < value.len) {
-        const byte = value[index];
-        if (byte == ascii_escape or
-            isUtf8C1Control(value, index) or
-            utf8BidiControlSequenceLength(value, index) != null or
-            isInvalidUtf8SequenceStart(value, index) or
-            isSanitizableControlByte(byte, options))
-        {
-            return index;
+        switch (nextSanitizedSegment(value, index, options)) {
+            .keep => |sequence_len| index += sequence_len,
+            .replace, .skip => return index,
         }
-        index += utf8SequenceLength(value, index);
     }
 
     return null;
@@ -51,60 +40,63 @@ pub fn nextSanitizedSlice(
 ) ?[]const u8 {
     if (index.* >= value.len) return null;
 
-    const byte = value[index.*];
+    const start = index.*;
+    switch (nextSanitizedSegment(value, start, options)) {
+        .keep => |sequence_len| {
+            index.* += sequence_len;
+            return value[start..index.*];
+        },
+        .replace => |sequence_len| {
+            index.* += sequence_len;
+            buffer[0] = ' ';
+            return buffer[0..1];
+        },
+        .skip => |sequence_len| {
+            index.* += sequence_len;
+            return null;
+        },
+    }
+}
+
+fn nextSanitizedSegment(value: []const u8, index: usize, options: SanitizeOptions) SanitizedSegment {
+    const byte = value[index];
     if (byte == ascii_escape) {
-        index.* = skipAnsiEscape(value, index.*);
-        return null;
+        return .{ .skip = skipAnsiEscape(value, index) - index };
     }
 
     if (isRawAnsiControlSequence(byte)) {
-        index.* = skipAnsiControlSequence(value, index.* + 1);
-        return null;
+        return .{ .skip = skipAnsiControlSequence(value, index + 1) - index };
     }
 
-    if (isUtf8AnsiControlSequence(value, index.*)) {
-        index.* = skipAnsiControlSequence(value, index.* + 2);
-        return null;
+    if (isUtf8AnsiControlSequence(value, index)) {
+        return .{ .skip = skipAnsiControlSequence(value, index + 2) - index };
     }
 
     if (isRawAnsiStringControl(byte)) {
-        index.* = skipAnsiStringControl(value, index.* + 1);
-        return null;
+        return .{ .skip = skipAnsiStringControl(value, index + 1) - index };
     }
 
-    if (isUtf8AnsiStringControl(value, index.*)) {
-        index.* = skipAnsiStringControl(value, index.* + 2);
-        return null;
+    if (isUtf8AnsiStringControl(value, index)) {
+        return .{ .skip = skipAnsiStringControl(value, index + 2) - index };
     }
 
-    if (isUtf8C1Control(value, index.*)) {
-        index.* += 2;
-        buffer[0] = ' ';
-        return buffer[0..1];
+    if (isUtf8C1Control(value, index)) {
+        return .{ .replace = 2 };
     }
 
-    if (utf8BidiControlSequenceLength(value, index.*)) |sequence_len| {
-        index.* += sequence_len;
-        buffer[0] = ' ';
-        return buffer[0..1];
+    if (utf8BidiControlSequenceLength(value, index)) |sequence_len| {
+        return .{ .replace = sequence_len };
     }
 
     if (isSanitizableControlByte(byte, options)) {
-        index.* += 1;
-        buffer[0] = ' ';
-        return buffer[0..1];
+        return .{ .replace = 1 };
     }
 
-    if (isInvalidUtf8SequenceStart(value, index.*)) {
-        index.* += 1;
-        buffer[0] = ' ';
-        return buffer[0..1];
+    if (isInvalidUtf8SequenceStart(value, index)) {
+        return .{ .replace = 1 };
     }
 
-    const start = index.*;
-    const sequence_len = utf8SequenceLength(value, start);
-    index.* += sequence_len;
-    return value[start..index.*];
+    return .{ .keep = utf8SequenceLength(value, index) };
 }
 
 pub fn sanitizeIntoBuffer(value: []const u8, buffer: []u8, options: SanitizeOptions) []const u8 {
@@ -416,6 +408,15 @@ test "text safety shared scanner can preserve newlines" {
     var index: usize = 2;
     try std.testing.expectEqualStrings("\n", nextSanitizedSlice("ok\nbad", &index, .{ .preserve_newlines = true }, &buffer).?);
     try std.testing.expectEqual(@as(usize, 3), index);
+}
+
+test "text safety shared scanner flags skipped control sequences" {
+    try std.testing.expectEqual(@as(?usize, 2), firstSanitizableIndex("ok\x1b[31mred", .{}));
+    try std.testing.expectEqual(@as(?usize, 2), firstSanitizableIndex("ok\x9b31mred", .{}));
+    try std.testing.expectEqual(@as(?usize, 2), firstSanitizableIndex("ok\xc2\x9b31mred", .{}));
+    try std.testing.expectEqual(@as(?usize, 2), firstSanitizableIndex("ok\x1b]0;title\x07done", .{}));
+    try std.testing.expectEqual(@as(?usize, 2), firstSanitizableIndex("ok\x9d0;title\x9cdone", .{}));
+    try std.testing.expectEqual(@as(?usize, 2), firstSanitizableIndex("ok\xc2\x9d0;title\xc2\x9cdone", .{}));
 }
 
 test "text safety sanitizes into caller buffers without splitting UTF-8" {
