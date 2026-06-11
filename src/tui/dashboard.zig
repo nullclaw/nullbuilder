@@ -306,7 +306,7 @@ test "render falls back for empty external status labels" {
         \\  "items": [
         \\    {
         \\      "slug": "nullclaw/alpha",
-        \\      "status": "",
+        \\      "status": "ok",
         \\      "latestRuns": {
         \\        "ci": {"status": ""},
         \\        "nightly": {"status": "completed", "conclusion": ""},
@@ -354,6 +354,47 @@ test "render canonicalizes unknown workflow labels before terminal output" {
     try expectContains(output, "action_requi");
     try std.testing.expect(std.mem.indexOf(u8, output, "deploying-secret") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "private-secret") == null);
+}
+
+test "render treats malformed repository statuses as unloaded" {
+    const json =
+        \\{
+        \\  "items": [
+        \\    {
+        \\      "slug": "nullclaw/unknown",
+        \\      "status": "loaded-secret",
+        \\      "openIssues": 99,
+        \\      "openPulls": 99,
+        \\      "stars": 99,
+        \\      "latestRuns": {
+        \\        "ci": {"status": "completed", "conclusion": "success"}
+        \\      },
+        \\      "issues": [{"number": 7, "title": "Hidden issue"}]
+        \\    },
+        \\    {
+        \\      "slug": "nullclaw/loaded",
+        \\      "status": "ok",
+        \\      "openIssues": 2,
+        \\      "openPulls": 1,
+        \\      "stars": 3,
+        \\      "issues": [{"number": 8, "title": "Visible issue"}]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try render(std.testing.allocator, &out.writer, json, true);
+    const output = out.writer.buffered();
+
+    try expectContains(output, "2 repos  2 issues  1 PRs  3 stars  0 failing");
+    try expectContains(output, "unknown");
+    try expectContains(output, "error");
+    try expectContains(output, "Visible issue");
+    try std.testing.expect(std.mem.indexOf(u8, output, "loaded-secret") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "Hidden issue") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "99") == null);
 }
 
 test "render treats malformed dashboard collections as empty" {

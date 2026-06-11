@@ -15,6 +15,7 @@ const max_work_item_number = 999_999_999;
 const max_work_title_len = 1024;
 const max_error_message_len = 2048;
 const ok_status = "ok";
+const error_status = "error";
 
 pub const Dashboard = struct {
     items: []const JsonValue,
@@ -179,24 +180,33 @@ pub fn repositoryFromValue(value: JsonValue) ?Repository {
 
 fn repositoryFromObject(repo: JsonObject) ?Repository {
     const slug = safeRepoSlugField(repo, "slug") orelse return null;
-    const status = dashboard_json.safeTextField(repo, "status", "ok", max_text_field_len);
+    const status = repositoryStatus(repo);
+    const loaded = repositoryIsLoaded(status);
     const latest = dashboard_json.objectField(repo, "latestRuns");
 
     return .{
         .slug = slug,
-        .loaded = repositoryIsLoaded(status),
-        .open_issues = dashboard_json.safeIntegerField(repo, "openIssues"),
-        .open_pulls = dashboard_json.safeIntegerField(repo, "openPulls"),
-        .stars = dashboard_json.safeIntegerField(repo, "stars"),
+        .loaded = loaded,
+        .open_issues = if (loaded) dashboard_json.safeIntegerField(repo, "openIssues") else 0,
+        .open_pulls = if (loaded) dashboard_json.safeIntegerField(repo, "openPulls") else 0,
+        .stars = if (loaded) dashboard_json.safeIntegerField(repo, "stars") else 0,
         .runs = dashboard_runs.repositoryRunStatuses(status, latest),
-        .has_failure = dashboard_runs.repositoryHasFailure(latest),
-        .issues = dashboard_json.boundedArrayFieldOrEmpty(repo, "issues", max_work_items_per_repository),
-        .pull_requests = dashboard_json.boundedArrayFieldOrEmpty(repo, "pullRequests", max_work_items_per_repository),
+        .has_failure = loaded and dashboard_runs.repositoryHasFailure(latest),
+        .issues = if (loaded) dashboard_json.boundedArrayFieldOrEmpty(repo, "issues", max_work_items_per_repository) else dashboard_json.emptyValues(),
+        .pull_requests = if (loaded) dashboard_json.boundedArrayFieldOrEmpty(repo, "pullRequests", max_work_items_per_repository) else dashboard_json.emptyValues(),
     };
 }
 
 fn repositoryIsLoaded(status: []const u8) bool {
     return std.mem.eql(u8, status, ok_status);
+}
+
+fn repositoryStatus(repo: JsonObject) []const u8 {
+    if (repo.get("status") == null) return ok_status;
+    const status = dashboard_json.requiredSafeTextField(repo, "status", max_text_field_len) orelse return error_status;
+    if (std.mem.eql(u8, status, ok_status)) return ok_status;
+    if (std.mem.eql(u8, status, error_status)) return error_status;
+    return error_status;
 }
 
 fn workItems(repo: Repository, kind: WorkKind) []const JsonValue {
@@ -383,7 +393,7 @@ test "repository iterator yields only repositories with safe slugs" {
     const errored = repo_iter.next().?;
     try std.testing.expectEqualStrings("nullclaw/errored", errored.slug);
     try std.testing.expect(!errored.loaded);
-    try std.testing.expectEqual(@as(u64, 99), errored.open_issues);
+    try std.testing.expectEqual(@as(u64, 0), errored.open_issues);
 
     try std.testing.expectEqual(null, repo_iter.next());
 }
@@ -418,12 +428,18 @@ test "dashboard totals and work iterators ignore errored repository payload coun
 
     const dashboard = Dashboard.init(parsed.value.object);
     const totals = dashboard.totals();
+    const errored = repositoryFromValue(dashboard.items[0]).?;
 
     try std.testing.expectEqual(@as(u64, 2), totals.repositories);
     try std.testing.expectEqual(@as(u64, 2), totals.issues);
     try std.testing.expectEqual(@as(u64, 1), totals.pull_requests);
     try std.testing.expectEqual(@as(u64, 3), totals.stars);
     try std.testing.expectEqual(@as(u64, 0), totals.failing);
+    try std.testing.expectEqual(@as(u64, 0), errored.open_issues);
+    try std.testing.expectEqual(@as(u64, 0), errored.open_pulls);
+    try std.testing.expectEqual(@as(u64, 0), errored.stars);
+    try std.testing.expectEqual(@as(usize, 0), errored.issues.len);
+    try std.testing.expectEqual(@as(usize, 0), errored.pull_requests.len);
 
     var issues = WorkItemIterator.init(dashboard, .issues);
     const issue = issues.next().?;
@@ -438,6 +454,45 @@ test "dashboard totals and work iterators ignore errored repository payload coun
     try std.testing.expectEqual(@as(u64, 10), pull.number);
     try std.testing.expectEqualStrings("Visible PR", pull.title);
     try std.testing.expectEqual(null, pulls.next());
+}
+
+test "dashboard model treats malformed repository statuses as unloaded" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "items": [
+        \\    {"slug": "nullclaw/legacy", "openIssues": 2, "openPulls": 1, "stars": 3},
+        \\    {"slug": "nullclaw/explicit", "status": "ok", "openIssues": 5, "openPulls": 8, "stars": 13},
+        \\    {"slug": "nullclaw/unknown", "status": "loaded-secret", "openIssues": 99, "openPulls": 99, "stars": 99, "latestRuns": {"ci": {"status": "completed", "conclusion": "success"}}},
+        \\    {"slug": "nullclaw/control", "status": "ok\u001b[31m", "openIssues": 99, "openPulls": 99, "stars": 99},
+        \\    {"slug": "nullclaw/null", "status": null, "openIssues": 99, "openPulls": 99, "stars": 99}
+        \\  ]
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    const dashboard = Dashboard.init(parsed.value.object);
+    const totals = dashboard.totals();
+
+    try std.testing.expectEqual(@as(u64, 5), totals.repositories);
+    try std.testing.expectEqual(@as(u64, 7), totals.issues);
+    try std.testing.expectEqual(@as(u64, 9), totals.pull_requests);
+    try std.testing.expectEqual(@as(u64, 16), totals.stars);
+    try std.testing.expectEqual(@as(u64, 0), totals.failing);
+
+    const legacy = repositoryFromValue(dashboard.items[0]).?;
+    try std.testing.expect(legacy.loaded);
+
+    const unknown = repositoryFromValue(dashboard.items[2]).?;
+    try std.testing.expect(!unknown.loaded);
+    try std.testing.expectEqualStrings(error_status, unknown.runs.ci);
+    try std.testing.expectEqualStrings(error_status, unknown.runs.nightly);
+    try std.testing.expectEqualStrings(error_status, unknown.runs.release);
+
+    const control = repositoryFromValue(dashboard.items[3]).?;
+    try std.testing.expect(!control.loaded);
+
+    const null_status = repositoryFromValue(dashboard.items[4]).?;
+    try std.testing.expect(!null_status.loaded);
 }
 
 test "dashboard model bounds external collection sizes" {
