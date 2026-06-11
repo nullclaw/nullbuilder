@@ -85,6 +85,22 @@ const CliPathSegment = enum {
     }
 };
 
+const CliPathValidation = enum {
+    safe,
+    empty,
+    oversized,
+    option_like,
+    trailing_slash,
+    backslash,
+    windows_drive_prefix,
+    unsafe_segment,
+    unsafe_control,
+
+    fn accepts(self: CliPathValidation) bool {
+        return self == .safe;
+    }
+};
+
 pub fn run(
     gpa: std.mem.Allocator,
     arena: std.mem.Allocator,
@@ -147,17 +163,22 @@ fn registeredLabelFromArg(
 }
 
 fn isSafeCliPath(value: []const u8) bool {
-    if (value.len == 0 or value.len > max_cli_path_bytes) return false;
-    if (std.mem.startsWith(u8, value, "-")) return false;
-    if (hasUnsafeCliPathSyntax(value)) return false;
-    return !terminal.hasUnsafeControl(value, .{});
+    return classifyCliPath(value).accepts();
 }
 
-fn hasUnsafeCliPathSyntax(value: []const u8) bool {
-    if (std.mem.endsWith(u8, value, "/")) return true;
-    if (std.mem.indexOfScalar(u8, value, '\\') != null) return true;
-    if (hasWindowsDrivePrefix(value)) return true;
+fn classifyCliPath(value: []const u8) CliPathValidation {
+    if (value.len == 0) return .empty;
+    if (value.len > max_cli_path_bytes) return .oversized;
+    if (isOptionLikeCliPath(value)) return .option_like;
+    if (hasTrailingPathSeparator(value)) return .trailing_slash;
+    if (hasWindowsPathSeparator(value)) return .backslash;
+    if (hasWindowsDrivePrefix(value)) return .windows_drive_prefix;
+    if (hasUnsafeCliPathSegment(value)) return .unsafe_segment;
+    if (terminal.hasUnsafeControl(value, .{})) return .unsafe_control;
+    return .safe;
+}
 
+fn hasUnsafeCliPathSegment(value: []const u8) bool {
     var segment_start: usize = 0;
     var segment_index: usize = 0;
     while (segment_start <= value.len) {
@@ -177,6 +198,18 @@ fn hasUnsafeCliPathSyntax(value: []const u8) bool {
     }
 
     return false;
+}
+
+fn isOptionLikeCliPath(value: []const u8) bool {
+    return value.len > 0 and value[0] == '-';
+}
+
+fn hasTrailingPathSeparator(value: []const u8) bool {
+    return value.len > 0 and value[value.len - 1] == '/';
+}
+
+fn hasWindowsPathSeparator(value: []const u8) bool {
+    return std.mem.indexOfScalar(u8, value, '\\') != null;
 }
 
 fn classifyCliPathSegment(
@@ -428,6 +461,32 @@ test "node cli path rejects option injection and controls" {
     try std.testing.expect(!isSafeCliPath("bad\x00path"));
     try std.testing.expect(!isSafeCliPath("bad\xc2\x85path"));
     try std.testing.expect(!isSafeCliPath(oversized[0..]));
+}
+
+test "node cli path validation classifies rejection reasons" {
+    const oversized = [_]u8{'a'} ** (max_cli_path_bytes + 1);
+
+    try expectCliPathValidation(.safe, "./bin/nullbuilder.js");
+    try expectCliPathValidation(.empty, "");
+    try expectCliPathValidation(.oversized, oversized[0..]);
+    try expectCliPathValidation(.option_like, "-e");
+    try expectCliPathValidation(.option_like, "--eval=process.exit(1)");
+    try expectCliPathValidation(.trailing_slash, "./");
+    try expectCliPathValidation(.trailing_slash, "/");
+    try expectCliPathValidation(.backslash, "C:\\tmp\\nullbuilder.js");
+    try expectCliPathValidation(.windows_drive_prefix, "C:/tmp/nullbuilder.js");
+    try expectCliPathValidation(.unsafe_segment, "../bin/nullbuilder.js");
+    try expectCliPathValidation(.unsafe_segment, "bin/./nullbuilder.js");
+    try expectCliPathValidation(.unsafe_segment, "bin//nullbuilder.js");
+    try expectCliPathValidation(.unsafe_control, "bad\npath");
+
+    try std.testing.expect(CliPathValidation.safe.accepts());
+    try std.testing.expect(!CliPathValidation.empty.accepts());
+    try std.testing.expect(!CliPathValidation.unsafe_control.accepts());
+}
+
+fn expectCliPathValidation(expected: CliPathValidation, value: []const u8) !void {
+    try std.testing.expectEqual(expected, classifyCliPath(value));
 }
 
 test "node cli path segments classify traversal and roots explicitly" {
