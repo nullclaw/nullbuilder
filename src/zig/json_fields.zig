@@ -5,10 +5,20 @@ const json_safety = @import("json_safety");
 pub const JsonValue = std.json.Value;
 pub const JsonObject = std.json.ObjectMap;
 pub const max_safe_json_integer: u64 = json_safety.max_safe_json_integer;
+pub const max_supported_json_bytes: usize = 64 * 1024 * 1024;
+pub const max_supported_json_value_bytes: usize = 1024 * 1024;
 
 pub const ParseLimits = struct {
     max_bytes: usize,
     max_value_bytes: usize,
+
+    fn isSafe(self: ParseLimits) bool {
+        return self.max_bytes > 0 and
+            self.max_bytes <= max_supported_json_bytes and
+            self.max_value_bytes > 0 and
+            self.max_value_bytes <= max_supported_json_value_bytes and
+            self.max_value_bytes <= self.max_bytes;
+    }
 };
 
 const empty_json_values = [_]JsonValue{};
@@ -22,15 +32,11 @@ pub fn parseBoundedValue(
     json_bytes: []const u8,
     limits: ParseLimits,
 ) !std.json.Parsed(JsonValue) {
-    if (!isSafeParseLimits(limits)) return error.InvalidJsonParseLimits;
+    if (!limits.isSafe()) return error.InvalidJsonParseLimits;
     if (json_bytes.len > limits.max_bytes) return error.JsonTooLarge;
     return std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{
         .max_value_len = limits.max_value_bytes,
     });
-}
-
-fn isSafeParseLimits(limits: ParseLimits) bool {
-    return limits.max_bytes > 0 and limits.max_value_bytes > 0 and limits.max_value_bytes <= limits.max_bytes;
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {
@@ -154,6 +160,18 @@ test "json fields reject unsafe parse limit policies before parsing" {
     try std.testing.expectError(error.InvalidJsonParseLimits, parseBoundedValue(std.testing.allocator, "not-json", .{
         .max_bytes = 16,
         .max_value_bytes = 17,
+    }));
+    try std.testing.expectError(error.InvalidJsonParseLimits, parseBoundedValue(std.testing.allocator, "not-json", .{
+        .max_bytes = max_supported_json_bytes + 1,
+        .max_value_bytes = 1,
+    }));
+    try std.testing.expectError(error.InvalidJsonParseLimits, parseBoundedValue(std.testing.allocator, "not-json", .{
+        .max_bytes = max_supported_json_bytes,
+        .max_value_bytes = max_supported_json_value_bytes + 1,
+    }));
+    try std.testing.expectError(error.InvalidJsonParseLimits, parseBoundedValue(std.testing.allocator, "not-json", .{
+        .max_bytes = std.math.maxInt(usize),
+        .max_value_bytes = std.math.maxInt(usize),
     }));
 }
 
