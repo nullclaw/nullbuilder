@@ -32,6 +32,7 @@ const MAX_TOKEN_COMPARE_BYTES = 4096;
 const FALLBACK_LOGIN_RATE_LIMIT_KEY = 'unknown-client';
 const BUFFER_BYTE_LENGTH = Buffer.byteLength.bind(Buffer) as typeof Buffer.byteLength;
 const BUFFER_FROM = Buffer.from.bind(Buffer) as typeof Buffer.from;
+const DATE_NOW = Date.now.bind(Date) as typeof Date.now;
 
 export type LoginRateLimiterOptions = {
   windowMs: number;
@@ -79,7 +80,7 @@ export class LoginRateLimiter {
 
   constructor(options: LoginRateLimiterOptions) {
     this.#options = normalizeLoginRateLimiterOptions(options);
-    this.#now = options.now ?? Date.now;
+    this.#now = options.now ?? DATE_NOW;
   }
 
   isAllowed(key: string): boolean {
@@ -117,7 +118,7 @@ export class LoginRateLimiter {
   }
 
   #nowMs(): number {
-    return safeClockMillis(this.#now()) ?? safeClockMillis(Date.now()) ?? 0;
+    return safeClockMillis(this.#now()) ?? safeClockMillis(DATE_NOW()) ?? 0;
   }
 
   #prune(now: number): void {
@@ -271,7 +272,7 @@ export function authCookieOptionsForRuntimeEnv(nodeEnv: unknown): AuthCookieOpti
   return authCookieOptions(nodeEnv === 'production');
 }
 
-export function createSessionToken(secret: string, now = Date.now()): string {
+export function createSessionToken(secret: string, now = DATE_NOW()): string {
   const timestamp = normalizeSessionTimestamp(now);
   if (timestamp === null) {
     throw new Error('Invalid session timestamp.');
@@ -281,7 +282,7 @@ export function createSessionToken(secret: string, now = Date.now()): string {
   return `${issuedAt}.${sessionSignature(issuedAt, secret)}`;
 }
 
-export function isSessionTokenMatch(value: string, secret: string, now = Date.now()): boolean {
+export function isSessionTokenMatch(value: string, secret: string, now = DATE_NOW()): boolean {
   const token = parseSessionToken(value);
   const currentTimestamp = normalizeSessionTimestamp(now);
 

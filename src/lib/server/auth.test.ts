@@ -25,8 +25,10 @@ const originalArrayPush = Array.prototype.push;
 const originalNumberParseInt = Number.parseInt;
 const originalBufferByteLength = Buffer.byteLength;
 const originalBufferFrom = Buffer.from;
+const originalDateNow = Date.now;
 
 afterEach(() => {
+  Date.now = originalDateNow;
   restoreArrayPush();
   restoreMapIteration();
   restoreNumberParsing();
@@ -98,6 +100,16 @@ test('session token creation rejects unsafe issue timestamps', () => {
       (error: unknown) => error instanceof Error && error.message === 'Invalid session timestamp.'
     );
   }
+});
+
+test('session token defaults read from a captured clock', () => {
+  Date.now = function dateNowShouldNotBeCalled(): never {
+    throw new Error('Date.now should not be called');
+  };
+
+  const token = createSessionToken('secret');
+
+  assert.equal(isSessionTokenMatch(token, 'secret'), true);
 });
 
 test('session tokens reject malformed bounded parts before matching signatures', () => {
@@ -266,27 +278,35 @@ test('login rate limiter blocks repeated failures and prunes old attempts', () =
 });
 
 test('login rate limiter falls back from unsafe provider clocks', () => {
-  const originalDateNow = Date.now;
-  let fallbackNow = 10_000;
-  Date.now = () => fallbackNow;
+  Date.now = function dateNowShouldNotBeCalled(): never {
+    throw new Error('Date.now should not be called');
+  };
+  const limiter = new LoginRateLimiter({
+    windowMs: 1000,
+    maxFailures: 1,
+    maxKeys: 10,
+    now: () => Number.MAX_SAFE_INTEGER + 1
+  });
 
-  try {
-    const limiter = new LoginRateLimiter({
-      windowMs: 1000,
-      maxFailures: 1,
-      maxKeys: 10,
-      now: () => Number.MAX_SAFE_INTEGER + 1
-    });
+  limiter.recordFailure('client');
 
-    limiter.recordFailure('client');
-    assert.equal(limiter.isAllowed('client'), false);
+  assert.equal(limiter.isAllowed('client'), false);
+  assert.equal(limiter.size, 1);
+});
 
-    fallbackNow += 1001;
-    assert.equal(limiter.isAllowed('client'), true);
-    assert.equal(limiter.size, 0);
-  } finally {
-    Date.now = originalDateNow;
-  }
+test('login rate limiter defaults read from a captured clock', () => {
+  Date.now = function dateNowShouldNotBeCalled(): never {
+    throw new Error('Date.now should not be called');
+  };
+  const limiter = new LoginRateLimiter({
+    windowMs: 1000,
+    maxFailures: 1,
+    maxKeys: 10
+  });
+
+  limiter.recordFailure('client');
+
+  assert.equal(limiter.isAllowed('client'), false);
 });
 
 test('login rate limiter bounds distinct failed clients immediately', () => {
