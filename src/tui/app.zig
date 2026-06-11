@@ -14,12 +14,53 @@ const max_node_cli_arg_count = max_forwarded_arg_count + node_cli_prefix_arg_cou
 const max_app_arg_count = max_forwarded_arg_count + 1;
 const max_app_arg_bytes = max_forwarded_arg_bytes;
 const max_app_args_total_bytes = max_forwarded_args_total_bytes + max_cli_path_bytes;
-const help_commands = [_][]const u8{ "--help", "-h", "help" };
-const tag_commands = [_][]const u8{ "build-pr", "release-tag" };
+
+const HelpCommand = enum {
+    long,
+    short,
+    word,
+
+    fn fromArg(value: []const u8) ?HelpCommand {
+        return registeredLabelFromArg(HelpCommand, help_commands[0..], value);
+    }
+
+    fn label(self: HelpCommand) []const u8 {
+        return switch (self) {
+            .long => "--help",
+            .short => "-h",
+            .word => "help",
+        };
+    }
+};
+
+const help_commands = [_]HelpCommand{ .long, .short, .word };
+
+const TagCommandKind = enum {
+    build_pr,
+    release_tag,
+
+    fn fromArg(value: []const u8) ?TagCommandKind {
+        return registeredLabelFromArg(TagCommandKind, tag_command_kinds[0..], value);
+    }
+
+    fn label(self: TagCommandKind) []const u8 {
+        return switch (self) {
+            .build_pr => "build-pr",
+            .release_tag => "release-tag",
+        };
+    }
+};
+
+const tag_command_kinds = [_]TagCommandKind{ .build_pr, .release_tag };
+
+const TagCommand = struct {
+    kind: TagCommandKind,
+    args: []const []const u8,
+};
 
 const CliCommand = union(enum) {
     dashboard,
-    tag: []const []const u8,
+    tag: TagCommand,
 };
 
 const Command = union(enum) {
@@ -60,24 +101,33 @@ fn classifyCommand(args: []const []const u8) Command {
     if (args.len <= 1) return .{ .cli = .dashboard };
 
     if (isHelpArg(args[1])) return .help;
-    if (isTagCommand(args[1])) return .{ .cli = .{ .tag = args[1..] } };
+    if (TagCommandKind.fromArg(args[1])) |kind| {
+        return .{ .cli = .{ .tag = .{
+            .kind = kind,
+            .args = args[1..],
+        } } };
+    }
     return .invalid;
 }
 
 fn isHelpArg(value: []const u8) bool {
-    return isRegisteredCommand(value, &help_commands);
+    return HelpCommand.fromArg(value) != null;
 }
 
 fn isTagCommand(value: []const u8) bool {
-    return isRegisteredCommand(value, &tag_commands);
+    return TagCommandKind.fromArg(value) != null;
 }
 
-fn isRegisteredCommand(value: []const u8, registry: []const []const u8) bool {
+fn registeredLabelFromArg(
+    comptime Label: type,
+    registry: []const Label,
+    value: []const u8,
+) ?Label {
     for (registry) |candidate| {
-        if (std.mem.eql(u8, value, candidate)) return true;
+        if (std.mem.eql(u8, value, candidate.label())) return candidate;
     }
 
-    return false;
+    return null;
 }
 
 fn isSafeCliPath(value: []const u8) bool {
@@ -187,7 +237,7 @@ fn runCliCommand(
 
     return switch (command) {
         .dashboard => renderDashboard(gpa, arena, io, out, cli_path, no_color),
-        .tag => |tag_args| forwardTagCommand(gpa, io, out, cli_path, tag_args),
+        .tag => |tag_command| forwardTagCommand(gpa, io, out, cli_path, tag_command),
     };
 }
 
@@ -217,15 +267,15 @@ fn forwardTagCommand(
     io: std.Io,
     out: *std.Io.Writer,
     cli_path: []const u8,
-    args: []const []const u8,
+    command: TagCommand,
 ) !?u8 {
-    if (!isSafeForwardedArgs(args)) {
+    if (!hasMatchingTagCommandLabel(command) or !isSafeForwardedArgs(command.args)) {
         try out.writeAll("invalid command arguments\n");
         return 2;
     }
 
     var argv_buffer: [max_node_cli_arg_count][]const u8 = undefined;
-    const argv = buildNodeCliArgv(&argv_buffer, cli_path, args) orelse {
+    const argv = buildNodeCliArgv(&argv_buffer, cli_path, command.args) orelse {
         try out.writeAll("invalid command arguments\n");
         return 2;
     };
@@ -239,6 +289,10 @@ fn forwardTagCommand(
 
     try cli.writeCaptured(out, result);
     return null;
+}
+
+fn hasMatchingTagCommandLabel(command: TagCommand) bool {
+    return command.args.len > 0 and std.mem.eql(u8, command.args[0], command.kind.label());
 }
 
 fn buildNodeCliArgv(
@@ -268,13 +322,15 @@ test "commands are classified without falling through to dashboard" {
     try std.testing.expectEqual(Command.invalid, classifyCommand(&.{ "nullbuilder-tui", "unknown" }));
 
     const build_pr_args = &.{ "nullbuilder-tui", "build-pr", "nullclaw/nullbuilder", "--pr", "7" };
-    const build_pr_tag_args = try expectTagCommand(classifyCommand(build_pr_args));
-    try std.testing.expectEqualStrings("build-pr", build_pr_tag_args[0]);
-    try std.testing.expectEqualStrings("nullclaw/nullbuilder", build_pr_tag_args[1]);
+    const build_pr_tag_command = try expectTagCommand(classifyCommand(build_pr_args));
+    try std.testing.expectEqual(TagCommandKind.build_pr, build_pr_tag_command.kind);
+    try std.testing.expectEqualStrings("build-pr", build_pr_tag_command.args[0]);
+    try std.testing.expectEqualStrings("nullclaw/nullbuilder", build_pr_tag_command.args[1]);
 
     const release_tag_args = &.{ "nullbuilder-tui", "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3" };
-    const release_tag_command_args = try expectTagCommand(classifyCommand(release_tag_args));
-    try std.testing.expectEqualStrings("release-tag", release_tag_command_args[0]);
+    const release_tag_command = try expectTagCommand(classifyCommand(release_tag_args));
+    try std.testing.expectEqual(TagCommandKind.release_tag, release_tag_command.kind);
+    try std.testing.expectEqualStrings("release-tag", release_tag_command.args[0]);
 }
 
 fn expectDashboardCommand(command: Command) !void {
@@ -287,14 +343,48 @@ fn expectDashboardCommand(command: Command) !void {
     }
 }
 
-fn expectTagCommand(command: Command) ![]const []const u8 {
+fn expectTagCommand(command: Command) !TagCommand {
     return switch (command) {
         .cli => |cli_command| switch (cli_command) {
-            .tag => |tag_args| tag_args,
+            .tag => |tag_command| tag_command,
             else => error.UnexpectedCommand,
         },
         else => error.UnexpectedCommand,
     };
+}
+
+test "command registries map labels to typed command kinds" {
+    try std.testing.expectEqual(@as(usize, 3), help_commands.len);
+    for (help_commands) |command| {
+        try std.testing.expectEqual(command, HelpCommand.fromArg(command.label()).?);
+    }
+    try std.testing.expectEqual(@as(?HelpCommand, null), HelpCommand.fromArg("build-pr"));
+
+    try std.testing.expectEqual(@as(usize, 2), tag_command_kinds.len);
+    for (tag_command_kinds) |kind| {
+        try std.testing.expectEqual(kind, TagCommandKind.fromArg(kind.label()).?);
+    }
+    try std.testing.expectEqual(@as(?TagCommandKind, null), TagCommandKind.fromArg("repos"));
+}
+
+test "tag command payloads match their typed command kind" {
+    try std.testing.expect(hasMatchingTagCommandLabel(.{
+        .kind = .build_pr,
+        .args = &.{ "build-pr", "nullclaw/nullbuilder", "--pr", "7" },
+    }));
+    try std.testing.expect(hasMatchingTagCommandLabel(.{
+        .kind = .release_tag,
+        .args = &.{ "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3" },
+    }));
+
+    try std.testing.expect(!hasMatchingTagCommandLabel(.{
+        .kind = .build_pr,
+        .args = &.{ "release-tag", "nullclaw/nullbuilder", "--tag", "v1.2.3" },
+    }));
+    try std.testing.expect(!hasMatchingTagCommandLabel(.{
+        .kind = .release_tag,
+        .args = &.{},
+    }));
 }
 
 test "tag commands are detected explicitly" {
