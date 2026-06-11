@@ -14,6 +14,8 @@ const max_node_cli_arg_count = max_forwarded_arg_count + node_cli_prefix_arg_cou
 const max_app_arg_count = max_forwarded_arg_count + 1;
 const max_app_arg_bytes = max_forwarded_arg_bytes;
 const max_app_args_total_bytes = max_forwarded_args_total_bytes + max_cli_path_bytes;
+const help_commands = [_][]const u8{ "--help", "-h", "help" };
+const tag_commands = [_][]const u8{ "build-pr", "release-tag" };
 
 const CliCommand = union(enum) {
     dashboard,
@@ -63,11 +65,19 @@ fn classifyCommand(args: []const []const u8) Command {
 }
 
 fn isHelpArg(value: []const u8) bool {
-    return std.mem.eql(u8, value, "--help") or std.mem.eql(u8, value, "help");
+    return isRegisteredCommand(value, &help_commands);
 }
 
 fn isTagCommand(value: []const u8) bool {
-    return std.mem.eql(u8, value, "build-pr") or std.mem.eql(u8, value, "release-tag");
+    return isRegisteredCommand(value, &tag_commands);
+}
+
+fn isRegisteredCommand(value: []const u8, registry: []const []const u8) bool {
+    for (registry) |candidate| {
+        if (std.mem.eql(u8, value, candidate)) return true;
+    }
+
+    return false;
 }
 
 fn isSafeCliPath(value: []const u8) bool {
@@ -252,6 +262,7 @@ test "commands are classified without falling through to dashboard" {
     try expectDashboardCommand(classifyCommand(&.{}));
     try expectDashboardCommand(classifyCommand(&.{"nullbuilder-tui"}));
     try std.testing.expectEqual(Command.help, classifyCommand(&.{ "nullbuilder-tui", "--help" }));
+    try std.testing.expectEqual(Command.help, classifyCommand(&.{ "nullbuilder-tui", "-h" }));
     try std.testing.expectEqual(Command.help, classifyCommand(&.{ "nullbuilder-tui", "help" }));
     try std.testing.expectEqual(Command.invalid, classifyCommand(&.{ "nullbuilder-tui", "repos" }));
     try std.testing.expectEqual(Command.invalid, classifyCommand(&.{ "nullbuilder-tui", "unknown" }));
@@ -290,6 +301,10 @@ test "tag commands are detected explicitly" {
     try std.testing.expect(isTagCommand("build-pr"));
     try std.testing.expect(isTagCommand("release-tag"));
     try std.testing.expect(!isTagCommand("repos"));
+    try std.testing.expect(isHelpArg("--help"));
+    try std.testing.expect(isHelpArg("-h"));
+    try std.testing.expect(isHelpArg("help"));
+    try std.testing.expect(!isHelpArg("build-pr"));
 }
 
 test "node cli path rejects option injection and controls" {
