@@ -405,15 +405,30 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
           BUILT_AT: ${{ needs.preflight.outputs.built_at }}
         run: |
+          set -euo pipefail
+
           if [[ ! "${RELEASE_TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${RELEASE_TAG}" == *..* ]]; then
             echo "invalid release_tag: use letters, numbers, dots, underscores, and dashes" >&2
             exit 1
           fi
 
           mkdir -p release-output
-          find nightly-downloads -maxdepth 2 -type f -exec cp '{}' release-output/ ';'
+          asset_count=0
+          while IFS= read -r -d '' asset; do
+            asset_name="$(basename "${asset}")"
+            if [[ ! "${asset_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "${asset_name}" == *..* ]]; then
+              echo "invalid nightly release asset name" >&2
+              exit 1
+            fi
+            if [ -e "release-output/${asset_name}" ]; then
+              echo "duplicate nightly release asset: ${asset_name}" >&2
+              exit 1
+            fi
+            cp "${asset}" "release-output/${asset_name}"
+            asset_count=$((asset_count + 1))
+          done < <(find nightly-downloads -maxdepth 2 -type f -print0 | sort -z)
 
-          if ! compgen -G "release-output/*" >/dev/null; then
+          if [ "${asset_count}" -eq 0 ]; then
             echo "no nightly release assets were downloaded" >&2
             exit 1
           fi

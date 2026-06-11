@@ -160,6 +160,25 @@ test('release workflow validates source archives before staging assets', () => {
   assert.ok(!source.includes('cp "${artifact_dir}"/*.tar.gz release-output/'));
 });
 
+test('nightly workflow validates release asset names before staging upload files', () => {
+  const source = readFileSync(join(workflowsRoot, 'zig-nightly.yml'), 'utf8');
+
+  assert.ok(source.includes('set -euo pipefail\n\n          if [[ ! "${RELEASE_TAG}"'));
+  assert.ok(source.includes('asset_count=0'));
+  assert.ok(source.includes('while IFS= read -r -d \'\' asset; do'));
+  assert.ok(source.includes('asset_name="$(basename "${asset}")"'));
+  assert.ok(source.includes('[[ ! "${asset_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]'));
+  assert.ok(source.includes('[[ "${asset_name}" == *..* ]]'));
+  assert.ok(source.includes('invalid nightly release asset name'));
+  assert.ok(source.includes('if [ -e "release-output/${asset_name}" ]; then'));
+  assert.ok(source.includes('duplicate nightly release asset: ${asset_name}'));
+  assert.ok(source.includes('cp "${asset}" "release-output/${asset_name}"'));
+  assert.ok(source.includes('asset_count=$((asset_count + 1))'));
+  assert.ok(source.includes('done < <(find nightly-downloads -maxdepth 2 -type f -print0 | sort -z)'));
+  assert.ok(source.includes('if [ "${asset_count}" -eq 0 ]; then'));
+  assert.ok(!source.includes("find nightly-downloads -maxdepth 2 -type f -exec cp '{}' release-output/ ';'"));
+});
+
 test('release workflow stages source archives in validated runner temp', () => {
   const source = readFileSync(join(workflowsRoot, 'zig-release.yml'), 'utf8');
 
