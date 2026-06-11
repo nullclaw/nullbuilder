@@ -58,13 +58,16 @@ pub const RunStatuses = struct {
     }
 };
 
-pub fn repositoryRunStatuses(repository_status: []const u8, latest: ?JsonObject) RunStatuses {
-    if (std.mem.eql(u8, repository_status, error_status)) {
-        return repeatedStatus(error_status);
-    }
+pub const RepositoryRunState = enum {
+    loaded,
+    errored,
+};
 
-    const latest_runs = latest orelse return repeatedStatus(missing_status);
-    return RunStatuses.fromLatest(latest_runs);
+pub fn repositoryRunStatuses(repository_state: RepositoryRunState, latest: ?JsonObject) RunStatuses {
+    return switch (repository_state) {
+        .loaded => if (latest) |latest_runs| RunStatuses.fromLatest(latest_runs) else repeatedStatus(missing_status),
+        .errored => repeatedStatus(error_status),
+    };
 }
 
 pub fn repositoryHasFailure(latest: ?JsonObject) bool {
@@ -149,17 +152,17 @@ test "repositoryRunStatuses maps active completed missing and error runs" {
     , .{});
     defer parsed.deinit();
 
-    const statuses = repositoryRunStatuses("ok", parsed.value.object);
+    const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
     try std.testing.expectEqualStrings(success_conclusion, statuses.ci);
     try std.testing.expectEqualStrings("in_progress", statuses.nightly);
     try std.testing.expectEqualStrings(completed_status, statuses.release);
 
-    const missing = repositoryRunStatuses("ok", null);
+    const missing = repositoryRunStatuses(.loaded, null);
     try std.testing.expectEqualStrings(missing_status, missing.ci);
     try std.testing.expectEqualStrings(missing_status, missing.nightly);
     try std.testing.expectEqualStrings(missing_status, missing.release);
 
-    const errored = repositoryRunStatuses(error_status, null);
+    const errored = repositoryRunStatuses(.errored, null);
     try std.testing.expectEqualStrings(error_status, errored.ci);
     try std.testing.expectEqualStrings(error_status, errored.nightly);
     try std.testing.expectEqualStrings(error_status, errored.release);
@@ -185,7 +188,7 @@ test "repositoryRunStatuses rejects oversized run labels" {
     var parsed = try std.json.parseFromSlice(dashboard_json.JsonValue, std.testing.allocator, json, .{});
     defer parsed.deinit();
 
-    const statuses = repositoryRunStatuses("ok", parsed.value.object);
+    const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
     try std.testing.expectEqualStrings(missing_status, statuses.ci);
     try std.testing.expectEqualStrings(completed_status, statuses.nightly);
 }
@@ -200,7 +203,7 @@ test "repositoryRunStatuses rejects control-bearing run labels" {
     , .{});
     defer parsed.deinit();
 
-    const statuses = repositoryRunStatuses("ok", parsed.value.object);
+    const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
     try std.testing.expectEqualStrings(missing_status, statuses.ci);
     try std.testing.expectEqualStrings(completed_status, statuses.nightly);
     try std.testing.expectEqualStrings(success_conclusion, statuses.release);
@@ -217,7 +220,7 @@ test "repositoryRunStatuses rejects unknown run labels without echoing them" {
     , .{});
     defer parsed.deinit();
 
-    const statuses = repositoryRunStatuses("ok", parsed.value.object);
+    const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
     try std.testing.expectEqualStrings(missing_status, statuses.ci);
     try std.testing.expectEqualStrings(failure_conclusion, statuses.nightly);
     try std.testing.expectEqualStrings("action_required", statuses.release);
@@ -277,7 +280,7 @@ test "repositoryRunStatuses falls back for empty run labels" {
     , .{});
     defer parsed.deinit();
 
-    const statuses = repositoryRunStatuses("", parsed.value.object);
+    const statuses = repositoryRunStatuses(.loaded, parsed.value.object);
     try std.testing.expectEqualStrings(missing_status, statuses.ci);
     try std.testing.expectEqualStrings(completed_status, statuses.nightly);
     try std.testing.expectEqualStrings(success_conclusion, statuses.release);

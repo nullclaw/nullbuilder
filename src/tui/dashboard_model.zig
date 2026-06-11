@@ -17,6 +17,31 @@ const max_error_message_len = 2048;
 const ok_status = "ok";
 const error_status = "error";
 
+const RepositoryStatus = enum {
+    loaded,
+    errored,
+
+    fn fromObject(repo: JsonObject) RepositoryStatus {
+        if (repo.get("status") == null) return .loaded;
+
+        const status = dashboard_json.requiredSafeTextField(repo, "status", max_text_field_len) orelse return .errored;
+        if (std.mem.eql(u8, status, ok_status)) return .loaded;
+        if (std.mem.eql(u8, status, error_status)) return .errored;
+        return .errored;
+    }
+
+    fn isLoaded(self: RepositoryStatus) bool {
+        return self == .loaded;
+    }
+
+    fn runState(self: RepositoryStatus) dashboard_runs.RepositoryRunState {
+        return switch (self) {
+            .loaded => .loaded,
+            .errored => .errored,
+        };
+    }
+};
+
 pub const Dashboard = struct {
     items: []const JsonValue,
     errors: []const JsonValue,
@@ -194,8 +219,8 @@ pub fn repositoryFromValue(value: JsonValue) ?Repository {
 
 fn repositoryFromObject(repo: JsonObject) ?Repository {
     const slug = safeRepoSlugField(repo, "slug") orelse return null;
-    const status = repositoryStatus(repo);
-    const loaded = repositoryIsLoaded(status);
+    const status = RepositoryStatus.fromObject(repo);
+    const loaded = status.isLoaded();
     const latest = dashboard_json.objectField(repo, "latestRuns");
 
     return .{
@@ -204,23 +229,11 @@ fn repositoryFromObject(repo: JsonObject) ?Repository {
         .open_issues = if (loaded) dashboard_json.safeIntegerField(repo, "openIssues") else 0,
         .open_pulls = if (loaded) dashboard_json.safeIntegerField(repo, "openPulls") else 0,
         .stars = if (loaded) dashboard_json.safeIntegerField(repo, "stars") else 0,
-        .runs = dashboard_runs.repositoryRunStatuses(status, latest),
+        .runs = dashboard_runs.repositoryRunStatuses(status.runState(), latest),
         .has_failure = loaded and dashboard_runs.repositoryHasFailure(latest),
         .issues = if (loaded) dashboard_json.boundedArrayFieldOrEmpty(repo, "issues", max_work_items_per_repository) else dashboard_json.emptyValues(),
         .pull_requests = if (loaded) dashboard_json.boundedArrayFieldOrEmpty(repo, "pullRequests", max_work_items_per_repository) else dashboard_json.emptyValues(),
     };
-}
-
-fn repositoryIsLoaded(status: []const u8) bool {
-    return std.mem.eql(u8, status, ok_status);
-}
-
-fn repositoryStatus(repo: JsonObject) []const u8 {
-    if (repo.get("status") == null) return ok_status;
-    const status = dashboard_json.requiredSafeTextField(repo, "status", max_text_field_len) orelse return error_status;
-    if (std.mem.eql(u8, status, ok_status)) return ok_status;
-    if (std.mem.eql(u8, status, error_status)) return error_status;
-    return error_status;
 }
 
 fn workItemFromValue(value: JsonValue, repo_slug: []const u8) ?WorkItem {
