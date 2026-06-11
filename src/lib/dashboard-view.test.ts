@@ -17,6 +17,9 @@ import {
 } from './dashboard-view';
 
 const originalArrayPush = Array.prototype.push;
+const originalArrayIsArray = Array.isArray;
+const originalMathMin = Math.min;
+const originalNumber = Number;
 
 test('dashboardOwner falls back to the default owner', () => {
   assert.equal(dashboardOwner({ owner: 'octo' }), 'octo');
@@ -98,6 +101,41 @@ test('visibleAuditFindings avoids global array push hooks', () => {
       value: originalArrayPush
     });
   }
+});
+
+test('visibleAuditFindings reuses captured bounded array helpers', () => {
+  let visible: readonly number[] = [];
+
+  try {
+    globalThis.Number = new Proxy(originalNumber, {
+      get(target, property, receiver) {
+        if (property === 'isSafeInteger') {
+          throw new Error('Number.isSafeInteger should not be read');
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+      apply(): never {
+        throw new Error('Number constructor should not be called');
+      },
+      construct(): never {
+        throw new Error('Number constructor should not be called');
+      }
+    }) as NumberConstructor;
+    Array.isArray = function isArrayShouldNotBeCalled(_arg: unknown): _arg is unknown[] {
+      throw new Error('Array.isArray should not be called');
+    };
+    Math.min = function minShouldNotBeCalled(): never {
+      throw new Error('Math.min should not be called');
+    };
+
+    visible = visibleAuditFindings([1, 2, 3], 2);
+  } finally {
+    globalThis.Number = originalNumber;
+    Array.isArray = originalArrayIsArray;
+    Math.min = originalMathMin;
+  }
+
+  assert.deepEqual(visible, [1, 2]);
 });
 
 test('dashboard view helpers avoid user-controlled array traversal methods', () => {

@@ -18,18 +18,18 @@ export function readObjectRecord(value: unknown): Record<string, unknown> | null
   return prototype === OBJECT_PROTOTYPE || prototype === null ? (value as Record<string, unknown>) : null;
 }
 
-export function readArray(value: unknown): unknown[] {
-  return isRuntimeArray(value) ? value : [];
+export function readArray<T = unknown>(value: unknown): T[] {
+  return isRuntimeArray(value) ? (value as T[]) : [];
 }
 
-export function readBoundedArray(value: unknown, maxItems: unknown): unknown[] {
-  const values = readArray(value);
+export function readBoundedArray<T = unknown>(value: unknown, maxItems: unknown): T[] {
+  const values = readArray<T>(value);
   const limit = normalizeArrayLimit(maxItems);
   if (limit <= 0) {
     return [];
   }
 
-  const bounded: unknown[] = [];
+  const bounded: T[] = [];
   const count = boundedArrayLength(values, limit);
   for (let index = 0; index < count; index += 1) {
     try {

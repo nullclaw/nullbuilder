@@ -1,3 +1,5 @@
+import { isSafePositiveInteger } from './number-safety';
+import { readBoundedArray } from './record-safety';
 import { safeHttpUrlText } from './url-safety';
 
 export type DashboardSection = Readonly<{
@@ -107,17 +109,12 @@ export function hasDashboardReadErrors(
 }
 
 export function visibleAuditFindings<T>(findings: readonly T[], limit = 18): readonly T[] {
-  if (!Number.isSafeInteger(limit) || limit <= 0) {
+  if (!isSafePositiveInteger(limit)) {
     return [];
   }
 
-  const count = Math.min(findings.length, limit, MAX_VISIBLE_AUDIT_FINDINGS);
-  const visible: T[] = [];
-  for (let index = 0; index < count; index += 1) {
-    visible[index] = findings[index];
-  }
-
-  return visible;
+  const boundedLimit = limit > MAX_VISIBLE_AUDIT_FINDINGS ? MAX_VISIBLE_AUDIT_FINDINGS : limit;
+  return readBoundedArray<T>(findings, boundedLimit);
 }
 
 export function buildAuditRepositoryUrls(
