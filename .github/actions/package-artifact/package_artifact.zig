@@ -34,6 +34,98 @@ const PackageValidationError = error{
     InvalidBuiltAt,
 };
 
+const PackageOption = enum {
+    binary,
+    target,
+    zig_target,
+    version,
+    repository,
+    commit,
+    run_id,
+    server_url,
+    built_at,
+
+    fn fromArg(arg: []const u8) ?PackageOption {
+        for (package_options) |option| {
+            if (std.mem.eql(u8, arg, option.flag())) return option;
+        }
+
+        return null;
+    }
+
+    fn flag(self: PackageOption) []const u8 {
+        return switch (self) {
+            .binary => "--binary",
+            .target => "--target",
+            .zig_target => "--zig-target",
+            .version => "--version",
+            .repository => "--repository",
+            .commit => "--commit",
+            .run_id => "--run-id",
+            .server_url => "--server-url",
+            .built_at => "--built-at",
+        };
+    }
+};
+
+const package_options = [_]PackageOption{
+    .binary,
+    .target,
+    .zig_target,
+    .version,
+    .repository,
+    .commit,
+    .run_id,
+    .server_url,
+    .built_at,
+};
+
+const PackageOptionValues = struct {
+    binary_path: ?[]const u8 = null,
+    target: ?[]const u8 = null,
+    zig_target: ?[]const u8 = null,
+    version: ?[]const u8 = null,
+    repository: ?[]const u8 = null,
+    commit: ?[]const u8 = null,
+    run_id: ?[]const u8 = null,
+    server_url: ?[]const u8 = null,
+    built_at: ?[]const u8 = null,
+
+    fn takeValue(
+        self: *PackageOptionValues,
+        iterator: *std.process.Args.Iterator,
+        allocator: std.mem.Allocator,
+        option: PackageOption,
+    ) !void {
+        const flag = option.flag();
+        switch (option) {
+            .binary => try action_args.takeValueOnce(iterator, allocator, &self.binary_path, flag),
+            .target => try action_args.takeValueOnce(iterator, allocator, &self.target, flag),
+            .zig_target => try action_args.takeValueOnce(iterator, allocator, &self.zig_target, flag),
+            .version => try action_args.takeValueOnce(iterator, allocator, &self.version, flag),
+            .repository => try action_args.takeValueOnce(iterator, allocator, &self.repository, flag),
+            .commit => try action_args.takeValueOnce(iterator, allocator, &self.commit, flag),
+            .run_id => try action_args.takeValueOnce(iterator, allocator, &self.run_id, flag),
+            .server_url => try action_args.takeValueOnce(iterator, allocator, &self.server_url, flag),
+            .built_at => try action_args.takeValueOnce(iterator, allocator, &self.built_at, flag),
+        }
+    }
+
+    fn build(self: PackageOptionValues) !PackageOptions {
+        return .{
+            .binary_path = try action_args.required(self.binary_path, PackageOption.binary.flag()),
+            .target = try action_args.required(self.target, PackageOption.target.flag()),
+            .zig_target = try action_args.required(self.zig_target, PackageOption.zig_target.flag()),
+            .version = try action_args.required(self.version, PackageOption.version.flag()),
+            .repository = try action_args.required(self.repository, PackageOption.repository.flag()),
+            .commit = try action_args.required(self.commit, PackageOption.commit.flag()),
+            .run_id = try action_args.required(self.run_id, PackageOption.run_id.flag()),
+            .server_url = try action_args.required(self.server_url, PackageOption.server_url.flag()),
+            .built_at = try action_args.required(self.built_at, PackageOption.built_at.flag()),
+        };
+    }
+};
+
 const ManifestBuildError = error{
     InvalidManifestRunUrl,
     InvalidManifestBinaryPath,
@@ -323,52 +415,15 @@ fn printUsage(io: std.Io) !u8 {
 }
 
 fn parseArgs(iterator: *std.process.Args.Iterator, allocator: std.mem.Allocator) !PackageOptions {
-    var binary_path: ?[]const u8 = null;
-    var target: ?[]const u8 = null;
-    var zig_target: ?[]const u8 = null;
-    var version: ?[]const u8 = null;
-    var repository: ?[]const u8 = null;
-    var commit: ?[]const u8 = null;
-    var run_id: ?[]const u8 = null;
-    var server_url: ?[]const u8 = null;
-    var built_at: ?[]const u8 = null;
+    var values = PackageOptionValues{};
     var option_count: usize = 0;
 
     while (try action_args.nextOption(iterator, &option_count)) |arg| {
-        if (std.mem.eql(u8, arg, "--binary")) {
-            try action_args.takeValueOnce(iterator, allocator, &binary_path, arg);
-        } else if (std.mem.eql(u8, arg, "--target")) {
-            try action_args.takeValueOnce(iterator, allocator, &target, arg);
-        } else if (std.mem.eql(u8, arg, "--zig-target")) {
-            try action_args.takeValueOnce(iterator, allocator, &zig_target, arg);
-        } else if (std.mem.eql(u8, arg, "--version")) {
-            try action_args.takeValueOnce(iterator, allocator, &version, arg);
-        } else if (std.mem.eql(u8, arg, "--repository")) {
-            try action_args.takeValueOnce(iterator, allocator, &repository, arg);
-        } else if (std.mem.eql(u8, arg, "--commit")) {
-            try action_args.takeValueOnce(iterator, allocator, &commit, arg);
-        } else if (std.mem.eql(u8, arg, "--run-id")) {
-            try action_args.takeValueOnce(iterator, allocator, &run_id, arg);
-        } else if (std.mem.eql(u8, arg, "--server-url")) {
-            try action_args.takeValueOnce(iterator, allocator, &server_url, arg);
-        } else if (std.mem.eql(u8, arg, "--built-at")) {
-            try action_args.takeValueOnce(iterator, allocator, &built_at, arg);
-        } else {
-            return action_args.unexpectedOption(arg);
-        }
+        const option = PackageOption.fromArg(arg) orelse return action_args.unexpectedOption(arg);
+        try values.takeValue(iterator, allocator, option);
     }
 
-    return .{
-        .binary_path = try action_args.required(binary_path, "--binary"),
-        .target = try action_args.required(target, "--target"),
-        .zig_target = try action_args.required(zig_target, "--zig-target"),
-        .version = try action_args.required(version, "--version"),
-        .repository = try action_args.required(repository, "--repository"),
-        .commit = try action_args.required(commit, "--commit"),
-        .run_id = try action_args.required(run_id, "--run-id"),
-        .server_url = try action_args.required(server_url, "--server-url"),
-        .built_at = try action_args.required(built_at, "--built-at"),
-    };
+    return values.build();
 }
 
 fn runPackage(io: std.Io, allocator: std.mem.Allocator, options: PackageOptions) !void {
@@ -839,6 +894,55 @@ test "package artifact writes generated outputs with exclusive creation" {
     defer std.testing.allocator.free(contents);
 
     try std.testing.expectEqualStrings("first", contents);
+}
+
+test "package artifact option registry maps parser flags" {
+    try std.testing.expectEqual(@as(usize, 9), package_options.len);
+    for (package_options) |option| {
+        try std.testing.expectEqual(option, PackageOption.fromArg(option.flag()).?);
+    }
+
+    try std.testing.expectEqual(@as(?PackageOption, null), PackageOption.fromArg("--unknown"));
+}
+
+test "package artifact parses registered options" {
+    const argv = [_][*:0]const u8{
+        "package_artifact",
+        "--binary",
+        "nightly-artifacts/nullclaw-linux-x86_64",
+        "--target",
+        "linux-x86_64",
+        "--zig-target",
+        "x86_64-linux-musl",
+        "--version",
+        "nightly-20260504-abcdef0",
+        "--repository",
+        "nullclaw/nullclaw",
+        "--commit",
+        "abcdef0123456789abcdef0123456789abcdef01",
+        "--run-id",
+        "123",
+        "--server-url",
+        "https://github.com",
+        "--built-at",
+        "2026-05-04T02:23:00Z",
+    };
+    var iterator = std.process.Args.Iterator.init(.{ .vector = &argv });
+    _ = iterator.next();
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    const options = try parseArgs(&iterator, arena_state.allocator());
+    try std.testing.expectEqualStrings("nightly-artifacts/nullclaw-linux-x86_64", options.binary_path);
+    try std.testing.expectEqualStrings("linux-x86_64", options.target);
+    try std.testing.expectEqualStrings("x86_64-linux-musl", options.zig_target);
+    try std.testing.expectEqualStrings("nightly-20260504-abcdef0", options.version);
+    try std.testing.expectEqualStrings("nullclaw/nullclaw", options.repository);
+    try std.testing.expectEqualStrings("abcdef0123456789abcdef0123456789abcdef01", options.commit);
+    try std.testing.expectEqualStrings("123", options.run_id);
+    try std.testing.expectEqualStrings("https://github.com", options.server_url);
+    try std.testing.expectEqualStrings("2026-05-04T02:23:00Z", options.built_at);
 }
 
 test "package artifact rejects duplicate options" {
