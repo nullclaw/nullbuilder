@@ -84,6 +84,8 @@ fn readRunsJsonBytes(
     allocator: std.mem.Allocator,
     path: []const u8,
 ) ![]u8 {
+    if (!action_paths.isSafeRelativePath(path)) return error.InvalidRunsJsonPath;
+
     const stat = try dir.statFile(io, path, .{});
     if (stat.kind != .file) return error.RunsJsonNotFile;
     if (stat.size > MAX_RUNS_JSON_BYTES) return error.RunsJsonTooLarge;
@@ -751,6 +753,23 @@ test "nightly rejects oversized runs files before allocation" {
         error.RunsJsonTooLarge,
         readRunsJsonBytes(std.testing.io, tmp.dir, std.testing.failing_allocator, "runs.json"),
     );
+}
+
+test "nightly rejects unsafe runs file paths at read boundary" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    for ([_][]const u8{
+        "../runs.json",
+        "/tmp/runs.json",
+        "nightly-artifacts//runs.json",
+        "C:\\temp\\runs.json",
+    }) |path| {
+        try std.testing.expectError(
+            error.InvalidRunsJsonPath,
+            readRunsJsonBytes(std.testing.io, tmp.dir, std.testing.failing_allocator, path),
+        );
+    }
 }
 
 test "nightly rejects oversized scalar values during runs payload parsing" {
