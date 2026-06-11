@@ -12,10 +12,7 @@ pub const ArgVectorPolicy = struct {
     allow_empty_args: bool = false,
 
     fn normalized(self: ArgVectorPolicy) ?ValidatedArgVectorPolicy {
-        if (self.max_count == 0 or self.max_count > max_supported_arg_count) return null;
-        if (self.max_arg_bytes == 0 or self.max_arg_bytes > max_supported_arg_bytes) return null;
-        if (self.max_total_bytes == 0 or self.max_total_bytes > max_supported_args_total_bytes) return null;
-        if (self.max_arg_bytes > self.max_total_bytes) return null;
+        if (!classifyArgVectorPolicy(self).accepts()) return null;
 
         return .{
             .max_count = self.max_count,
@@ -24,6 +21,21 @@ pub const ArgVectorPolicy = struct {
             .allow_empty_vector = self.allow_empty_vector,
             .allow_empty_args = self.allow_empty_args,
         };
+    }
+};
+
+pub const ArgPolicyValidation = enum {
+    safe,
+    zero_max_count,
+    max_count_unsupported,
+    zero_max_arg_bytes,
+    max_arg_bytes_unsupported,
+    zero_max_total_bytes,
+    max_total_bytes_unsupported,
+    arg_limit_exceeds_total_limit,
+
+    pub fn accepts(self: ArgPolicyValidation) bool {
+        return self == .safe;
     }
 };
 
@@ -41,6 +53,17 @@ pub const ArgVectorValidation = enum {
         return self == .safe;
     }
 };
+
+pub fn classifyArgVectorPolicy(policy: ArgVectorPolicy) ArgPolicyValidation {
+    if (policy.max_count == 0) return .zero_max_count;
+    if (policy.max_count > max_supported_arg_count) return .max_count_unsupported;
+    if (policy.max_arg_bytes == 0) return .zero_max_arg_bytes;
+    if (policy.max_arg_bytes > max_supported_arg_bytes) return .max_arg_bytes_unsupported;
+    if (policy.max_total_bytes == 0) return .zero_max_total_bytes;
+    if (policy.max_total_bytes > max_supported_args_total_bytes) return .max_total_bytes_unsupported;
+    if (policy.max_arg_bytes > policy.max_total_bytes) return .arg_limit_exceeds_total_limit;
+    return .safe;
+}
 
 const ValidatedArgVectorPolicy = struct {
     max_count: usize,
@@ -156,6 +179,57 @@ test "arg safety classifies validation outcomes" {
     try std.testing.expect(ArgVectorValidation.safe.accepts());
     try std.testing.expect(!ArgVectorValidation.invalid_policy.accepts());
     try std.testing.expect(!ArgVectorValidation.unsafe_text.accepts());
+}
+
+test "arg safety classifies policy validation outcomes" {
+    try expectArgPolicyValidation(.safe, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    });
+    try expectArgPolicyValidation(.zero_max_count, .{
+        .max_count = 0,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    });
+    try expectArgPolicyValidation(.max_count_unsupported, .{
+        .max_count = max_supported_arg_count + 1,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 8,
+    });
+    try expectArgPolicyValidation(.zero_max_arg_bytes, .{
+        .max_count = 3,
+        .max_arg_bytes = 0,
+        .max_total_bytes = 8,
+    });
+    try expectArgPolicyValidation(.max_arg_bytes_unsupported, .{
+        .max_count = 3,
+        .max_arg_bytes = max_supported_arg_bytes + 1,
+        .max_total_bytes = max_supported_arg_bytes + 1,
+    });
+    try expectArgPolicyValidation(.zero_max_total_bytes, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = 0,
+    });
+    try expectArgPolicyValidation(.max_total_bytes_unsupported, .{
+        .max_count = 3,
+        .max_arg_bytes = 4,
+        .max_total_bytes = max_supported_args_total_bytes + 1,
+    });
+    try expectArgPolicyValidation(.arg_limit_exceeds_total_limit, .{
+        .max_count = 3,
+        .max_arg_bytes = 9,
+        .max_total_bytes = 8,
+    });
+
+    try std.testing.expect(ArgPolicyValidation.safe.accepts());
+    try std.testing.expect(!ArgPolicyValidation.zero_max_count.accepts());
+    try std.testing.expect(!ArgPolicyValidation.arg_limit_exceeds_total_limit.accepts());
+}
+
+fn expectArgPolicyValidation(expected: ArgPolicyValidation, policy: ArgVectorPolicy) !void {
+    try std.testing.expectEqual(expected, classifyArgVectorPolicy(policy));
 }
 
 fn expectArgVectorValidation(
