@@ -61,7 +61,19 @@ const RunConclusion = enum {
 
     fn fromText(value: ?[]const u8) RunConclusion {
         const label = value orelse return .other;
-        return if (std.mem.eql(u8, label, "success")) .success else .other;
+        if (RunConclusion.success.matches(label)) return .success;
+        return .other;
+    }
+
+    fn text(self: RunConclusion) []const u8 {
+        return switch (self) {
+            .success => "success",
+            .other => "",
+        };
+    }
+
+    fn matches(self: RunConclusion, value: []const u8) bool {
+        return self != .other and std.mem.eql(u8, value, self.text());
     }
 
     fn isSuccess(self: RunConclusion) bool {
@@ -477,6 +489,18 @@ test "nightly run event registry maps accepted trigger labels" {
     try std.testing.expect(RunEvent.schedule.isNightly());
     try std.testing.expect(RunEvent.workflow_dispatch.isNightly());
     try std.testing.expect(!RunEvent.other.isNightly());
+}
+
+test "nightly run conclusion registry maps successful labels" {
+    try std.testing.expectEqual(RunConclusion.success, RunConclusion.fromText("success"));
+    try std.testing.expectEqual(RunConclusion.other, RunConclusion.fromText(null));
+    try std.testing.expectEqual(RunConclusion.other, RunConclusion.fromText("failure"));
+    try std.testing.expectEqual(RunConclusion.other, RunConclusion.fromText("success\n"));
+    try std.testing.expectEqualStrings("success", RunConclusion.success.text());
+    try std.testing.expect(RunConclusion.success.matches("success"));
+    try std.testing.expect(!RunConclusion.success.matches("failure"));
+    try std.testing.expect(RunConclusion.success.isSuccess());
+    try std.testing.expect(!RunConclusion.other.isSuccess());
 }
 
 test "nightly decision reasons own GitHub output labels" {
