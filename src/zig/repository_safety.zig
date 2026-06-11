@@ -5,12 +5,28 @@ pub const max_owner_segment_bytes = 39;
 pub const max_repo_segment_bytes = 100;
 pub const max_repository_slug_bytes = max_owner_segment_bytes + 1 + max_repo_segment_bytes;
 
-pub fn isRepositorySlug(value: []const u8) bool {
-    const slash_index = std.mem.indexOfScalar(u8, value, '/') orelse return false;
-    if (slash_index == 0 or slash_index == value.len - 1) return false;
-    if (std.mem.indexOfScalar(u8, value[slash_index + 1 ..], '/') != null) return false;
+const RepositorySlugParts = struct {
+    owner: []const u8,
+    repo: []const u8,
+};
 
-    return isOwnerSegment(value[0..slash_index]) and isRepoSegment(value[slash_index + 1 ..]);
+pub fn isRepositorySlug(value: []const u8) bool {
+    return parseRepositorySlug(value) != null;
+}
+
+fn parseRepositorySlug(value: []const u8) ?RepositorySlugParts {
+    if (value.len > max_repository_slug_bytes) return null;
+
+    const slash_index = std.mem.indexOfScalar(u8, value, '/') orelse return null;
+    if (slash_index == 0 or slash_index == value.len - 1) return null;
+    if (std.mem.indexOfScalar(u8, value[slash_index + 1 ..], '/') != null) return null;
+
+    const parts = RepositorySlugParts{
+        .owner = value[0..slash_index],
+        .repo = value[slash_index + 1 ..],
+    };
+
+    return if (isOwnerSegment(parts.owner) and isRepoSegment(parts.repo)) parts else null;
 }
 
 pub fn isOwnerSegment(value: []const u8) bool {
@@ -46,6 +62,7 @@ test "repository safety validates repository slugs" {
     try std.testing.expect(isRepositorySlug("nullclaw/nullbuilder"));
     try std.testing.expect(isRepositorySlug("NullClaw/null_Pantry-2"));
     try std.testing.expect(isRepositorySlug("null-claw/null.builder"));
+    try std.testing.expect(isRepositorySlug(("a" ** max_owner_segment_bytes) ++ "/" ++ ("b" ** max_repo_segment_bytes)));
 
     try std.testing.expect(!isRepositorySlug(""));
     try std.testing.expect(!isRepositorySlug("nullbuilder"));
@@ -61,6 +78,7 @@ test "repository safety validates repository slugs" {
     try std.testing.expect(!isRepositorySlug("nullclaw/trailing."));
     try std.testing.expect(!isRepositorySlug("nullclaw/double..dot"));
     try std.testing.expect(!isRepositorySlug("nullclaw/" ++ ("a" ** 101)));
+    try std.testing.expect(!isRepositorySlug(("a" ** max_owner_segment_bytes) ++ "/" ++ ("b" ** max_repo_segment_bytes) ++ "x"));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.git"));
     try std.testing.expect(!isRepositorySlug("nullclaw/nullbuilder.GIT"));
 }
