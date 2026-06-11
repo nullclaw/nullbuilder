@@ -97,7 +97,26 @@ test('nightly decide validates temp root before creating decision output files',
   assert.ok(source.includes('temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"'));
   assert.ok(source.includes('"" | -* | *$\'\\n\'* | *$\'\\r\'*)'));
   assert.ok(source.includes('decision_file="$(mktemp "${temp_root}/nightly-decision.XXXXXX")"'));
+  assert.ok(source.includes('runs_json_file="$(mktemp "${temp_root}/nightly-runs.XXXXXX")"'));
+  assert.ok(source.includes('cp -- "${DECIDE_RUNS_JSON}" "${runs_json_file}"'));
+  assert.ok(source.includes('runs_json_name="${runs_json_file##*/}"'));
+  assert.ok(source.includes('cd "${temp_root}"'));
+  assert.ok(source.includes('--runs-json "${runs_json_name}"'));
+  assert.ok(!source.includes('--runs-json "${DECIDE_RUNS_JSON}"'));
   assert.ok(!source.includes('mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/nightly-decision.XXXXXX"'));
+});
+
+test('nightly workflow keeps previous runs payload outside the checkout workspace', () => {
+  const source = readFileSync(join(workflowsRoot, 'zig-nightly.yml'), 'utf8');
+
+  assert.ok(source.includes('id: previous-runs'));
+  assert.ok(source.includes('runs_json="$(mktemp "${temp_root}/previous-nightly-runs.XXXXXX")"'));
+  assert.ok(source.includes('printf \'runs_json=%s\\n\' "${runs_json}" >> "$GITHUB_OUTPUT"'));
+  assert.ok(source.includes('-o "${runs_json}"'));
+  assert.ok(source.includes('head -c 4096 "${runs_json}" >&2'));
+  assert.ok(source.includes('runs_json: ${{ steps.previous-runs.outputs.runs_json }}'));
+  assert.ok(!source.includes('-o previous-nightly-runs.json'));
+  assert.ok(!source.includes('runs_json: previous-nightly-runs.json'));
 });
 
 test('composite action bash blocks enable strict mode explicitly', () => {

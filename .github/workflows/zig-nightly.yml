@@ -154,14 +154,28 @@ jobs:
           printf 'artifact_prefix=%s\n' "${artifact_prefix}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch previous successful workflow runs
+        id: previous-runs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
+          temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+          case "$temp_root" in
+            "" | -* | *$'\n'* | *$'\r'*)
+              echo "invalid temporary directory" >&2
+              exit 1
+              ;;
+          esac
+
+          runs_json="$(mktemp "${temp_root}/previous-nightly-runs.XXXXXX")"
+          printf 'runs_json=%s\n' "${runs_json}" >> "$GITHUB_OUTPUT"
+
           api_url="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs"
           query="branch=${GITHUB_REF_NAME}&status=success&head_sha=${GITHUB_SHA}&per_page=100"
           http_status="$(
             curl -sS -L --retry 3 --retry-all-errors --connect-timeout 10 --max-time 30 \
-              -o previous-nightly-runs.json \
+              -o "${runs_json}" \
               -w "%{http_code}" \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -171,7 +185,7 @@ jobs:
 
           if [ "${http_status}" != "200" ]; then
             echo "failed to fetch workflow history: HTTP ${http_status}" >&2
-            head -c 4096 previous-nightly-runs.json >&2
+            head -c 4096 "${runs_json}" >&2
             printf '\n' >&2
             exit 1
           fi
@@ -180,7 +194,7 @@ jobs:
         id: decision
         uses: nullclaw/nullbuilder/.github/actions/nightly-decide@v1
         with:
-          runs_json: previous-nightly-runs.json
+          runs_json: ${{ steps.previous-runs.outputs.runs_json }}
           current_run_id: ${{ github.run_id }}
           head_sha: ${{ github.sha }}
           workflow_name: ${{ inputs.dedupe_workflow_name }}

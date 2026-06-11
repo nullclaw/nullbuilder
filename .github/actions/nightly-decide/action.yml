@@ -58,44 +58,50 @@ runs:
         esac
 
         decision_file="$(mktemp "${temp_root}/nightly-decision.XXXXXX")"
-        trap 'rm -f "${decision_file}"' EXIT
+        runs_json_file="$(mktemp "${temp_root}/nightly-runs.XXXXXX")"
+        trap 'rm -f "${decision_file}"; rm -f "${runs_json_file}"' EXIT
+        cp -- "${DECIDE_RUNS_JSON}" "${runs_json_file}"
+        runs_json_name="${runs_json_file##*/}"
 
         force_args=()
         if [ "${FORCE_NIGHTLY}" = "true" ]; then
           force_args+=(--force)
         fi
 
-        zig run \
-          --dep action_args \
-          --dep action_json \
-          --dep action_paths \
-          --dep action_values \
-          -Mroot="$GITHUB_ACTION_PATH/nightly_decide.zig" \
-          --dep action_values \
-          --dep json_fields \
-          -Maction_json="$GITHUB_ACTION_PATH/../action_json.zig" \
-          --dep action_text \
-          -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
-          --dep text_safety \
-          -Maction_paths="$GITHUB_ACTION_PATH/../action_paths.zig" \
-          --dep repository_safety \
-          --dep text_safety \
-          -Maction_values="$GITHUB_ACTION_PATH/../action_values.zig" \
-          --dep text_safety \
-          -Maction_text="$GITHUB_ACTION_PATH/../action_text.zig" \
-          --dep text_safety \
-          -Mrepository_safety="$GITHUB_ACTION_PATH/../../../src/zig/repository_safety.zig" \
-          --dep json_safety \
-          -Mjson_fields="$GITHUB_ACTION_PATH/../../../src/zig/json_fields.zig" \
-          --dep text_safety \
-          -Mjson_safety="$GITHUB_ACTION_PATH/../../../src/zig/json_safety.zig" \
-          -Mtext_safety="$GITHUB_ACTION_PATH/../../../src/zig/text_safety.zig" \
-          -- \
-          --runs-json "${DECIDE_RUNS_JSON}" \
-          --current-run-id "${DECIDE_CURRENT_RUN_ID}" \
-          --head-sha "${DECIDE_HEAD_SHA}" \
-          --workflow-name "${DECIDE_WORKFLOW_NAME}" \
-          "${force_args[@]}" > "${decision_file}"
+        (
+          cd "${temp_root}"
+          zig run \
+            --dep action_args \
+            --dep action_json \
+            --dep action_paths \
+            --dep action_values \
+            -Mroot="$GITHUB_ACTION_PATH/nightly_decide.zig" \
+            --dep action_values \
+            --dep json_fields \
+            -Maction_json="$GITHUB_ACTION_PATH/../action_json.zig" \
+            --dep action_text \
+            -Maction_args="$GITHUB_ACTION_PATH/../action_args.zig" \
+            --dep text_safety \
+            -Maction_paths="$GITHUB_ACTION_PATH/../action_paths.zig" \
+            --dep repository_safety \
+            --dep text_safety \
+            -Maction_values="$GITHUB_ACTION_PATH/../action_values.zig" \
+            --dep text_safety \
+            -Maction_text="$GITHUB_ACTION_PATH/../action_text.zig" \
+            --dep text_safety \
+            -Mrepository_safety="$GITHUB_ACTION_PATH/../../../src/zig/repository_safety.zig" \
+            --dep json_safety \
+            -Mjson_fields="$GITHUB_ACTION_PATH/../../../src/zig/json_fields.zig" \
+            --dep text_safety \
+            -Mjson_safety="$GITHUB_ACTION_PATH/../../../src/zig/json_safety.zig" \
+            -Mtext_safety="$GITHUB_ACTION_PATH/../../../src/zig/text_safety.zig" \
+            -- \
+            --runs-json "${runs_json_name}" \
+            --current-run-id "${DECIDE_CURRENT_RUN_ID}" \
+            --head-sha "${DECIDE_HEAD_SHA}" \
+            --workflow-name "${DECIDE_WORKFLOW_NAME}" \
+            "${force_args[@]}"
+        ) > "${decision_file}"
 
         cat "${decision_file}"
         cat "${decision_file}" >> "$GITHUB_OUTPUT"
