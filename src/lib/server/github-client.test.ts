@@ -18,8 +18,12 @@ import {
   GITHUB_RESPONSE_CACHE_MAX_ENTRIES,
   GITHUB_STATUS_TEXT_MAX_LENGTH,
   GitHubApiError,
+  githubCallerCredentialHeaderEntries,
   githubGetPages,
-  githubRequest
+  githubPublicValidationMessagePolicyEntries,
+  githubRequest,
+  githubRequestMethodEntries,
+  publicErrorMessage
 } from './github-client';
 
 const originalFetch = globalThis.fetch;
@@ -110,6 +114,57 @@ async function withGuardedArrayIterator<T>(callback: () => Promise<T>): Promise<
     Array.prototype[Symbol.iterator] = originalArrayIterator;
   }
 }
+
+test('github client static policies cannot be mutated by callers', () => {
+  const credentialHeaders = githubCallerCredentialHeaderEntries();
+  const requestMethods = githubRequestMethodEntries();
+  const validationPolicies = githubPublicValidationMessagePolicyEntries();
+
+  assert.deepEqual(credentialHeaders, ['Authorization', 'Cookie', 'Proxy-Authorization']);
+  assert.deepEqual(requestMethods, ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
+  assert.deepEqual(
+    validationPolicies.map((policy) => `${policy.match}:${policy.text}`),
+    [
+      'exact:Invalid branch commit SHA.',
+      'exact:Invalid default branch.',
+      'exact:Invalid pull request head SHA.',
+      'exact:Invalid pull request number.',
+      'exact:Invalid tag name.',
+      'exact:Invalid target ref.',
+      'exact:Invalid target SHA.',
+      'exact:Tag name cannot be empty.',
+      'prefix:Pull request is not trusted:',
+      'prefix:Build PR tag must start with ',
+      'prefix:Release tag must start with '
+    ]
+  );
+
+  assert.throws(() => {
+    (credentialHeaders as unknown as string[]).push('X-Caller-Secret');
+  }, TypeError);
+
+  assert.throws(() => {
+    (requestMethods as unknown as string[]).push('CONNECT');
+  }, TypeError);
+
+  assert.throws(() => {
+    (validationPolicies as unknown as Array<(typeof validationPolicies)[number]>).push({
+      match: 'prefix',
+      text: 'Invalid secret'
+    });
+  }, TypeError);
+
+  assert.throws(() => {
+    (validationPolicies[0] as { text: string }).text = 'Invalid secret';
+  }, TypeError);
+
+  assert.equal(publicErrorMessage(new Error('Invalid target ref.')), 'Invalid target ref.');
+  assert.equal(
+    publicErrorMessage(new Error('Build PR tag must start with build-pr-.')),
+    'Build PR tag must start with build-pr-.'
+  );
+  assert.equal(publicErrorMessage(new Error('Build PR tag must include secret-token')), 'Request failed.');
+});
 
 test('githubGetPages follows same-origin pagination links', async () => {
   const config = readConfig({

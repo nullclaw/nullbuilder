@@ -49,32 +49,65 @@ export const GITHUB_REQUEST_HEADER_MAX_ENTRIES = 64;
 export const GITHUB_IN_FLIGHT_REQUEST_MAX_ENTRIES = 256;
 
 const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
-const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie', 'Proxy-Authorization'] as const;
-const ALLOWED_GITHUB_REQUEST_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
+const CALLER_SUPPLIED_CREDENTIAL_HEADERS: ReadonlyArray<string> = Object.freeze([
+  'Authorization',
+  'Cookie',
+  'Proxy-Authorization'
+]);
+const ALLOWED_GITHUB_REQUEST_METHODS: ReadonlyArray<string> = Object.freeze([
+  'GET',
+  'POST',
+  'PATCH',
+  'PUT',
+  'DELETE'
+]);
 const HEADERS_ENTRIES = Headers.prototype.entries;
 const HEADERS_ENTRIES_NEXT = Object.getPrototypeOf(HEADERS_ENTRIES.call(new Headers())).next as ReturnType<
   Headers['entries']
 >['next'];
 const STRUCTURED_CLONE = globalThis.structuredClone;
-const PUBLIC_ERROR_MESSAGE_PREFIXES = [
-  'Pull request is not trusted:',
-  'Build PR tag must start with ',
-  'Release tag must start with '
-] as const;
-const PUBLIC_ERROR_MESSAGES = new Set([
-  'Invalid branch commit SHA.',
-  'Invalid default branch.',
-  'Invalid pull request head SHA.',
-  'Invalid pull request number.',
-  'Invalid tag name.',
-  'Invalid target ref.',
-  'Invalid target SHA.',
-  'Tag name cannot be empty.'
+
+export type GitHubPublicValidationMessagePolicy = Readonly<{
+  match: 'exact' | 'prefix';
+  text: string;
+}>;
+
+function publicValidationMessagePolicy(
+  match: GitHubPublicValidationMessagePolicy['match'],
+  text: string
+): GitHubPublicValidationMessagePolicy {
+  return Object.freeze({ match, text });
+}
+
+const PUBLIC_VALIDATION_MESSAGE_POLICIES: ReadonlyArray<GitHubPublicValidationMessagePolicy> = Object.freeze([
+  publicValidationMessagePolicy('exact', 'Invalid branch commit SHA.'),
+  publicValidationMessagePolicy('exact', 'Invalid default branch.'),
+  publicValidationMessagePolicy('exact', 'Invalid pull request head SHA.'),
+  publicValidationMessagePolicy('exact', 'Invalid pull request number.'),
+  publicValidationMessagePolicy('exact', 'Invalid tag name.'),
+  publicValidationMessagePolicy('exact', 'Invalid target ref.'),
+  publicValidationMessagePolicy('exact', 'Invalid target SHA.'),
+  publicValidationMessagePolicy('exact', 'Tag name cannot be empty.'),
+  publicValidationMessagePolicy('prefix', 'Pull request is not trusted:'),
+  publicValidationMessagePolicy('prefix', 'Build PR tag must start with '),
+  publicValidationMessagePolicy('prefix', 'Release tag must start with ')
 ]);
 const cache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<GitHubFetchResult<unknown>>>();
 const cacheKeyOrder: string[] = [];
 const inFlightRequestKeyOrder: string[] = [];
+
+export function githubCallerCredentialHeaderEntries(): ReadonlyArray<string> {
+  return CALLER_SUPPLIED_CREDENTIAL_HEADERS;
+}
+
+export function githubRequestMethodEntries(): ReadonlyArray<string> {
+  return ALLOWED_GITHUB_REQUEST_METHODS;
+}
+
+export function githubPublicValidationMessagePolicyEntries(): ReadonlyArray<GitHubPublicValidationMessagePolicy> {
+  return PUBLIC_VALIDATION_MESSAGE_POLICIES;
+}
 
 export async function githubGetPages<T>(
   config: NullbuilderConfig,
@@ -164,11 +197,21 @@ function normalizeGitHubRequestMethod(value: string | undefined): string {
     trim: true
   });
   const method = safeValue?.toUpperCase();
-  if (!method || !ALLOWED_GITHUB_REQUEST_METHODS.has(method)) {
+  if (!method || !isAllowedGitHubRequestMethod(method)) {
     throw new Error('Invalid GitHub request method.');
   }
 
   return method;
+}
+
+function isAllowedGitHubRequestMethod(method: string): boolean {
+  for (let index = 0; index < ALLOWED_GITHUB_REQUEST_METHODS.length; index += 1) {
+    if (ALLOWED_GITHUB_REQUEST_METHODS[index] === method) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function normalizeGitHubAcceptHeader(value: string | undefined): string {
@@ -818,9 +861,21 @@ export function publicErrorMessage(error: unknown): string {
 }
 
 function isPublicValidationMessage(message: string): boolean {
-  return (
-    PUBLIC_ERROR_MESSAGES.has(message) || PUBLIC_ERROR_MESSAGE_PREFIXES.some((prefix) => message.startsWith(prefix))
-  );
+  for (let index = 0; index < PUBLIC_VALIDATION_MESSAGE_POLICIES.length; index += 1) {
+    const policy = PUBLIC_VALIDATION_MESSAGE_POLICIES[index];
+    if (policy.match === 'exact') {
+      if (message === policy.text) {
+        return true;
+      }
+      continue;
+    }
+
+    if (message.startsWith(policy.text)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function cacheKey(config: NullbuilderConfig, url: string, accept: string): string {
