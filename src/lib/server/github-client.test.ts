@@ -490,12 +490,12 @@ test('githubGetPages avoids user-controlled page iterators', async () => {
   });
 
   globalThis.fetch = (async () => new Response('[{"id":1},{"id":2}]')) as typeof fetch;
-  JSON.parse = ((body: string) => {
+  const jsonParser = (body: string): unknown => {
     assert.equal(body, '[{"id":1},{"id":2}]');
     return new UnsafeIteratorArray({ id: 1 }, { id: 2 });
-  }) as typeof JSON.parse;
+  };
 
-  const values = await githubGetPages<{ id: number }>(config, '/repos', {}, 1);
+  const values = await githubGetPages<{ id: number }>(config, '/repos', { jsonParser }, 1);
 
   assert.deepEqual(values, [{ id: 1 }, { id: 2 }]);
 });
@@ -1565,6 +1565,46 @@ test('githubRequest rejects malformed JSON responses with a generic parse error'
       error.message === 'GitHub response body is not valid JSON.' &&
       !error.message.includes('secret')
   );
+});
+
+test('githubRequest parses responses with captured JSON parser', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://captured-json-parser.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+
+  globalThis.fetch = (async () => new Response('{"ok":true}')) as typeof fetch;
+  JSON.parse = function jsonParseShouldNotBeCalled(): never {
+    throw new Error('JSON.parse should not be called');
+  };
+
+  assert.deepEqual(await githubRequest(config, '/repos/nullclaw/nullbuilder'), { ok: true });
+});
+
+test('githubRequest bypasses shared cache for custom JSON parsers', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://custom-parser-cache.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+  const jsonParser = (body: string): unknown => ({ parsed: `${body}:${requests.length}` });
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response('payload');
+  }) as typeof fetch;
+
+  const first = await githubRequest<{ parsed: string }>(config, '/repos/nullclaw/nullbuilder', { jsonParser });
+  const second = await githubRequest<{ parsed: string }>(config, '/repos/nullclaw/nullbuilder', { jsonParser });
+
+  assert.deepEqual(first, { parsed: 'payload:1' });
+  assert.deepEqual(second, { parsed: 'payload:2' });
+  assert.deepEqual(requests, [
+    'https://custom-parser-cache.example.test/repos/nullclaw/nullbuilder',
+    'https://custom-parser-cache.example.test/repos/nullclaw/nullbuilder'
+  ]);
 });
 
 test('githubRequest releases response stream readers after successful reads', async () => {

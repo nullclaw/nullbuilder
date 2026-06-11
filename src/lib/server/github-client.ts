@@ -16,10 +16,12 @@ import type { NullbuilderConfig } from './config';
 export type GitHubRequestOptions = RequestInit & {
   accept?: string;
   cacheClock?: GitHubCacheClock;
+  jsonParser?: GitHubJsonParser;
   useCache?: boolean;
 };
 
 type GitHubCacheClock = () => unknown;
+type GitHubJsonParser = (body: string) => unknown;
 
 type GitHubFetchResult<T> = {
   data: T;
@@ -69,6 +71,7 @@ const HEADERS_ENTRIES_NEXT = Object.getPrototypeOf(HEADERS_ENTRIES.call(new Head
   Headers['entries']
 >['next'];
 const OBJECT_GET_OWN_PROPERTY_NAMES = Object.getOwnPropertyNames.bind(Object) as typeof Object.getOwnPropertyNames;
+const JSON_PARSE = JSON.parse.bind(JSON) as typeof JSON.parse;
 const STRUCTURED_CLONE = globalThis.structuredClone;
 const UTF8_RESPONSE_DECODER = new TextDecoder('utf-8', { fatal: true });
 const UTF8_RESPONSE_DECODE = UTF8_RESPONSE_DECODER.decode.bind(UTF8_RESPONSE_DECODER) as TextDecoder['decode'];
@@ -160,11 +163,12 @@ async function githubFetchJson<T>(
   path: string,
   init: GitHubRequestOptions = {}
 ): Promise<GitHubFetchResult<T>> {
-  const { accept: requestedAccept, cacheClock, useCache, ...requestInit } = init;
+  const { accept: requestedAccept, cacheClock, jsonParser: requestedJsonParser, useCache, ...requestInit } = init;
   const method = normalizeGitHubRequestMethod(requestInit.method);
   const accept = normalizeGitHubAcceptHeader(requestedAccept);
+  const jsonParser = normalizeGitHubJsonParser(requestedJsonParser);
   const url = resolveGitHubApiUrl(config, path);
-  const shouldCache = method === 'GET' && useCache !== false && config.cacheTtlMs > 0;
+  const shouldCache = method === 'GET' && requestedJsonParser === undefined && useCache !== false && config.cacheTtlMs > 0;
   const shouldCoalesce = shouldCache && !requestInit.signal;
   const key = shouldCache ? cacheKey(config, url, accept) : '';
   const cached = shouldCache ? readCacheEntry<T>(key) : undefined;
@@ -189,7 +193,8 @@ async function githubFetchJson<T>(
     shouldCache,
     key,
     cached,
-    cacheClock
+    cacheClock,
+    jsonParser
   );
   if (!shouldCoalesce) {
     return request;
@@ -258,7 +263,8 @@ async function requestGitHubJson<T>(
   shouldCache: boolean,
   key: string,
   cached: CacheEntry<T> | undefined,
-  cacheClock: GitHubCacheClock | undefined
+  cacheClock: GitHubCacheClock | undefined,
+  jsonParser: GitHubJsonParser
 ): Promise<GitHubFetchResult<T>> {
   const headers = cloneGitHubRequestHeaders(requestInit.headers);
   stripCallerCredentialHeaders(headers);
@@ -295,11 +301,11 @@ async function requestGitHubJson<T>(
   }
 
   if (!response.ok) {
-    throw await toGitHubApiError(response);
+    throw await toGitHubApiError(response, jsonParser);
   }
 
   const next = parseNextLink(response.headers.get('Link'));
-  const data = await readResponseJson<T>(response);
+  const data = await readResponseJson<T>(response, jsonParser);
 
   if (shouldCache) {
     const now = safeCacheClockMillis(cacheClock);
@@ -482,6 +488,18 @@ function nextHeadersEntry(entries: ReturnType<Headers['entries']>): IteratorResu
   }
 }
 
+function normalizeGitHubJsonParser(value: GitHubJsonParser | undefined): GitHubJsonParser {
+  if (value === undefined) {
+    return JSON_PARSE;
+  }
+
+  if (typeof value !== 'function') {
+    throw new Error('Invalid GitHub JSON parser.');
+  }
+
+  return value;
+}
+
 function appendGitHubRequestHeader(headers: Headers, name: unknown, value: unknown): void {
   const safeName = readSafeTextInput(name, { maxLength: GITHUB_REQUEST_HEADER_NAME_MAX_LENGTH });
   const safeValue = readSafeTextInput(value, { maxLength: GITHUB_REQUEST_HEADER_VALUE_MAX_LENGTH });
@@ -496,9 +514,9 @@ function appendGitHubRequestHeader(headers: Headers, name: unknown, value: unkno
   }
 }
 
-async function toGitHubApiError(response: Response): Promise<GitHubApiError> {
+async function toGitHubApiError(response: Response, jsonParser: GitHubJsonParser): Promise<GitHubApiError> {
   const statusText = safeGitHubErrorText(response.statusText, GITHUB_STATUS_TEXT_MAX_LENGTH) || 'Error';
-  const detail = await readErrorDetail(response);
+  const detail = await readErrorDetail(response, jsonParser);
   const remaining = response.headers.get('X-RateLimit-Remaining');
   const reset = response.headers.get('X-RateLimit-Reset');
   const rateLimit = rateLimitResetMessage(remaining, reset);
@@ -506,21 +524,21 @@ async function toGitHubApiError(response: Response): Promise<GitHubApiError> {
   return new GitHubApiError(`GitHub ${response.status} ${statusText}${detail}${rateLimit}`, response.status);
 }
 
-async function readResponseJson<T>(response: Response): Promise<T> {
-  return readLimitedResponseJson<T>(response, GITHUB_JSON_RESPONSE_MAX_BYTES);
+async function readResponseJson<T>(response: Response, jsonParser: GitHubJsonParser): Promise<T> {
+  return readLimitedResponseJson<T>(response, GITHUB_JSON_RESPONSE_MAX_BYTES, jsonParser);
 }
 
-function parseGitHubResponseJson<T>(body: string): T {
+function parseGitHubResponseJson<T>(body: string, jsonParser: GitHubJsonParser): T {
   try {
-    return JSON.parse(body) as T;
+    return jsonParser(body) as T;
   } catch {
     throw new Error('GitHub response body is not valid JSON.');
   }
 }
 
-async function readErrorDetail(response: Response): Promise<string> {
+async function readErrorDetail(response: Response, jsonParser: GitHubJsonParser): Promise<string> {
   try {
-    const body = await readLimitedResponseJson<unknown>(response, GITHUB_ERROR_RESPONSE_MAX_BYTES);
+    const body = await readLimitedResponseJson<unknown>(response, GITHUB_ERROR_RESPONSE_MAX_BYTES, jsonParser);
     if (!isGitHubErrorPayload(body)) {
       return '';
     }
@@ -532,12 +550,16 @@ async function readErrorDetail(response: Response): Promise<string> {
   }
 }
 
-async function readLimitedResponseJson<T>(response: Response, maxBytes: number): Promise<T> {
+async function readLimitedResponseJson<T>(
+  response: Response,
+  maxBytes: number,
+  jsonParser: GitHubJsonParser
+): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
 
-  return parseGitHubResponseJson<T>(await readBoundedResponseText(response, maxBytes));
+  return parseGitHubResponseJson<T>(await readBoundedResponseText(response, maxBytes), jsonParser);
 }
 
 async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string> {
