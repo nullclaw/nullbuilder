@@ -11,6 +11,7 @@ export type BoundedByteStreamResult =
     };
 
 const EMPTY_BYTES = new Uint8Array();
+const DECIMAL_BYTE_COUNT_PATTERN = /^[0-9]+$/;
 
 export function contentLengthExceedsByteLimit(value: string, maxBytes: number, maxHeaderLength: number): boolean {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
@@ -21,12 +22,11 @@ export function contentLengthExceedsByteLimit(value: string, maxBytes: number, m
     maxLength: maxHeaderLength,
     trim: true
   });
-  if (!safeValue || !/^[0-9]+$/.test(safeValue)) {
+  if (!safeValue) {
     return true;
   }
 
-  const parsed = Number(safeValue);
-  return !Number.isSafeInteger(parsed) || parsed > maxBytes;
+  return parseBoundedDecimalByteCount(safeValue, maxBytes) === null;
 }
 
 export async function readBoundedByteStream(
@@ -116,4 +116,20 @@ function joinByteChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
   }
 
   return bytes;
+}
+
+function parseBoundedDecimalByteCount(value: string, maxBytes: number): number | null {
+  if (!DECIMAL_BYTE_COUNT_PATTERN.test(value)) {
+    return null;
+  }
+
+  let parsed = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    parsed = parsed * 10 + (value.charCodeAt(index) - 48);
+    if (parsed > maxBytes) {
+      return null;
+    }
+  }
+
+  return parsed;
 }

@@ -4,14 +4,35 @@ import { arrayBufferFromBytes, contentLengthExceedsByteLimit, readBoundedByteStr
 
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalArrayPush = Array.prototype.push;
+const originalNumber = Number;
 
 test('contentLengthExceedsByteLimit accepts only bounded decimal byte counts', () => {
   assert.equal(contentLengthExceedsByteLimit('0', 4, 8), false);
   assert.equal(contentLengthExceedsByteLimit('4', 4, 8), false);
+  assert.equal(contentLengthExceedsByteLimit('0004', 4, 8), false);
   assert.equal(contentLengthExceedsByteLimit(' 4 ', 4, 8), false);
 
-  for (const contentLength of ['5', '10junk', '1e9', '-1', '1.5', '', '9007199254740992', '1'.repeat(9)]) {
+  for (const contentLength of ['5', '0005', '10junk', '1e9', '-1', '1.5', '', '9007199254740992', '1'.repeat(9)]) {
     assert.equal(contentLengthExceedsByteLimit(contentLength, 4, 8), true);
+  }
+});
+
+test('contentLengthExceedsByteLimit uses checked decimal parsing', () => {
+  globalThis.Number = new Proxy(originalNumber, {
+    apply(): never {
+      throw new Error('Number constructor should not be called');
+    },
+    construct(): never {
+      throw new Error('Number constructor should not be called');
+    }
+  });
+
+  try {
+    assert.equal(contentLengthExceedsByteLimit('0004', 4, 8), false);
+    assert.equal(contentLengthExceedsByteLimit('0005', 4, 8), true);
+    assert.equal(contentLengthExceedsByteLimit('9007199254740992', Number.MAX_SAFE_INTEGER, 32), true);
+  } finally {
+    globalThis.Number = originalNumber;
   }
 });
 
