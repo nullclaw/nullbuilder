@@ -194,7 +194,7 @@ fn renderDashboard(
     });
     defer cli.freeResult(gpa, result);
 
-    if (try cli.exitCodeForFailure(out, result, &.{ 0, 2 })) |exit_code| {
+    if (try cli.exitCodeForFailure(out, result, .success_or_read_errors)) |exit_code| {
         return exit_code;
     }
 
@@ -223,7 +223,7 @@ fn forwardTagCommand(
     const result = try cli.run(gpa, io, argv, .{});
     defer cli.freeResult(gpa, result);
 
-    if (try cli.exitCodeForFailure(out, result, &.{0})) |exit_code| {
+    if (try cli.exitCodeForFailure(out, result, .success_only)) |exit_code| {
         return exit_code;
     }
 

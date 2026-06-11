@@ -12,10 +12,23 @@ const max_child_arg_count = 128;
 const max_child_arg_bytes = 4096;
 const max_child_args_total_bytes = max_child_arg_count * max_child_arg_bytes;
 const abnormal_child_exit_code: u8 = 1;
+const read_error_exit_code: u8 = 2;
 
 pub const OutputLimits = struct {
     stdout: usize = default_stdout_limit,
     stderr: usize = default_stderr_limit,
+};
+
+pub const ExitCodePolicy = enum {
+    success_only,
+    success_or_read_errors,
+
+    fn allows(self: ExitCodePolicy, code: u8) bool {
+        return switch (self) {
+            .success_only => code == 0,
+            .success_or_read_errors => code == 0 or code == read_error_exit_code,
+        };
+    }
 };
 
 pub fn run(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8, limits: OutputLimits) !std.process.RunResult {
@@ -41,11 +54,11 @@ pub fn writeCaptured(out: *std.Io.Writer, result: std.process.RunResult) !void {
 pub fn exitCodeForFailure(
     out: *std.Io.Writer,
     result: std.process.RunResult,
-    allowed_exit_codes: []const u8,
+    exit_policy: ExitCodePolicy,
 ) !?u8 {
     switch (result.term) {
         .exited => |code| {
-            if (isAllowedExitCode(code, allowed_exit_codes)) {
+            if (exit_policy.allows(code)) {
                 return null;
             }
 
@@ -82,14 +95,6 @@ fn writeCapturedWithOrder(out: *std.Io.Writer, result: std.process.RunResult, or
 fn writeCapturedStream(out: *std.Io.Writer, value: []const u8, budget: *terminal.OutputBudget) !void {
     if (value.len == 0 or budget.truncated) return;
     _ = try terminal.writeSafeBudgeted(out, value, budget, .{ .preserve_newlines = true });
-}
-
-fn isAllowedExitCode(code: u8, allowed_exit_codes: []const u8) bool {
-    for (allowed_exit_codes) |allowed| {
-        if (code == allowed) return true;
-    }
-
-    return false;
 }
 
 fn isSafeChildArgv(argv: []const []const u8) bool {
@@ -170,10 +175,33 @@ test "child process runner rejects invalid argv before spawning" {
     ));
 }
 
-test "exit code allow-list accepts only configured codes" {
-    try std.testing.expect(isAllowedExitCode(0, &.{0}));
-    try std.testing.expect(isAllowedExitCode(2, &.{ 0, 2 }));
-    try std.testing.expect(!isAllowedExitCode(1, &.{ 0, 2 }));
+test "exit code policy makes allowed child exits explicit" {
+    try std.testing.expect(ExitCodePolicy.success_only.allows(0));
+    try std.testing.expect(!ExitCodePolicy.success_only.allows(read_error_exit_code));
+    try std.testing.expect(ExitCodePolicy.success_or_read_errors.allows(0));
+    try std.testing.expect(ExitCodePolicy.success_or_read_errors.allows(read_error_exit_code));
+    try std.testing.expect(!ExitCodePolicy.success_or_read_errors.allows(1));
+    try std.testing.expect(!ExitCodePolicy.success_or_read_errors.allows(3));
+}
+
+test "read-error exit policy allows rendering partial dashboard payloads" {
+    const stdout = try std.testing.allocator.dupe(u8, "{}");
+    defer std.testing.allocator.free(stdout);
+
+    const stderr = try std.testing.allocator.dupe(u8, "repository read failed");
+    defer std.testing.allocator.free(stderr);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const exit_code = try exitCodeForFailure(&out.writer, .{
+        .term = .{ .exited = read_error_exit_code },
+        .stdout = stdout,
+        .stderr = stderr,
+    }, .success_or_read_errors);
+
+    try std.testing.expectEqual(@as(?u8, null), exit_code);
+    try std.testing.expectEqualStrings("", out.writer.buffered());
 }
 
 test "captured child output shares one display budget across stdout and stderr" {
@@ -215,7 +243,7 @@ test "failure output keeps stderr first while sharing the display budget" {
         .term = .{ .exited = 1 },
         .stdout = stdout,
         .stderr = stderr,
-    }, &.{0});
+    }, .success_only);
 
     const output = out.writer.buffered();
     try std.testing.expectEqual(@as(?u8, 1), exit_code);
@@ -239,7 +267,7 @@ test "abnormal child termination returns a stable exit code" {
         .term = .{ .unknown = 9 },
         .stdout = stdout,
         .stderr = stderr,
-    }, &.{0});
+    }, .success_only);
 
     try std.testing.expectEqual(@as(?u8, abnormal_child_exit_code), exit_code);
     try std.testing.expectEqualStrings("stderr\nbadred", out.writer.buffered());
