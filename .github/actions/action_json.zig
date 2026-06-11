@@ -6,6 +6,7 @@ const json_fields = @import("json_fields");
 pub const JsonValue = json_fields.JsonValue;
 pub const JsonObject = json_fields.JsonObject;
 pub const ParseLimits = json_fields.ParseLimits;
+pub const ParseRequestValidation = json_fields.ParseRequestValidation;
 pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
 pub const max_supported_json_array_items: usize = json_fields.max_supported_json_array_items;
 
@@ -19,6 +20,10 @@ pub fn parseBoundedValue(
     limits: ParseLimits,
 ) !std.json.Parsed(JsonValue) {
     return json_fields.parseBoundedValue(allocator, json_bytes, limits);
+}
+
+pub fn classifyParseRequest(json_bytes: []const u8, limits: ParseLimits) ParseRequestValidation {
+    return json_fields.classifyParseRequest(json_bytes, limits);
 }
 
 pub fn objectValue(value: JsonValue) ?JsonObject {
@@ -50,6 +55,36 @@ test "action json exposes typed objects arrays and empty slices" {
     try std.testing.expectEqual(null, boundedArrayField(object, "name", 5));
     try std.testing.expectEqual(null, objectValue(parsed.value.object.get("items").?));
     try std.testing.expectEqual(@as(usize, 0), emptyValues().len);
+}
+
+test "action json exposes bounded parse request classification" {
+    try expectParseRequestValidation(.safe, "{\"name\":\"ok\"}", .{
+        .max_bytes = 64,
+        .max_value_bytes = 16,
+    });
+    try expectParseRequestValidation(.payload_too_large, "{}", .{
+        .max_bytes = 1,
+        .max_value_bytes = 1,
+    });
+    try expectParseRequestValidation(.zero_max_bytes, "not-json", .{
+        .max_bytes = 0,
+        .max_value_bytes = 1,
+    });
+    try expectParseRequestValidation(.value_limit_exceeds_payload_limit, "not-json", .{
+        .max_bytes = 16,
+        .max_value_bytes = 17,
+    });
+
+    try std.testing.expect(ParseRequestValidation.safe.accepts());
+    try std.testing.expect(!ParseRequestValidation.payload_too_large.accepts());
+}
+
+fn expectParseRequestValidation(
+    expected: ParseRequestValidation,
+    json_bytes: []const u8,
+    limits: ParseLimits,
+) !void {
+    try std.testing.expectEqual(expected, classifyParseRequest(json_bytes, limits));
 }
 
 test "action json safe integer fields match JSON safe integer domain" {
