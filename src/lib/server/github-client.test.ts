@@ -25,6 +25,7 @@ import {
 const originalFetch = globalThis.fetch;
 const originalDateNow = Date.now;
 const originalJsonParse = JSON.parse;
+const originalStructuredClone = globalThis.structuredClone;
 const originalArrayPush = Array.prototype.push;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalMapKeys = Map.prototype.keys;
@@ -34,6 +35,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   Date.now = originalDateNow;
   JSON.parse = originalJsonParse;
+  globalThis.structuredClone = originalStructuredClone;
   restoreArrayPush();
   Array.prototype[Symbol.iterator] = originalArrayIterator;
   restoreMapIteration();
@@ -1043,6 +1045,31 @@ test('githubRequest isolates coalesced in-flight response data between callers',
   assert.notEqual(first, second);
   assert.notEqual(second, cached);
   assert.deepEqual(requests, ['https://inflight-isolation.example.test/repos/nullclaw/nullbuilder']);
+});
+
+test('githubRequest cache isolation uses the captured structured clone intrinsic', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://captured-clone.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '60000'
+  });
+  const requests: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify({ nested: { topics: ['zig'] } }));
+  }) as typeof fetch;
+  globalThis.structuredClone = (() => {
+    throw new Error('private structuredClone hook');
+  }) as typeof structuredClone;
+
+  const first = await githubRequest<{ nested: { topics: string[] } }>(config, '/repos/nullclaw/nullbuilder');
+  first.nested.topics.push('mutated');
+  const second = await githubRequest<{ nested: { topics: string[] } }>(config, '/repos/nullclaw/nullbuilder');
+
+  assert.deepEqual(first, { nested: { topics: ['zig', 'mutated'] } });
+  assert.deepEqual(second, { nested: { topics: ['zig'] } });
+  assert.deepEqual(requests, ['https://captured-clone.example.test/repos/nullclaw/nullbuilder']);
 });
 
 test('githubRequest keeps caller-abortable GET requests independent', async () => {

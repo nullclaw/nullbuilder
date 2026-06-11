@@ -52,6 +52,7 @@ const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie', 'Proxy-Authorization'] as const;
 const ALLOWED_GITHUB_REQUEST_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 const HEADERS_ENTRIES = Headers.prototype.entries;
+const STRUCTURED_CLONE = globalThis.structuredClone;
 const PUBLIC_ERROR_MESSAGE_PREFIXES = [
   'Pull request is not trusted:',
   'Build PR tag must start with ',
@@ -848,7 +849,7 @@ function cloneFetchResult<T>(result: GitHubFetchResult<T>): GitHubFetchResult<T>
 }
 
 function cloneSharedJsonData<T>(data: T): T {
-  return structuredClone(data);
+  return STRUCTURED_CLONE(data);
 }
 
 function safeCacheClockMillis(): number | null {
