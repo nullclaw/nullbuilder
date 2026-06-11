@@ -13,12 +13,24 @@ pub const ParseLimits = struct {
     max_bytes: usize,
     max_value_bytes: usize,
 
-    fn isSafe(self: ParseLimits) bool {
-        return self.max_bytes > 0 and
-            self.max_bytes <= max_supported_json_bytes and
-            self.max_value_bytes > 0 and
-            self.max_value_bytes <= max_supported_json_value_bytes and
-            self.max_value_bytes <= self.max_bytes;
+    fn normalized(self: ParseLimits) ?ValidatedParseLimits {
+        if (self.max_bytes == 0 or self.max_bytes > max_supported_json_bytes) return null;
+        if (self.max_value_bytes == 0 or self.max_value_bytes > max_supported_json_value_bytes) return null;
+        if (self.max_value_bytes > self.max_bytes) return null;
+
+        return .{
+            .max_bytes = self.max_bytes,
+            .max_value_bytes = self.max_value_bytes,
+        };
+    }
+};
+
+const ValidatedParseLimits = struct {
+    max_bytes: usize,
+    max_value_bytes: usize,
+
+    fn acceptsPayload(self: ValidatedParseLimits, json_bytes: []const u8) bool {
+        return json_bytes.len <= self.max_bytes;
     }
 };
 
@@ -33,10 +45,10 @@ pub fn parseBoundedValue(
     json_bytes: []const u8,
     limits: ParseLimits,
 ) !std.json.Parsed(JsonValue) {
-    if (!limits.isSafe()) return error.InvalidJsonParseLimits;
-    if (json_bytes.len > limits.max_bytes) return error.JsonTooLarge;
+    const safe_limits = limits.normalized() orelse return error.InvalidJsonParseLimits;
+    if (!safe_limits.acceptsPayload(json_bytes)) return error.JsonTooLarge;
     return std.json.parseFromSlice(JsonValue, allocator, json_bytes, .{
-        .max_value_len = limits.max_value_bytes,
+        .max_value_len = safe_limits.max_value_bytes,
     });
 }
 
@@ -163,6 +175,10 @@ test "json fields parse helper bounds payloads and scalar values" {
 
     try std.testing.expect(objectValue(parsed.value) != null);
     try std.testing.expectError(error.JsonTooLarge, parseBoundedValue(std.testing.allocator, "{}", .{
+        .max_bytes = 1,
+        .max_value_bytes = 1,
+    }));
+    try std.testing.expectError(error.JsonTooLarge, parseBoundedValue(std.testing.allocator, "not-json", .{
         .max_bytes = 1,
         .max_value_bytes = 1,
     }));
