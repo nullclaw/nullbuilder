@@ -17,24 +17,41 @@ const MAX_RUN_EVENT_BYTES = 64;
 const MAX_RUN_CONCLUSION_BYTES = 64;
 const MAX_RUN_HEAD_SHA_BYTES = 40;
 
-const NIGHTLY_EVENT_LABELS = [_][]const u8{ "schedule", "workflow_dispatch" };
 const TEST_HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
 const TEST_OTHER_HEAD_SHA = "89abcdef0123456789abcdef0123456789abcdef";
 
 const RunEvent = enum {
-    nightly,
+    schedule,
+    workflow_dispatch,
     other,
 
+    const nightly_triggers = [_]RunEvent{ .schedule, .workflow_dispatch };
+
     fn fromText(value: []const u8) RunEvent {
-        for (NIGHTLY_EVENT_LABELS) |candidate| {
-            if (std.mem.eql(u8, value, candidate)) return .nightly;
+        for (nightly_triggers) |candidate| {
+            if (candidate.matches(value)) return candidate;
         }
 
         return .other;
     }
 
+    fn text(self: RunEvent) []const u8 {
+        return switch (self) {
+            .schedule => "schedule",
+            .workflow_dispatch => "workflow_dispatch",
+            .other => "",
+        };
+    }
+
+    fn matches(self: RunEvent, value: []const u8) bool {
+        return self != .other and std.mem.eql(u8, value, self.text());
+    }
+
     fn isNightly(self: RunEvent) bool {
-        return self == .nightly;
+        return switch (self) {
+            .schedule, .workflow_dispatch => true,
+            .other => false,
+        };
     }
 };
 
@@ -61,9 +78,23 @@ const Run = struct {
     html_url: []const u8 = "",
 };
 
+const DecisionReason = enum {
+    forced,
+    new_sha,
+    successful_nightly_exists,
+
+    fn text(self: DecisionReason) []const u8 {
+        return switch (self) {
+            .forced => "forced",
+            .new_sha => "new-sha",
+            .successful_nightly_exists => "successful-nightly-exists",
+        };
+    }
+};
+
 const Decision = struct {
     should_build: bool,
-    reason: []const u8,
+    reason: DecisionReason,
     matched_run_id: ?u64 = null,
     matched_run_url: []const u8 = "",
 };
@@ -206,7 +237,7 @@ fn decideShouldBuild(
         }
     }
 
-    return .{ .should_build = true, .reason = "new-sha" };
+    return .{ .should_build = true, .reason = .new_sha };
 }
 
 fn decideShouldBuildFromPayload(
@@ -227,11 +258,11 @@ fn decideShouldBuildFromPayload(
         }
     }
 
-    return .{ .should_build = true, .reason = "new-sha" };
+    return .{ .should_build = true, .reason = .new_sha };
 }
 
 fn forcedDecision() Decision {
-    return .{ .should_build = true, .reason = "forced" };
+    return .{ .should_build = true, .reason = .forced };
 }
 
 fn parseCurrentRunId(current_run_id: []const u8) ?u64 {
@@ -254,7 +285,7 @@ fn matchingSuccessfulRun(run: Run, current_id: ?u64, head_sha: []const u8, workf
 fn skipDecision(run: Run) Decision {
     return .{
         .should_build = false,
-        .reason = "successful-nightly-exists",
+        .reason = .successful_nightly_exists,
         .matched_run_id = run.id,
         .matched_run_url = safeMatchedRunUrl(run.html_url),
     };
@@ -325,8 +356,9 @@ fn writeOutputLine(out: *std.Io.Writer, key: []const u8, value: []const u8) !voi
 
 fn writeDecision(out: *std.Io.Writer, decision: Decision) !void {
     const should_build = if (decision.should_build) "true" else "false";
+    const reason = decision.reason.text();
     try validateActionOutputValue(should_build);
-    try validateActionOutputValue(decision.reason);
+    try validateActionOutputValue(reason);
     if (decision.matched_run_url.len > 0) {
         try validateActionOutputUrl(decision.matched_run_url);
     }
@@ -335,7 +367,7 @@ fn writeDecision(out: *std.Io.Writer, decision: Decision) !void {
     }
 
     try writeOutputLine(out, "should_build", should_build);
-    try writeOutputLine(out, "reason", decision.reason);
+    try writeOutputLine(out, "reason", reason);
     if (decision.matched_run_id) |id| try out.print("matched_run_id={d}\n", .{id});
     if (decision.matched_run_url.len > 0) try writeOutputLine(out, "matched_run_url", decision.matched_run_url);
 }
@@ -435,7 +467,22 @@ pub fn main(init: std.process.Init) !u8 {
 test "nightly decide builds when history is empty" {
     const decision = decideShouldBuild(&.{}, "10", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(decision.should_build);
-    try std.testing.expectEqualStrings("new-sha", decision.reason);
+    try std.testing.expectEqual(DecisionReason.new_sha, decision.reason);
+}
+
+test "nightly run event registry maps accepted trigger labels" {
+    try std.testing.expectEqual(RunEvent.schedule, RunEvent.fromText("schedule"));
+    try std.testing.expectEqual(RunEvent.workflow_dispatch, RunEvent.fromText("workflow_dispatch"));
+    try std.testing.expectEqual(RunEvent.other, RunEvent.fromText("push"));
+    try std.testing.expect(RunEvent.schedule.isNightly());
+    try std.testing.expect(RunEvent.workflow_dispatch.isNightly());
+    try std.testing.expect(!RunEvent.other.isNightly());
+}
+
+test "nightly decision reasons own GitHub output labels" {
+    try std.testing.expectEqualStrings("forced", DecisionReason.forced.text());
+    try std.testing.expectEqualStrings("new-sha", DecisionReason.new_sha.text());
+    try std.testing.expectEqualStrings("successful-nightly-exists", DecisionReason.successful_nightly_exists.text());
 }
 
 test "nightly decide skips successful previous nightly for same sha and workflow" {
@@ -443,14 +490,14 @@ test "nightly decide skips successful previous nightly for same sha and workflow
     const decision = decideShouldBuild(&.{.{
         .id = 9,
         .name = "Nightly",
-        .event = .nightly,
+        .event = .schedule,
         .head_sha = TEST_HEAD_SHA,
         .conclusion = .success,
         .html_url = "https://github.com/nullclaw/nullbuilder/actions/runs/9",
     }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
     try std.testing.expect(!decision.should_build);
-    try std.testing.expectEqualStrings("successful-nightly-exists", decision.reason);
+    try std.testing.expectEqual(DecisionReason.successful_nightly_exists, decision.reason);
     try std.testing.expectEqual(@as(?u64, 9), decision.matched_run_id);
     try std.testing.expectEqualStrings("https://github.com/nullclaw/nullbuilder/actions/runs/9", decision.matched_run_url);
 }
@@ -460,21 +507,21 @@ test "nightly decide ignores other workflows current run failed runs and non nig
         .{
             .id = 10,
             .name = "Nightly",
-            .event = .nightly,
+            .event = .schedule,
             .head_sha = TEST_HEAD_SHA,
             .conclusion = .success,
         },
         .{
             .id = 8,
             .name = "Nightly",
-            .event = .nightly,
+            .event = .schedule,
             .head_sha = TEST_HEAD_SHA,
             .conclusion = .other,
         },
         .{
             .id = 7,
             .name = "CI",
-            .event = .nightly,
+            .event = .schedule,
             .head_sha = TEST_HEAD_SHA,
             .conclusion = .success,
         },
@@ -488,27 +535,27 @@ test "nightly decide ignores other workflows current run failed runs and non nig
         .{
             .id = 5,
             .name = "Nightly",
-            .event = .nightly,
+            .event = .schedule,
             .head_sha = TEST_HEAD_SHA,
         },
     };
 
     const decision = decideShouldBuild(&runs, "10", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(decision.should_build);
-    try std.testing.expectEqualStrings("new-sha", decision.reason);
+    try std.testing.expectEqual(DecisionReason.new_sha, decision.reason);
 }
 
 test "nightly decide force overrides existing success" {
     const decision = decideShouldBuild(&.{.{
         .id = 9,
         .name = "Nightly",
-        .event = .nightly,
+        .event = .schedule,
         .head_sha = TEST_HEAD_SHA,
         .conclusion = .success,
     }}, "10", TEST_HEAD_SHA, "Nightly", true);
 
     try std.testing.expect(decision.should_build);
-    try std.testing.expectEqualStrings("forced", decision.reason);
+    try std.testing.expectEqual(DecisionReason.forced, decision.reason);
 }
 
 test "nightly decide force skips workflow run file reads" {
@@ -521,7 +568,7 @@ test "nightly decide force skips workflow run file reads" {
     });
 
     try std.testing.expect(decision.should_build);
-    try std.testing.expectEqualStrings("forced", decision.reason);
+    try std.testing.expectEqual(DecisionReason.forced, decision.reason);
     try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
     try std.testing.expectEqualStrings("", decision.matched_run_url);
 }
@@ -530,7 +577,7 @@ test "nightly decide scans only bounded workflow history" {
     var runs = [_]Run{.{
         .id = 1,
         .name = "Nightly",
-        .event = .nightly,
+        .event = .schedule,
         .head_sha = TEST_OTHER_HEAD_SHA,
         .conclusion = .other,
     }} ** (MAX_WORKFLOW_RUNS_TO_SCAN + 1);
@@ -538,19 +585,19 @@ test "nightly decide scans only bounded workflow history" {
     runs[MAX_WORKFLOW_RUNS_TO_SCAN] = .{
         .id = 200,
         .name = "Nightly",
-        .event = .nightly,
+        .event = .schedule,
         .head_sha = TEST_HEAD_SHA,
         .conclusion = .success,
     };
 
     var decision = decideShouldBuild(&runs, "999", TEST_HEAD_SHA, "Nightly", false);
     try std.testing.expect(decision.should_build);
-    try std.testing.expectEqualStrings("new-sha", decision.reason);
+    try std.testing.expectEqual(DecisionReason.new_sha, decision.reason);
 
     runs[MAX_WORKFLOW_RUNS_TO_SCAN - 1] = .{
         .id = 199,
         .name = "Nightly",
-        .event = .nightly,
+        .event = .schedule,
         .head_sha = TEST_HEAD_SHA,
         .conclusion = .success,
     };
@@ -564,14 +611,14 @@ test "nightly decide ignores matching API runs without a positive id" {
     const decision = decideShouldBuild(&.{.{
         .id = 0,
         .name = "Nightly",
-        .event = .nightly,
+        .event = .schedule,
         .head_sha = TEST_HEAD_SHA,
         .conclusion = .success,
         .html_url = "https://github.com/nullclaw/nullbuilder/actions/runs/0",
     }}, "10", TEST_HEAD_SHA, "Nightly", false);
 
     try std.testing.expect(decision.should_build);
-    try std.testing.expectEqualStrings("new-sha", decision.reason);
+    try std.testing.expectEqual(DecisionReason.new_sha, decision.reason);
     try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
     try std.testing.expectEqualStrings("", decision.matched_run_url);
 }
@@ -601,7 +648,7 @@ test "nightly decision output formats GitHub output lines" {
 
     try writeDecision(&out.writer, .{
         .should_build = false,
-        .reason = "successful-nightly-exists",
+        .reason = .successful_nightly_exists,
         .matched_run_id = 9,
         .matched_run_url = "https://github.com/nullclaw/nullbuilder/actions/runs/9",
     });
@@ -621,7 +668,7 @@ test "nightly decision output omits absent optional fields" {
 
     try writeDecision(&out.writer, .{
         .should_build = true,
-        .reason = "new-sha",
+        .reason = .new_sha,
     });
 
     try std.testing.expectEqualStrings(
@@ -637,7 +684,7 @@ test "nightly decision output rejects multiline values before writing" {
 
     const decision = Decision{
         .should_build = false,
-        .reason = "successful-nightly-exists",
+        .reason = .successful_nightly_exists,
         .matched_run_id = 9,
         .matched_run_url = "https://github.com/nullclaw/nullbuilder/actions/runs/9\nshould_build=true",
     };
@@ -652,7 +699,7 @@ test "nightly decision output rejects non-url matched run URLs" {
 
     const decision = Decision{
         .should_build = false,
-        .reason = "successful-nightly-exists",
+        .reason = .successful_nightly_exists,
         .matched_run_id = 9,
         .matched_run_url = "not-a-url",
     };
@@ -667,7 +714,7 @@ test "nightly decision output rejects non-GitHub matched run URLs" {
 
     const decision = Decision{
         .should_build = false,
-        .reason = "successful-nightly-exists",
+        .reason = .successful_nightly_exists,
         .matched_run_id = 9,
         .matched_run_url = "https://example.com/run/9",
     };
@@ -682,7 +729,7 @@ test "nightly decision output rejects zero matched run ids" {
 
     const decision = Decision{
         .should_build = false,
-        .reason = "successful-nightly-exists",
+        .reason = .successful_nightly_exists,
         .matched_run_id = 0,
     };
 
@@ -867,7 +914,7 @@ test "nightly treats malformed workflow run collections as empty history" {
 
         const decision = decideShouldBuildFromPayload(parsed.value, "43", TEST_HEAD_SHA, "Nightly", false);
         try std.testing.expect(decision.should_build);
-        try std.testing.expectEqualStrings("new-sha", decision.reason);
+        try std.testing.expectEqual(DecisionReason.new_sha, decision.reason);
         try std.testing.expectEqual(@as(?u64, null), decision.matched_run_id);
     }
 }
