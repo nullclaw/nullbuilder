@@ -1,4 +1,4 @@
-import type { AuditFinding } from './audit-types';
+import type { AuditFinding, AuditSeverity } from './audit-types';
 import type { AuditContext, AuditFindingBuilder, WorkflowFile } from './audit-rule-kit';
 import {
   findActionUses,
@@ -7,13 +7,31 @@ import {
   shouldRequireShaPin
 } from './audit-workflows';
 
-const NULLBUILDER_WORKFLOWS = [
-  { id: 'ci', file: 'zig-ci.yml', severity: 'warning' as const },
-  { id: 'nightly', file: 'zig-nightly.yml', severity: 'info' as const },
-  { id: 'release', file: 'zig-release.yml', severity: 'info' as const }
-];
+type NullbuilderWorkflowPolicyEntry = Readonly<{
+  id: string;
+  file: string;
+  severity: AuditSeverity;
+}>;
+
+function nullbuilderWorkflowPolicy(
+  id: string,
+  file: string,
+  severity: AuditSeverity
+): NullbuilderWorkflowPolicyEntry {
+  return Object.freeze({ id, file, severity });
+}
+
+const NULLBUILDER_WORKFLOWS: ReadonlyArray<NullbuilderWorkflowPolicyEntry> = Object.freeze([
+  nullbuilderWorkflowPolicy('ci', 'zig-ci.yml', 'warning'),
+  nullbuilderWorkflowPolicy('nightly', 'zig-nightly.yml', 'info'),
+  nullbuilderWorkflowPolicy('release', 'zig-release.yml', 'info')
+]);
 const MAX_WORKFLOW_FINDINGS_PER_FILE = 5;
 export const MAX_WORKFLOW_POLICY_FILES = 50;
+
+export function nullbuilderWorkflowPolicyEntries(): ReadonlyArray<NullbuilderWorkflowPolicyEntry> {
+  return NULLBUILDER_WORKFLOWS;
+}
 
 export function nullbuilderWorkflowFindings(
   context: AuditContext,

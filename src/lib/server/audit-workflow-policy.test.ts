@@ -8,6 +8,7 @@ import {
   MAX_WORKFLOW_POLICY_FILES,
   mutableNullbuilderWorkflowRefFindings,
   nullbuilderWorkflowFindings,
+  nullbuilderWorkflowPolicyEntries,
   workflowPermissionFindings,
   workflowPinningFindings
 } from './audit-workflow-policy';
@@ -50,6 +51,33 @@ jobs:
     }),
     testFinding
   );
+
+  assert.deepEqual(
+    findings.map((finding) => finding.title),
+    [
+      'Missing nullbuilder ci workflow',
+      'Missing nullbuilder nightly workflow',
+      'Missing nullbuilder release workflow'
+    ]
+  );
+});
+
+test('nullbuilder workflow policy cannot be mutated by callers', () => {
+  const entries = nullbuilderWorkflowPolicyEntries();
+
+  assert.throws(() => {
+    (entries as unknown as Array<{ id: string; file: string; severity: AuditSeverity }>).push({
+      id: 'unsafe',
+      file: 'unsafe.yml',
+      severity: 'critical'
+    });
+  }, TypeError);
+
+  assert.throws(() => {
+    (entries[0] as { id: string; file: string; severity: AuditSeverity }).file = 'unsafe.yml';
+  }, TypeError);
+
+  const findings = nullbuilderWorkflowFindings(auditContext(), testFinding);
 
   assert.deepEqual(
     findings.map((finding) => finding.title),
