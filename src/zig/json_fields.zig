@@ -37,6 +37,51 @@ pub const ParseRequestValidation = enum {
     }
 };
 
+pub const PositiveIntegerField = union(enum) {
+    safe: u64,
+    missing,
+    non_integer,
+    non_positive,
+    unsafe_integer,
+
+    pub fn accepts(self: PositiveIntegerField) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+
+    pub fn valueOrZero(self: PositiveIntegerField) u64 {
+        return switch (self) {
+            .safe => |value| value,
+            else => 0,
+        };
+    }
+};
+
+pub const BoundedPositiveIntegerField = union(enum) {
+    safe: u64,
+    missing,
+    non_integer,
+    non_positive,
+    unsafe_integer,
+    above_bound,
+
+    pub fn accepts(self: BoundedPositiveIntegerField) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+
+    pub fn valueOrZero(self: BoundedPositiveIntegerField) u64 {
+        return switch (self) {
+            .safe => |value| value,
+            else => 0,
+        };
+    }
+};
+
 const ValidatedParseLimits = struct {
     max_bytes: usize,
     max_value_bytes: usize,
@@ -113,13 +158,25 @@ pub fn objectField(object: JsonObject, field_name: []const u8) ?JsonObject {
 }
 
 pub fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 {
-    const value = object.get(field_name) orelse return 0;
-    return json_safety.safePositiveIntegerValue(value);
+    return classifyPositiveIntegerField(object, field_name).valueOrZero();
+}
+
+pub fn classifyPositiveIntegerField(object: JsonObject, field_name: []const u8) PositiveIntegerField {
+    const value = object.get(field_name) orelse return .missing;
+    return positiveIntegerFieldFromValue(json_safety.classifyPositiveIntegerValue(value));
 }
 
 pub fn boundedPositiveIntegerField(object: JsonObject, field_name: []const u8, max_value: u64) u64 {
-    const value = safePositiveIntegerField(object, field_name);
-    return if (value <= max_value) value else 0;
+    return classifyBoundedPositiveIntegerField(object, field_name, max_value).valueOrZero();
+}
+
+pub fn classifyBoundedPositiveIntegerField(
+    object: JsonObject,
+    field_name: []const u8,
+    max_value: u64,
+) BoundedPositiveIntegerField {
+    const value = object.get(field_name) orelse return .missing;
+    return boundedPositiveIntegerFieldFromValue(json_safety.classifyBoundedPositiveIntegerValue(value, max_value));
 }
 
 pub fn optionalSafeTextField(
@@ -142,6 +199,25 @@ pub fn safeTextValue(
 
 fn normalizeArrayItemLimit(max_items: usize) usize {
     return @min(max_items, max_supported_json_array_items);
+}
+
+fn positiveIntegerFieldFromValue(value: json_safety.PositiveIntegerValue) PositiveIntegerField {
+    return switch (value) {
+        .safe => |safe_value| .{ .safe = safe_value },
+        .non_integer => .non_integer,
+        .non_positive => .non_positive,
+        .unsafe_integer => .unsafe_integer,
+    };
+}
+
+fn boundedPositiveIntegerFieldFromValue(value: json_safety.BoundedPositiveIntegerValue) BoundedPositiveIntegerField {
+    return switch (value) {
+        .safe => |safe_value| .{ .safe = safe_value },
+        .non_integer => .non_integer,
+        .non_positive => .non_positive,
+        .unsafe_integer => .unsafe_integer,
+        .above_bound => .above_bound,
+    };
 }
 
 test "json fields expose typed values and bounded arrays" {
@@ -306,4 +382,94 @@ test "json fields validate safe integer domains and caller text policy" {
     try std.testing.expectEqual(null, optionalSafeTextField(object, "safe", 4, json_safety.isNonEmptyTextWithoutControl));
     try std.testing.expectEqual(null, optionalSafeTextField(object, "empty", 64, json_safety.isNonEmptyTextWithoutControl));
     try std.testing.expectEqual(null, optionalSafeTextField(object, "control", 64, json_safety.isNonEmptyTextWithoutControl));
+}
+
+test "json fields classify positive integer fields" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "valid": 42,
+        \\  "zero": 0,
+        \\  "negative": -1,
+        \\  "unsafe": 9007199254740992,
+        \\  "float": 4.0,
+        \\  "string": "42"
+        \\}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try expectPositiveIntegerFieldSafe(42, object, "valid");
+    try expectPositiveIntegerFieldTag(.missing, object, "missing");
+    try expectPositiveIntegerFieldTag(.non_integer, object, "float");
+    try expectPositiveIntegerFieldTag(.non_integer, object, "string");
+    try expectPositiveIntegerFieldTag(.non_positive, object, "zero");
+    try expectPositiveIntegerFieldTag(.non_positive, object, "negative");
+    try expectPositiveIntegerFieldTag(.unsafe_integer, object, "unsafe");
+
+    try std.testing.expect((PositiveIntegerField{ .safe = 1 }).accepts());
+    try std.testing.expect(!(PositiveIntegerField{ .missing = {} }).accepts());
+    try std.testing.expectEqual(@as(u64, 1), (PositiveIntegerField{ .safe = 1 }).valueOrZero());
+    try std.testing.expectEqual(@as(u64, 0), (PositiveIntegerField{ .unsafe_integer = {} }).valueOrZero());
+}
+
+test "json fields classify bounded positive integer fields" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{
+        \\  "valid": 42,
+        \\  "tooLarge": 1000,
+        \\  "unsafe": 9007199254740992,
+        \\  "zero": 0,
+        \\  "string": "42"
+        \\}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try expectBoundedPositiveIntegerFieldSafe(42, object, "valid", 999);
+    try expectBoundedPositiveIntegerFieldTag(.above_bound, object, "tooLarge", 999);
+    try expectBoundedPositiveIntegerFieldTag(.missing, object, "missing", 999);
+    try expectBoundedPositiveIntegerFieldTag(.unsafe_integer, object, "unsafe", max_safe_json_integer + 100);
+    try expectBoundedPositiveIntegerFieldTag(.non_positive, object, "zero", 999);
+    try expectBoundedPositiveIntegerFieldTag(.non_integer, object, "string", 999);
+
+    try std.testing.expect((BoundedPositiveIntegerField{ .safe = 1 }).accepts());
+    try std.testing.expect(!(BoundedPositiveIntegerField{ .above_bound = {} }).accepts());
+    try std.testing.expectEqual(@as(u64, 1), (BoundedPositiveIntegerField{ .safe = 1 }).valueOrZero());
+    try std.testing.expectEqual(@as(u64, 0), (BoundedPositiveIntegerField{ .missing = {} }).valueOrZero());
+}
+
+fn expectPositiveIntegerFieldSafe(expected: u64, object: JsonObject, field_name: []const u8) !void {
+    switch (classifyPositiveIntegerField(object, field_name)) {
+        .safe => |actual| try std.testing.expectEqual(expected, actual),
+        else => return error.ExpectedPositiveIntegerField,
+    }
+}
+
+fn expectPositiveIntegerFieldTag(
+    expected: std.meta.Tag(PositiveIntegerField),
+    object: JsonObject,
+    field_name: []const u8,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyPositiveIntegerField(object, field_name)));
+}
+
+fn expectBoundedPositiveIntegerFieldSafe(
+    expected: u64,
+    object: JsonObject,
+    field_name: []const u8,
+    max_value: u64,
+) !void {
+    switch (classifyBoundedPositiveIntegerField(object, field_name, max_value)) {
+        .safe => |actual| try std.testing.expectEqual(expected, actual),
+        else => return error.ExpectedBoundedPositiveIntegerField,
+    }
+}
+
+fn expectBoundedPositiveIntegerFieldTag(
+    expected: std.meta.Tag(BoundedPositiveIntegerField),
+    object: JsonObject,
+    field_name: []const u8,
+    max_value: u64,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyBoundedPositiveIntegerField(object, field_name, max_value)));
 }

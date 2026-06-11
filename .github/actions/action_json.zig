@@ -7,6 +7,7 @@ pub const JsonValue = json_fields.JsonValue;
 pub const JsonObject = json_fields.JsonObject;
 pub const ParseLimits = json_fields.ParseLimits;
 pub const ParseRequestValidation = json_fields.ParseRequestValidation;
+pub const PositiveIntegerField = json_fields.PositiveIntegerField;
 pub const max_safe_json_integer: u64 = json_fields.max_safe_json_integer;
 pub const max_supported_json_array_items: usize = json_fields.max_supported_json_array_items;
 
@@ -36,6 +37,10 @@ pub fn boundedArrayField(object: JsonObject, field_name: []const u8, max_items: 
 
 pub fn safePositiveIntegerField(object: JsonObject, field_name: []const u8) u64 {
     return json_fields.safePositiveIntegerField(object, field_name);
+}
+
+pub fn classifyPositiveIntegerField(object: JsonObject, field_name: []const u8) PositiveIntegerField {
+    return json_fields.classifyPositiveIntegerField(object, field_name);
 }
 
 pub fn optionalSafeTextField(object: JsonObject, field_name: []const u8, max_len: usize) ?[]const u8 {
@@ -100,6 +105,38 @@ test "action json safe integer fields match JSON safe integer domain" {
     try std.testing.expectEqual(@as(u64, 0), safePositiveIntegerField(object, "unsafe"));
     try std.testing.expectEqual(@as(u64, 0), safePositiveIntegerField(object, "string"));
     try std.testing.expectEqual(@as(u64, 0), safePositiveIntegerField(object, "missing"));
+}
+
+test "action json classifies positive integer fields" {
+    var parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator,
+        \\{"valid":42,"zero":0,"unsafe":9007199254740992,"string":"42"}
+    , .{});
+    defer parsed.deinit();
+    const object = parsed.value.object;
+
+    try expectPositiveIntegerFieldSafe(42, object, "valid");
+    try expectPositiveIntegerFieldTag(.missing, object, "missing");
+    try expectPositiveIntegerFieldTag(.non_positive, object, "zero");
+    try expectPositiveIntegerFieldTag(.unsafe_integer, object, "unsafe");
+    try expectPositiveIntegerFieldTag(.non_integer, object, "string");
+
+    try std.testing.expect((PositiveIntegerField{ .safe = 1 }).accepts());
+    try std.testing.expect(!(PositiveIntegerField{ .missing = {} }).accepts());
+}
+
+fn expectPositiveIntegerFieldSafe(expected: u64, object: JsonObject, field_name: []const u8) !void {
+    switch (classifyPositiveIntegerField(object, field_name)) {
+        .safe => |actual| try std.testing.expectEqual(expected, actual),
+        else => return error.ExpectedPositiveIntegerField,
+    }
+}
+
+fn expectPositiveIntegerFieldTag(
+    expected: std.meta.Tag(PositiveIntegerField),
+    object: JsonObject,
+    field_name: []const u8,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyPositiveIntegerField(object, field_name)));
 }
 
 test "action json safe text fields reject empty oversized and control text" {
