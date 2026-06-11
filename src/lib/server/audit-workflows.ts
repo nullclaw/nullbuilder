@@ -8,6 +8,8 @@ export const MAX_WORKFLOW_REFERENCE_SCAN_MATCHES = MAX_WORKFLOW_REFERENCE_MATCHE
 export const MAX_WORKFLOW_REFERENCE_TOKEN_LENGTH = 128;
 const NULLBUILDER_WORKFLOW_TARGET_PREFIX = 'nullclaw/nullbuilder/.github/workflows/';
 const BUFFER_FROM = Buffer.from.bind(Buffer) as typeof Buffer.from;
+const UTF8_WORKFLOW_DECODER = new TextDecoder('utf-8', { fatal: true });
+const UTF8_WORKFLOW_DECODE = UTF8_WORKFLOW_DECODER.decode.bind(UTF8_WORKFLOW_DECODER) as TextDecoder['decode'];
 
 export type WorkflowActionUse = {
   target: string;
@@ -182,7 +184,7 @@ function isStrictBase64Content(content: string): boolean {
 
 function decodeUtf8WorkflowContent(bytes: Uint8Array): string {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return UTF8_WORKFLOW_DECODE(bytes);
   } catch {
     return '';
   }

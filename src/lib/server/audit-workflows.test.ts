@@ -14,10 +14,12 @@ import {
 
 const originalArrayPush = Array.prototype.push;
 const originalBufferFrom = Buffer.from;
+const originalTextDecoderDecode = TextDecoder.prototype.decode;
 
 afterEach(() => {
   restoreArrayPush();
   restoreBufferIntrinsics();
+  restoreTextDecoderDecode();
 });
 
 function restoreArrayPush(): void {
@@ -30,6 +32,14 @@ function restoreArrayPush(): void {
 
 function restoreBufferIntrinsics(): void {
   Buffer.from = originalBufferFrom;
+}
+
+function restoreTextDecoderDecode(): void {
+  Object.defineProperty(TextDecoder.prototype, 'decode', {
+    configurable: true,
+    writable: true,
+    value: originalTextDecoderDecode
+  });
 }
 
 function withGuardedArrayPush<T>(callback: () => T): { result: T; pushCalls: number } {
@@ -255,6 +265,20 @@ test('decodeGitHubContent uses captured buffer decoder', () => {
   Buffer.from = (() => {
     throw new Error('Buffer.from should not be called');
   }) as typeof Buffer.from;
+
+  assert.equal(decodeGitHubContent({ encoding: 'base64', content: encoded }, 4), 'abcd');
+});
+
+test('decodeGitHubContent uses captured UTF-8 decoder', () => {
+  const encoded = originalBufferFrom('abcdef', 'utf8').toString('base64');
+
+  Object.defineProperty(TextDecoder.prototype, 'decode', {
+    configurable: true,
+    writable: true,
+    value() {
+      throw new Error('TextDecoder.prototype.decode should not be called');
+    }
+  });
 
   assert.equal(decodeGitHubContent({ encoding: 'base64', content: encoded }, 4), 'abcd');
 });
