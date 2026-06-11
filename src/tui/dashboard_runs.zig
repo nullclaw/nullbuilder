@@ -10,6 +10,25 @@ const failure_conclusion = "failure";
 const missing_status = "n/a";
 const success_conclusion = "success";
 const max_run_label_len = 64;
+const workflow_status_labels = [_][]const u8{
+    completed_status,
+    "queued",
+    "in_progress",
+    "requested",
+    "waiting",
+    "pending",
+};
+const workflow_conclusion_labels = [_][]const u8{
+    success_conclusion,
+    failure_conclusion,
+    "neutral",
+    "cancelled",
+    "skipped",
+    "timed_out",
+    "action_required",
+    "startup_failure",
+    "stale",
+};
 
 pub const RunStatuses = struct {
     ci: []const u8,
@@ -85,25 +104,18 @@ fn runConclusion(run: JsonObject, fallback: []const u8) []const u8 {
 }
 
 fn canonicalStatus(value: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, value, completed_status)) return completed_status;
-    if (std.mem.eql(u8, value, "queued")) return "queued";
-    if (std.mem.eql(u8, value, "in_progress")) return "in_progress";
-    if (std.mem.eql(u8, value, "requested")) return "requested";
-    if (std.mem.eql(u8, value, "waiting")) return "waiting";
-    if (std.mem.eql(u8, value, "pending")) return "pending";
-    return null;
+    return canonicalLabel(value, &workflow_status_labels);
 }
 
 fn canonicalConclusion(value: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, value, success_conclusion)) return success_conclusion;
-    if (std.mem.eql(u8, value, failure_conclusion)) return failure_conclusion;
-    if (std.mem.eql(u8, value, "neutral")) return "neutral";
-    if (std.mem.eql(u8, value, "cancelled")) return "cancelled";
-    if (std.mem.eql(u8, value, "skipped")) return "skipped";
-    if (std.mem.eql(u8, value, "timed_out")) return "timed_out";
-    if (std.mem.eql(u8, value, "action_required")) return "action_required";
-    if (std.mem.eql(u8, value, "startup_failure")) return "startup_failure";
-    if (std.mem.eql(u8, value, "stale")) return "stale";
+    return canonicalLabel(value, &workflow_conclusion_labels);
+}
+
+fn canonicalLabel(value: []const u8, labels: []const []const u8) ?[]const u8 {
+    for (labels) |label| {
+        if (std.mem.eql(u8, value, label)) return label;
+    }
+
     return null;
 }
 
@@ -207,6 +219,25 @@ test "run label classifiers share the workflow display policy" {
     try std.testing.expect(!isFailureLabel("success"));
     try std.testing.expect(!isFailureLabel("private-secret"));
     try std.testing.expect(!isRunningLabel("deploying-secret"));
+}
+
+test "workflow label registries accept only canonical labels" {
+    for (workflow_status_labels) |label| {
+        try std.testing.expectEqualStrings(label, canonicalStatus(label).?);
+        try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion(label));
+    }
+
+    for (workflow_conclusion_labels) |label| {
+        try std.testing.expectEqualStrings(label, canonicalConclusion(label).?);
+        try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus(label));
+    }
+
+    try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus(""));
+    try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus("deploying-secret"));
+    try std.testing.expectEqual(@as(?[]const u8, null), canonicalStatus("completed\n"));
+    try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion(""));
+    try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion("private-secret"));
+    try std.testing.expectEqual(@as(?[]const u8, null), canonicalConclusion("success\n"));
 }
 
 test "repositoryRunStatuses falls back for empty run labels" {
