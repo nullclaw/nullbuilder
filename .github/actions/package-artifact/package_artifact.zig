@@ -61,8 +61,12 @@ const PackageOutputPlan = struct {
 };
 
 fn artifactNameFromPath(binary_path: []const u8) ArtifactNameError![]const u8 {
-    if (!action_paths.isSafeRelativePath(binary_path)) return error.InvalidArtifactBinaryPath;
+    try validateArtifactBinaryPath(binary_path);
     return std.Io.Dir.path.basename(binary_path);
+}
+
+fn validateArtifactBinaryPath(binary_path: []const u8) ArtifactNameError!void {
+    if (!action_paths.isSafeRelativePath(binary_path)) return error.InvalidArtifactBinaryPath;
 }
 
 fn hashBytesSha256(bytes: []const u8) Sha256Digest {
@@ -76,6 +80,8 @@ fn hashArtifactFileSha256(io: std.Io, dir: std.Io.Dir, binary_path: []const u8) 
 }
 
 fn hashArtifactFileSha256Limited(io: std.Io, dir: std.Io.Dir, binary_path: []const u8, max_bytes: u64) !Sha256Digest {
+    try validateArtifactBinaryPath(binary_path);
+
     const stat = try dir.statFile(io, binary_path, .{});
     try validateArtifactFileSize(stat.size, max_bytes);
 
@@ -488,6 +494,23 @@ test "package artifact hashes binary files with bounded stack memory" {
     const expected = hashBytesSha256("streamed bytes");
     const actual = try hashArtifactFileSha256(std.testing.io, tmp.dir, "artifact.bin");
     try std.testing.expectEqualSlices(u8, expected[0..], actual[0..]);
+}
+
+test "package artifact rejects unsafe binary paths at hash boundary" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    for ([_][]const u8{
+        "../artifact.bin",
+        "/tmp/artifact.bin",
+        "nightly-artifacts//artifact.bin",
+        "C:\\temp\\artifact.bin",
+    }) |path| {
+        try std.testing.expectError(
+            error.InvalidArtifactBinaryPath,
+            hashArtifactFileSha256Limited(std.testing.io, tmp.dir, path, MAX_BINARY_BYTES),
+        );
+    }
 }
 
 test "package artifact preflights binary file size before hashing" {
