@@ -172,32 +172,7 @@ fn skipDecision(run: Run) Decision {
 }
 
 fn safeMatchedRunUrl(value: []const u8) []const u8 {
-    return if (isGitHubActionsRunUrl(value)) value else "";
-}
-
-fn isGitHubActionsRunUrl(value: []const u8) bool {
-    if (!action_values.isHttpUrl(value, MAX_OUTPUT_VALUE_BYTES)) return false;
-
-    const prefix = "https://github.com/";
-    if (!std.mem.startsWith(u8, value, prefix)) return false;
-
-    const path_and_query = value[prefix.len..];
-    const query_start = std.mem.indexOfScalar(u8, path_and_query, '?') orelse path_and_query.len;
-    const path = path_and_query[0..query_start];
-
-    var segments = std.mem.splitScalar(u8, path, '/');
-    const owner = segments.next() orelse return false;
-    const repo = segments.next() orelse return false;
-    const actions = segments.next() orelse return false;
-    const runs = segments.next() orelse return false;
-    const run_id = segments.next() orelse return false;
-
-    return segments.next() == null and
-        action_values.isRepositoryOwner(owner) and
-        action_values.isRepositoryName(repo) and
-        std.mem.eql(u8, actions, "actions") and
-        std.mem.eql(u8, runs, "runs") and
-        action_values.isDecimalId(run_id);
+    return if (action_values.isGitHubDotComActionsRunUrl(value, MAX_OUTPUT_VALUE_BYTES)) value else "";
 }
 
 fn boundedWorkflowRuns(runs: []const Run) []const Run {
@@ -237,7 +212,7 @@ fn validateActionOutputValue(value: []const u8) error{InvalidActionOutput}!void 
 }
 
 fn validateActionOutputUrl(value: []const u8) error{InvalidActionOutput}!void {
-    if (!isGitHubActionsRunUrl(value)) {
+    if (!action_values.isGitHubDotComActionsRunUrl(value, MAX_OUTPUT_VALUE_BYTES)) {
         return error.InvalidActionOutput;
     }
 }

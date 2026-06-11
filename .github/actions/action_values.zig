@@ -74,6 +74,20 @@ pub fn isHttpUrl(value: []const u8, max_len: usize) bool {
     return isSafeHttpUrlTail(parsed.tail);
 }
 
+pub fn isGitHubActionsRunUrl(value: []const u8, max_len: usize) bool {
+    if (!isHttpUrl(value, max_len)) return false;
+
+    const parsed = parseHttpUrlParts(value) orelse return false;
+    return isGitHubActionsRunUrlTail(parsed.tail);
+}
+
+pub fn isGitHubDotComActionsRunUrl(value: []const u8, max_len: usize) bool {
+    if (!isGitHubActionsRunUrl(value, max_len)) return false;
+    const parsed = parseHttpUrlParts(value) orelse return false;
+
+    return parsed.scheme == .https and std.mem.eql(u8, parsed.authority, "github.com");
+}
+
 fn parseHttpPrefix(value: []const u8) ?ParsedHttpUrl {
     if (std.mem.startsWith(u8, value, "https://")) {
         return .{
@@ -239,6 +253,27 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
     }
 
     return !hasUnsafeHttpUrlPathSyntax(value);
+}
+
+fn isGitHubActionsRunUrlTail(value: []const u8) bool {
+    if (value.len == 0 or value[0] != '/') return false;
+
+    const query_start = std.mem.indexOfScalar(u8, value, '?') orelse value.len;
+    const path = value[1..query_start];
+
+    var segments = std.mem.splitScalar(u8, path, '/');
+    const owner = segments.next() orelse return false;
+    const repo = segments.next() orelse return false;
+    const actions = segments.next() orelse return false;
+    const runs = segments.next() orelse return false;
+    const run_id = segments.next() orelse return false;
+
+    return segments.next() == null and
+        isRepositoryOwner(owner) and
+        isRepositoryName(repo) and
+        std.mem.eql(u8, actions, "actions") and
+        std.mem.eql(u8, runs, "runs") and
+        isDecimalId(run_id);
 }
 
 fn hasUnsafeHttpUrlPathSyntax(value: []const u8) bool {
@@ -590,6 +625,27 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%85", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%c2%85", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/runs/1", 10));
+}
+
+test "action values validate GitHub Actions run URLs" {
+    try std.testing.expect(isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(isGitHubActionsRunUrl("https://github.example.test/nullclaw/nullbuilder/actions/runs/123?check_suite_focus=true", 256));
+    try std.testing.expect(isGitHubActionsRunUrl("http://localhost/nullclaw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(isGitHubDotComActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(isGitHubDotComActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123?check_suite_focus=true", 256));
+
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/0", 256));
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/null_claw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/.hidden/actions/runs/123", 256));
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/jobs/123", 256));
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123/extra", 256));
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123#summary", 256));
+    try std.testing.expect(!isGitHubActionsRunUrl("https://github.com/nullclaw/nullbuilder/actions/runs/123", 32));
+
+    try std.testing.expect(!isGitHubDotComActionsRunUrl("https://github.example.test/nullclaw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(!isGitHubDotComActionsRunUrl("https://github.com.evil.example/nullclaw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(!isGitHubDotComActionsRunUrl("https://github.com:443/nullclaw/nullbuilder/actions/runs/123", 256));
+    try std.testing.expect(!isGitHubDotComActionsRunUrl("http://localhost/nullclaw/nullbuilder/actions/runs/123", 256));
 }
 
 test "action values validate single-line GitHub output values" {

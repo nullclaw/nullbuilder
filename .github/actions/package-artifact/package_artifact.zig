@@ -123,7 +123,7 @@ fn formatRunUrl(allocator: std.mem.Allocator, options: PackageOptions) ![]u8 {
     });
     errdefer allocator.free(run_url);
 
-    if (!action_values.isHttpUrl(run_url, MAX_MANIFEST_URL_BYTES)) {
+    if (!action_values.isGitHubActionsRunUrl(run_url, MAX_MANIFEST_URL_BYTES)) {
         return ManifestBuildError.InvalidManifestRunUrl;
     }
 
@@ -520,6 +520,12 @@ test "package artifact validates manifest run URL fields at the formatter bounda
     const run_url = try formatRunUrl(std.testing.allocator, valid_options);
     defer std.testing.allocator.free(run_url);
     try std.testing.expectEqualStrings("https://github.com/nullclaw/nullclaw/actions/runs/123", run_url);
+
+    var enterprise_url_options = valid_options;
+    enterprise_url_options.server_url = "https://github.example.test";
+    const enterprise_run_url = try formatRunUrl(std.testing.allocator, enterprise_url_options);
+    defer std.testing.allocator.free(enterprise_run_url);
+    try std.testing.expectEqualStrings("https://github.example.test/nullclaw/nullclaw/actions/runs/123", enterprise_run_url);
 
     var unsafe_url_options = valid_options;
     unsafe_url_options.server_url = "https://github.com/path";
