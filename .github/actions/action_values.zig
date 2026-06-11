@@ -33,6 +33,33 @@ const ParsedHttpUrlParts = struct {
     tail: []const u8,
 };
 
+const HttpUrlTailValidation = union(enum) {
+    safe,
+    invalid_prefix,
+    invalid_character: usize,
+    invalid_percent_encoding: usize,
+    percent_encoded_control: usize,
+    unsafe_path_segment: usize,
+
+    fn accepts(self: HttpUrlTailValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+};
+
+const PercentEncodedByteValidation = enum {
+    safe,
+    truncated,
+    invalid_hex,
+    control,
+
+    fn accepts(self: PercentEncodedByteValidation) bool {
+        return self == .safe;
+    }
+};
+
 const KnownHostLiteral = enum {
     github_dot_com,
     localhost,
@@ -360,7 +387,11 @@ fn isSafePort(port: []const u8) bool {
 }
 
 fn isSafeHttpUrlTail(value: []const u8) bool {
-    if (value.len > 0 and value[0] != '/') return false;
+    return classifyHttpUrlTail(value).accepts();
+}
+
+fn classifyHttpUrlTail(value: []const u8) HttpUrlTailValidation {
+    if (value.len > 0 and value[0] != '/') return .invalid_prefix;
 
     var index: usize = 0;
     while (index < value.len) {
@@ -372,17 +403,25 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
 
         switch (byte) {
             '%' => {
-                if (!isSafePercentEncodedByte(value, index)) return false;
+                switch (classifyPercentEncodedByte(value, index)) {
+                    .safe => {},
+                    .truncated, .invalid_hex => return .{ .invalid_percent_encoding = index },
+                    .control => return .{ .percent_encoded_control = index },
+                }
                 index += 3;
                 continue;
             },
             '-', '.', '_', '~', '!', '$', '&', '(', ')', '*', '+', ',', ';', '=', ':', '@', '/', '?' => {},
-            else => return false,
+            else => return .{ .invalid_character = index },
         }
         index += 1;
     }
 
-    return !hasUnsafeHttpUrlPathSyntax(value);
+    if (firstUnsafeHttpPathSegment(value)) |segment_start| {
+        return .{ .unsafe_path_segment = segment_start };
+    }
+
+    return .safe;
 }
 
 fn isGitHubActionsRunUrlTail(value: []const u8) bool {
@@ -417,7 +456,11 @@ fn parseGitHubActionsRunUrlTail(value: []const u8) ?GitHubActionsRunPath {
 }
 
 fn hasUnsafeHttpUrlPathSyntax(value: []const u8) bool {
-    if (value.len == 0 or value[0] != '/') return false;
+    return firstUnsafeHttpPathSegment(value) != null;
+}
+
+fn firstUnsafeHttpPathSegment(value: []const u8) ?usize {
+    if (value.len == 0 or value[0] != '/') return null;
 
     const path_end = std.mem.indexOfScalar(u8, value, '?') orelse value.len;
     const path = value[0..path_end];
@@ -425,11 +468,11 @@ fn hasUnsafeHttpUrlPathSyntax(value: []const u8) bool {
 
     for (path[1..], 1..) |byte, index| {
         if (byte != '/') continue;
-        if (isUnsafeHttpPathSegment(path[segment_start..index])) return true;
+        if (isUnsafeHttpPathSegment(path[segment_start..index])) return segment_start;
         segment_start = index + 1;
     }
 
-    return isUnsafeHttpPathSegment(path[segment_start..]);
+    return if (isUnsafeHttpPathSegment(path[segment_start..])) segment_start else null;
 }
 
 fn isUnsafeHttpPathSegment(segment: []const u8) bool {
@@ -468,9 +511,13 @@ fn isEncodedDot(value: []const u8, index: usize) bool {
 }
 
 fn isSafePercentEncodedByte(value: []const u8, index: usize) bool {
-    if (index + 2 >= value.len) return false;
-    const decoded = decodePercentEncodedByte(value[index + 1], value[index + 2]) orelse return false;
-    return !text_safety.isControlByte(decoded);
+    return classifyPercentEncodedByte(value, index).accepts();
+}
+
+fn classifyPercentEncodedByte(value: []const u8, index: usize) PercentEncodedByteValidation {
+    if (index + 2 >= value.len) return .truncated;
+    const decoded = decodePercentEncodedByte(value[index + 1], value[index + 2]) orelse return .invalid_hex;
+    return if (text_safety.isControlByte(decoded)) .control else .safe;
 }
 
 fn decodePercentEncodedByte(high: u8, low: u8) ?u8 {
@@ -819,6 +866,87 @@ test "action values parse safe HTTP URL components at the validation boundary" {
     try std.testing.expect(parseSafeHttpUrl("https://github.com/actions//runs/123", 256) == null);
     try std.testing.expect(parseSafeHttpUrl("https://github.com/actions/runs/123%0a", 256) == null);
     try std.testing.expect(parseSafeHttpUrl("https://github.com/runs/1", 10) == null);
+}
+
+test "action values classify safe HTTP URL tails" {
+    try expectHttpUrlTailValidation(.safe, "");
+    try expectHttpUrlTailValidation(.safe, "/actions/runs/123");
+    try expectHttpUrlTailValidation(.safe, "/actions/runs/123?name=check%20suite&step=1");
+    try expectHttpUrlTailValidation(.invalid_prefix, "?query=1");
+    try expectHttpUrlTailValidation(.invalid_prefix, "#fragment");
+
+    const space_tail = "/path with spaces";
+    try expectHttpUrlTailIndex(.invalid_character, space_tail, std.mem.indexOfScalar(u8, space_tail, ' ').?);
+
+    const truncated_percent = "/actions/runs/123%";
+    try expectHttpUrlTailIndex(
+        .invalid_percent_encoding,
+        truncated_percent,
+        std.mem.indexOfScalar(u8, truncated_percent, '%').?,
+    );
+
+    const invalid_percent = "/actions/runs/123%zz";
+    try expectHttpUrlTailIndex(
+        .invalid_percent_encoding,
+        invalid_percent,
+        std.mem.indexOfScalar(u8, invalid_percent, '%').?,
+    );
+
+    const control_percent = "/actions/runs/123%0a";
+    try expectHttpUrlTailIndex(
+        .percent_encoded_control,
+        control_percent,
+        std.mem.indexOfScalar(u8, control_percent, '%').?,
+    );
+
+    try expectHttpUrlTailIndex(.unsafe_path_segment, "/actions//runs", 9);
+    try expectHttpUrlTailIndex(.unsafe_path_segment, "/actions/%2e/runs", 9);
+
+    try std.testing.expect((HttpUrlTailValidation{ .safe = {} }).accepts());
+    try std.testing.expect(!(HttpUrlTailValidation{ .invalid_prefix = {} }).accepts());
+    try std.testing.expect(!(HttpUrlTailValidation{ .unsafe_path_segment = 1 }).accepts());
+}
+
+fn expectHttpUrlTailValidation(expected: std.meta.Tag(HttpUrlTailValidation), value: []const u8) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyHttpUrlTail(value)));
+}
+
+fn expectHttpUrlTailIndex(
+    expected: std.meta.Tag(HttpUrlTailValidation),
+    value: []const u8,
+    expected_index: usize,
+) !void {
+    const actual = classifyHttpUrlTail(value);
+    try std.testing.expectEqual(expected, std.meta.activeTag(actual));
+    const actual_index = switch (actual) {
+        .invalid_character => |index| index,
+        .invalid_percent_encoding => |index| index,
+        .percent_encoded_control => |index| index,
+        .unsafe_path_segment => |index| index,
+        else => return error.ExpectedHttpUrlTailIndex,
+    };
+    try std.testing.expectEqual(expected_index, actual_index);
+}
+
+test "action values classify percent-encoded URL bytes" {
+    try expectPercentEncodedByteValidation(.safe, "%20", 0);
+    try expectPercentEncodedByteValidation(.truncated, "%", 0);
+    try expectPercentEncodedByteValidation(.truncated, "%2", 0);
+    try expectPercentEncodedByteValidation(.invalid_hex, "%zz", 0);
+    try expectPercentEncodedByteValidation(.control, "%0a", 0);
+    try expectPercentEncodedByteValidation(.control, "%85", 0);
+
+    try std.testing.expect(PercentEncodedByteValidation.safe.accepts());
+    try std.testing.expect(!PercentEncodedByteValidation.truncated.accepts());
+    try std.testing.expect(!PercentEncodedByteValidation.control.accepts());
+}
+
+fn expectPercentEncodedByteValidation(
+    expected: PercentEncodedByteValidation,
+    value: []const u8,
+    index: usize,
+) !void {
+    try std.testing.expectEqual(expected, classifyPercentEncodedByte(value, index));
 }
 
 test "action values validate HTTP URLs with paths" {
