@@ -30,6 +30,11 @@ const originalArrayPush = Array.prototype.push;
 const originalArrayIterator = Array.prototype[Symbol.iterator];
 const originalMapKeys = Map.prototype.keys;
 const originalMapIterator = Map.prototype[Symbol.iterator];
+const headersEntriesIterator = Headers.prototype.entries.call(new Headers());
+const headersEntriesIteratorPrototype = Object.getPrototypeOf(headersEntriesIterator) as {
+  next: typeof headersEntriesIterator.next;
+};
+const originalHeadersEntriesIteratorNext = headersEntriesIteratorPrototype.next;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -39,6 +44,7 @@ afterEach(() => {
   restoreArrayPush();
   Array.prototype[Symbol.iterator] = originalArrayIterator;
   restoreMapIteration();
+  restoreHeadersEntriesIteratorNext();
 });
 
 function restoreArrayPush(): void {
@@ -83,6 +89,14 @@ function rejectMapIteration(): void {
 function restoreMapIteration(): void {
   Map.prototype.keys = originalMapKeys;
   Map.prototype[Symbol.iterator] = originalMapIterator;
+}
+
+function restoreHeadersEntriesIteratorNext(): void {
+  Object.defineProperty(headersEntriesIteratorPrototype, 'next', {
+    configurable: true,
+    writable: true,
+    value: originalHeadersEntriesIteratorNext
+  });
 }
 
 async function withGuardedArrayIterator<T>(callback: () => Promise<T>): Promise<T> {
@@ -924,6 +938,44 @@ test('githubRequest clones Headers input without instance hooks and bounds entri
     /^Error: Invalid GitHub request header\.$/
   );
   assert.equal(fetched, false);
+});
+
+test('githubRequest clones Headers input without iterator next hooks', async () => {
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://headers-next.example.test',
+    NULLBUILDER_CACHE_TTL_MS: '0'
+  });
+  const callerHeaders = new Headers({
+    'X-Trace-Id': 'trace-1'
+  });
+  Object.defineProperty(headersEntriesIteratorPrototype, 'next', {
+    configurable: true,
+    writable: true,
+    value() {
+      throw new Error('headers iterator next should not be called');
+    }
+  });
+
+  const requests: Array<{ traceId: string | null }> = [];
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (!(init?.headers instanceof Headers)) {
+      throw new Error('expected normalized headers');
+    }
+
+    requests[requests.length] = {
+      traceId: init.headers.get('X-Trace-Id')
+    };
+    return new Response(JSON.stringify({ ok: true }));
+  }) as typeof fetch;
+
+  await githubRequest(config, '/repos/nullclaw/nullbuilder', { headers: callerHeaders });
+
+  assert.deepEqual(requests, [
+    {
+      traceId: 'trace-1'
+    }
+  ]);
 });
 
 test('githubRequest validates custom accept headers before fetching GitHub', async () => {

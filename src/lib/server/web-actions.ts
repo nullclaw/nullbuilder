@@ -98,6 +98,9 @@ const LOGOUT_FORM_FIELD_SET = new Set<string>(LOGOUT_FORM_FIELDS);
 const BUILD_PR_ALLOWED_FORM_FIELD_SET = new Set<string>(BUILD_PR_ALLOWED_FORM_FIELDS);
 const RELEASE_TAG_ALLOWED_FORM_FIELD_SET = new Set<string>(RELEASE_TAG_ALLOWED_FORM_FIELDS);
 const FORM_DATA_ENTRIES = FormData.prototype.entries;
+const FORM_DATA_ENTRIES_NEXT = Object.getPrototypeOf(FORM_DATA_ENTRIES.call(new FormData())).next as ReturnType<
+  FormData['entries']
+>['next'];
 
 export function runLoginWebAction(
   config: NullbuilderConfig,
@@ -583,7 +586,11 @@ function formDataEntries(formData: FormData): ReturnType<FormData['entries']> {
 function nextFormDataEntry(
   entries: ReturnType<FormData['entries']>
 ): IteratorResult<[string, FormDataEntryValue]> {
-  return entries.next();
+  try {
+    return FORM_DATA_ENTRIES_NEXT.call(entries);
+  } catch {
+    throw new Error(INVALID_FORM_FIELD_MESSAGE);
+  }
 }
 
 function isInvalidFormShapeError(error: unknown): boolean {

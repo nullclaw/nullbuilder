@@ -297,6 +297,33 @@ test('web action form parsers avoid form data iterator protocol hooks', () => {
   });
 });
 
+test('web action form parsers avoid form data iterator next hooks', () => {
+  withGuardedFormDataIteratorNext(() => {
+    const buildFormData = formDataWithGuardedEntryMethods();
+    buildFormData.set('repo', 'nullbuilder');
+    buildFormData.set('prNumber', '17');
+    buildFormData.set('tagName', 'build-pr-17');
+    buildFormData.set('confirm', 'on');
+
+    assert.deepEqual(parseBuildPrMutationForm(buildFormData), {
+      repo: 'nullbuilder',
+      prNumber: 17,
+      tagName: 'build-pr-17',
+      confirm: true,
+      force: false
+    });
+
+    const loginFormData = formDataWithGuardedEntryMethods();
+    loginFormData.set('webToken', 'web-secret');
+    const config = readConfig({
+      NULLBUILDER_REPOS: 'nullbuilder',
+      NULLBUILDER_WEB_TOKEN: 'web-secret'
+    });
+
+    assert.equal(runLoginWebAction(config, testLoginRateLimiter(), 'client', loginFormData).ok, true);
+  });
+});
+
 test('mutation form parsers reject oversized field counts without getAll allocations', () => {
   const formData = formDataWithoutGetAll();
   formData.set('csrfToken', 'token');
@@ -1201,6 +1228,30 @@ function withGuardedFormDataIteratorProtocol<T>(callback: () => T): T {
       Object.defineProperty(prototype, Symbol.iterator, descriptor);
     } else {
       delete prototype[Symbol.iterator];
+    }
+  }
+}
+
+function withGuardedFormDataIteratorNext<T>(callback: () => T): T {
+  const iterator = FormData.prototype.entries.call(new FormData());
+  const prototype = Object.getPrototypeOf(iterator) as { next: typeof iterator.next };
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'next');
+
+  Object.defineProperty(prototype, 'next', {
+    configurable: true,
+    writable: true,
+    value() {
+      throw new Error('form data iterator next should not be called.');
+    }
+  });
+
+  try {
+    return callback();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(prototype, 'next', descriptor);
+    } else {
+      delete (prototype as Partial<typeof prototype>).next;
     }
   }
 }

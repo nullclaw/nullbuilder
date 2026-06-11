@@ -52,6 +52,9 @@ const DEFAULT_GITHUB_ACCEPT = 'application/vnd.github+json';
 const CALLER_SUPPLIED_CREDENTIAL_HEADERS = ['Authorization', 'Cookie', 'Proxy-Authorization'] as const;
 const ALLOWED_GITHUB_REQUEST_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
 const HEADERS_ENTRIES = Headers.prototype.entries;
+const HEADERS_ENTRIES_NEXT = Object.getPrototypeOf(HEADERS_ENTRIES.call(new Headers())).next as ReturnType<
+  Headers['entries']
+>['next'];
 const STRUCTURED_CLONE = globalThis.structuredClone;
 const PUBLIC_ERROR_MESSAGE_PREFIXES = [
   'Pull request is not trusted:',
@@ -394,7 +397,7 @@ function appendHeadersEntries(headers: Headers, value: Headers): void {
   }
 
   while (true) {
-    const entry = entries.next();
+    const entry = nextHeadersEntry(entries);
     if (entry.done) {
       break;
     }
@@ -405,6 +408,14 @@ function appendHeadersEntries(headers: Headers, value: Headers): void {
     }
 
     appendGitHubRequestHeader(headers, entry.value[0], entry.value[1]);
+  }
+}
+
+function nextHeadersEntry(entries: ReturnType<Headers['entries']>): IteratorResult<[string, string]> {
+  try {
+    return HEADERS_ENTRIES_NEXT.call(entries);
+  } catch {
+    invalidGitHubRequestHeader();
   }
 }
 
