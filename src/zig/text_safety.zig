@@ -12,12 +12,33 @@ const SanitizedSegment = union(enum) {
     skip: usize,
 };
 
+pub const NonEmptyTextValidation = union(enum) {
+    safe,
+    empty,
+    oversized,
+    sanitizable_content: usize,
+
+    pub fn accepts(self: NonEmptyTextValidation) bool {
+        return switch (self) {
+            .safe => true,
+            else => false,
+        };
+    }
+};
+
 pub fn hasControl(value: []const u8) bool {
     return firstSanitizableIndex(value, .{}) != null;
 }
 
 pub fn isNonEmptyTextWithoutControl(value: []const u8, max_len: usize) bool {
-    return value.len > 0 and value.len <= max_len and !hasControl(value);
+    return classifyNonEmptyTextWithoutControl(value, max_len).accepts();
+}
+
+pub fn classifyNonEmptyTextWithoutControl(value: []const u8, max_len: usize) NonEmptyTextValidation {
+    if (value.len == 0) return .empty;
+    if (value.len > max_len) return .oversized;
+    if (firstSanitizableIndex(value, .{})) |index| return .{ .sanitizable_content = index };
+    return .safe;
 }
 
 pub fn firstSanitizableIndex(value: []const u8, options: SanitizeOptions) ?usize {
@@ -325,6 +346,33 @@ test "text safety validates bounded non-empty text without controls" {
     try std.testing.expect(!isNonEmptyTextWithoutControl("too-long", 3));
     try std.testing.expect(!isNonEmptyTextWithoutControl("line\nbreak", 64));
     try std.testing.expect(!isNonEmptyTextWithoutControl("escape\x1b[31m", 64));
+}
+
+test "text safety classifies bounded non-empty text without controls" {
+    try expectNonEmptyTextValidation(.safe, "safe", 4);
+    try expectNonEmptyTextValidation(.empty, "", 64);
+    try expectNonEmptyTextValidation(.oversized, "too-long", 3);
+
+    switch (classifyNonEmptyTextWithoutControl("line\nbreak", 64)) {
+        .sanitizable_content => |index| try std.testing.expectEqual(@as(usize, 4), index),
+        else => return error.ExpectedSanitizableContent,
+    }
+    switch (classifyNonEmptyTextWithoutControl("escape\x1b[31m", 64)) {
+        .sanitizable_content => |index| try std.testing.expectEqual(@as(usize, 6), index),
+        else => return error.ExpectedSanitizableContent,
+    }
+
+    try std.testing.expect((NonEmptyTextValidation{ .safe = {} }).accepts());
+    try std.testing.expect(!(NonEmptyTextValidation{ .empty = {} }).accepts());
+    try std.testing.expect(!(NonEmptyTextValidation{ .sanitizable_content = 0 }).accepts());
+}
+
+fn expectNonEmptyTextValidation(
+    expected: std.meta.Tag(NonEmptyTextValidation),
+    value: []const u8,
+    max_len: usize,
+) !void {
+    try std.testing.expectEqual(expected, std.meta.activeTag(classifyNonEmptyTextWithoutControl(value, max_len)));
 }
 
 test "text safety identifies ASCII controls and spaces" {
