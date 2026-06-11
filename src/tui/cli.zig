@@ -110,12 +110,20 @@ fn writeCapturedStream(out: *std.Io.Writer, value: []const u8, budget: *terminal
 }
 
 fn isSafeChildArgv(argv: []const []const u8) bool {
-    return arg_safety.isSafeArgVector(argv, .{
+    return classifyChildArgv(argv).accepts();
+}
+
+fn classifyChildArgv(argv: []const []const u8) arg_safety.ArgVectorValidation {
+    return arg_safety.classifyArgVector(argv, childArgPolicy(), hasUnsafeChildArgText);
+}
+
+fn childArgPolicy() arg_safety.ArgVectorPolicy {
+    return .{
         .max_count = max_child_arg_count,
         .max_arg_bytes = max_child_arg_bytes,
         .max_total_bytes = max_child_args_total_bytes,
         .allow_empty_vector = false,
-    }, hasUnsafeChildArgText);
+    };
 }
 
 fn hasUnsafeChildArgText(value: []const u8) bool {
@@ -170,6 +178,23 @@ test "child process argv is bounded before spawning" {
     try std.testing.expect(!isSafeChildArgv(&.{ "node", "bad\xc2\x85arg" }));
     try std.testing.expect(!isSafeChildArgv(&.{ "node", "bad\xe2\x80\xaearg" }));
     try std.testing.expect(!isSafeChildArgv(&.{ "node", "bad\xc0\x85arg" }));
+}
+
+test "child process argv validation classifies rejection reasons" {
+    const max_arg = [_]u8{'a'} ** max_child_arg_bytes;
+    const oversized_arg = [_]u8{'a'} ** (max_child_arg_bytes + 1);
+    const max_total_args = [_][]const u8{max_arg[0..]} ** max_child_arg_count;
+    const too_many_args = [_][]const u8{"--flag"} ** (max_child_arg_count + 1);
+
+    try expectChildArgvValidation(.safe, &.{ "node", "./bin/nullbuilder.js", "repos", "--json" });
+    try expectChildArgvValidation(.safe, max_total_args[0..]);
+    try expectChildArgvValidation(.empty_vector, &.{});
+    try expectChildArgvValidation(.empty_arg, &.{""});
+    try expectChildArgvValidation(.too_many_args, too_many_args[0..]);
+    try expectChildArgvValidation(.arg_too_large, &.{ "node", oversized_arg[0..] });
+    try expectChildArgvValidation(.unsafe_text, &.{ "node", "bad\narg" });
+
+    try std.testing.expectEqual(arg_safety.ArgPolicyValidation.safe, arg_safety.classifyArgVectorPolicy(childArgPolicy()));
 }
 
 test "child process runner rejects invalid argv before spawning" {
@@ -284,4 +309,11 @@ test "abnormal child termination returns a stable exit code" {
     try std.testing.expectEqual(@as(?u8, abnormal_child_exit_code), exit_code);
     try std.testing.expectEqualStrings("stderr\nbadred", out.writer.buffered());
     try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "stdout") == null);
+}
+
+fn expectChildArgvValidation(
+    expected: arg_safety.ArgVectorValidation,
+    argv: []const []const u8,
+) !void {
+    try std.testing.expectEqual(expected, classifyChildArgv(argv));
 }
