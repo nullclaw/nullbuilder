@@ -14,8 +14,6 @@ const max_work_items_per_repository = 100;
 const max_work_item_number = 999_999_999;
 const max_work_title_len = 1024;
 const max_error_message_len = 2048;
-const ok_status = "ok";
-const error_status = "error";
 
 const RepositoryStatus = enum {
     loaded,
@@ -25,9 +23,24 @@ const RepositoryStatus = enum {
         if (repo.get("status") == null) return .loaded;
 
         const status = dashboard_json.requiredSafeTextField(repo, "status", max_text_field_len) orelse return .errored;
-        if (std.mem.eql(u8, status, ok_status)) return .loaded;
-        if (std.mem.eql(u8, status, error_status)) return .errored;
+        return fromText(status);
+    }
+
+    fn fromText(value: []const u8) RepositoryStatus {
+        if (RepositoryStatus.loaded.matches(value)) return .loaded;
+        if (RepositoryStatus.errored.matches(value)) return .errored;
         return .errored;
+    }
+
+    fn text(self: RepositoryStatus) []const u8 {
+        return switch (self) {
+            .loaded => "ok",
+            .errored => "error",
+        };
+    }
+
+    fn matches(self: RepositoryStatus, value: []const u8) bool {
+        return std.mem.eql(u8, value, self.text());
     }
 
     fn isLoaded(self: RepositoryStatus) bool {
@@ -337,6 +350,22 @@ test "dashboard model collects repository totals and run statuses" {
     try std.testing.expectEqualStrings("nullclaw/beta", load_error.repo);
     try std.testing.expectEqualStrings("rate limited", load_error.message);
     try std.testing.expectEqual(null, errors.next());
+}
+
+test "repository status registry maps canonical JSON labels" {
+    try std.testing.expectEqual(RepositoryStatus.loaded, RepositoryStatus.fromText("ok"));
+    try std.testing.expectEqual(RepositoryStatus.errored, RepositoryStatus.fromText("error"));
+    try std.testing.expectEqual(RepositoryStatus.errored, RepositoryStatus.fromText(""));
+    try std.testing.expectEqual(RepositoryStatus.errored, RepositoryStatus.fromText("loaded-secret"));
+    try std.testing.expectEqual(RepositoryStatus.errored, RepositoryStatus.fromText("ok\n"));
+    try std.testing.expectEqualStrings("ok", RepositoryStatus.loaded.text());
+    try std.testing.expectEqualStrings("error", RepositoryStatus.errored.text());
+    try std.testing.expect(RepositoryStatus.loaded.matches("ok"));
+    try std.testing.expect(!RepositoryStatus.loaded.matches("error"));
+    try std.testing.expect(RepositoryStatus.errored.matches("error"));
+    try std.testing.expect(!RepositoryStatus.errored.matches("ok"));
+    try std.testing.expect(RepositoryStatus.loaded.isLoaded());
+    try std.testing.expect(!RepositoryStatus.errored.isLoaded());
 }
 
 test "dashboard totals saturate at the safe JSON integer domain" {

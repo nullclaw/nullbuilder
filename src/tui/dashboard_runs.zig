@@ -82,6 +82,10 @@ pub const RunLabel = enum {
             else => false,
         };
     }
+
+    pub fn matches(self: RunLabel, value: []const u8) bool {
+        return std.mem.eql(u8, value, self.text());
+    }
 };
 
 const RunSlot = enum {
@@ -207,7 +211,7 @@ fn canonicalConclusion(value: []const u8) ?RunLabel {
 
 fn canonicalLabel(value: []const u8, labels: []const RunLabel) ?RunLabel {
     for (labels) |label| {
-        if (std.mem.eql(u8, value, label.text())) return label;
+        if (label.matches(value)) return label;
     }
 
     return null;
@@ -326,11 +330,15 @@ test "workflow label registries accept only canonical labels" {
     for (workflow_status_labels) |label| {
         try std.testing.expectEqual(label, canonicalStatus(label.text()).?);
         try std.testing.expectEqual(@as(?RunLabel, null), canonicalConclusion(label.text()));
+        try std.testing.expect(label.matches(label.text()));
+        try std.testing.expect(!label.matches(""));
     }
 
     for (workflow_conclusion_labels) |label| {
         try std.testing.expectEqual(label, canonicalConclusion(label.text()).?);
         try std.testing.expectEqual(@as(?RunLabel, null), canonicalStatus(label.text()));
+        try std.testing.expect(label.matches(label.text()));
+        try std.testing.expect(!label.matches(""));
     }
 
     try std.testing.expectEqual(@as(?RunLabel, null), canonicalStatus(""));
