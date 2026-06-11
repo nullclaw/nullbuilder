@@ -33,6 +33,28 @@ const ParsedHttpUrlParts = struct {
     tail: []const u8,
 };
 
+const GitHubActionsRunSegment = enum {
+    actions,
+    runs,
+
+    fn text(self: GitHubActionsRunSegment) []const u8 {
+        return switch (self) {
+            .actions => "actions",
+            .runs => "runs",
+        };
+    }
+
+    fn matches(self: GitHubActionsRunSegment, value: []const u8) bool {
+        return std.mem.eql(u8, value, self.text());
+    }
+};
+
+const GitHubActionsRunPath = struct {
+    owner: []const u8,
+    repo: []const u8,
+    run_id: []const u8,
+};
+
 pub fn isDecimalId(value: []const u8) bool {
     return parseDecimalId(value) != null;
 }
@@ -266,24 +288,34 @@ fn isSafeHttpUrlTail(value: []const u8) bool {
 }
 
 fn isGitHubActionsRunUrlTail(value: []const u8) bool {
-    if (value.len == 0 or value[0] != '/') return false;
-    if (std.mem.indexOfAny(u8, value, "?#") != null) return false;
+    return parseGitHubActionsRunUrlTail(value) != null;
+}
+
+fn parseGitHubActionsRunUrlTail(value: []const u8) ?GitHubActionsRunPath {
+    if (value.len == 0 or value[0] != '/') return null;
+    if (std.mem.indexOfAny(u8, value, "?#") != null) return null;
 
     const path = value[1..];
 
     var segments = std.mem.splitScalar(u8, path, '/');
-    const owner = segments.next() orelse return false;
-    const repo = segments.next() orelse return false;
-    const actions = segments.next() orelse return false;
-    const runs = segments.next() orelse return false;
-    const run_id = segments.next() orelse return false;
+    const owner = segments.next() orelse return null;
+    const repo = segments.next() orelse return null;
+    const actions = segments.next() orelse return null;
+    const runs = segments.next() orelse return null;
+    const run_id = segments.next() orelse return null;
 
-    return segments.next() == null and
-        isRepositoryOwner(owner) and
-        isRepositoryName(repo) and
-        std.mem.eql(u8, actions, "actions") and
-        std.mem.eql(u8, runs, "runs") and
-        isDecimalId(run_id);
+    if (segments.next() != null) return null;
+    if (!isRepositoryOwner(owner)) return null;
+    if (!isRepositoryName(repo)) return null;
+    if (!GitHubActionsRunSegment.actions.matches(actions)) return null;
+    if (!GitHubActionsRunSegment.runs.matches(runs)) return null;
+    if (!isDecimalId(run_id)) return null;
+
+    return .{
+        .owner = owner,
+        .repo = repo,
+        .run_id = run_id,
+    };
 }
 
 fn hasUnsafeHttpUrlPathSyntax(value: []const u8) bool {
@@ -681,6 +713,31 @@ test "action values validate HTTP URLs with paths" {
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%85", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/actions/runs/123%c2%85", 256));
     try std.testing.expect(!isHttpUrl("https://github.com/runs/1", 10));
+}
+
+test "action values parse GitHub Actions run URL tail components" {
+    try std.testing.expect(GitHubActionsRunSegment.actions.matches("actions"));
+    try std.testing.expect(GitHubActionsRunSegment.runs.matches("runs"));
+    try std.testing.expect(!GitHubActionsRunSegment.actions.matches("runs"));
+
+    const run_path = parseGitHubActionsRunUrlTail("/nullclaw/nullbuilder/actions/runs/123") orelse return error.ExpectedRunPath;
+    try std.testing.expectEqualStrings("nullclaw", run_path.owner);
+    try std.testing.expectEqualStrings("nullbuilder", run_path.repo);
+    try std.testing.expectEqualStrings("123", run_path.run_id);
+
+    for ([_][]const u8{
+        "",
+        "nullclaw/nullbuilder/actions/runs/123",
+        "/nullclaw/nullbuilder/actions/runs/0",
+        "/nullclaw/nullbuilder/actions/jobs/123",
+        "/nullclaw/nullbuilder/actions/runs/123/extra",
+        "/null_claw/nullbuilder/actions/runs/123",
+        "/nullclaw/.hidden/actions/runs/123",
+        "/nullclaw/nullbuilder/actions/runs/123?check_suite_focus=true",
+        "/nullclaw/nullbuilder/actions/runs/123#summary",
+    }) |tail| {
+        try std.testing.expect(parseGitHubActionsRunUrlTail(tail) == null);
+    }
 }
 
 test "action values validate GitHub Actions run URLs" {
