@@ -37,6 +37,7 @@ const MAX_CONFIG_URL_LENGTH = 2048;
 const MAX_CONFIG_BOOLEAN_LENGTH = 16;
 const MAX_CONFIG_INTEGER_LENGTH = 32;
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
+const URL_CONSTRUCTOR = globalThis.URL;
 
 export function readConfig(env: Record<string, string | undefined> = process.env): NullbuilderConfig {
   const owner = normalizeOwner(env.NULLBUILDER_OWNER ?? DEFAULT_OWNER);
@@ -97,7 +98,7 @@ function parseBaseUrl(value: string | undefined, fallback: string, name: string)
   let url: URL;
 
   try {
-    url = new URL(raw);
+    url = new URL_CONSTRUCTOR(raw);
   } catch {
     throw new Error(`Invalid URL for ${name}.`);
   }

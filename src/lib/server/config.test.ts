@@ -3,10 +3,20 @@ import { afterEach, test } from 'node:test';
 import { readConfig } from './config';
 
 const originalNumberParseInt = Number.parseInt;
+const originalUrl = globalThis.URL;
 
 afterEach(() => {
   Number.parseInt = originalNumberParseInt;
+  restoreGlobalUrl();
 });
+
+function restoreGlobalUrl(): void {
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: originalUrl
+  });
+}
 
 test('readConfig normalizes URLs and clamps numeric settings', () => {
   const config = readConfig({
@@ -108,6 +118,27 @@ test('readConfig preserves safe base URL paths', () => {
 
   assert.equal(config.apiBaseUrl, 'https://github.enterprise.test/api/v3');
   assert.equal(config.webBaseUrl, 'https://github.enterprise.test/github');
+});
+
+test('readConfig parses base URLs with captured URL constructor', () => {
+  Object.defineProperty(globalThis, 'URL', {
+    configurable: true,
+    writable: true,
+    value: class URLShouldNotBeCalled {
+      constructor() {
+        throw new Error('global URL constructor should not be called');
+      }
+    }
+  });
+
+  const config = readConfig({
+    NULLBUILDER_REPOS: 'nullbuilder',
+    NULLBUILDER_GITHUB_API_URL: 'https://api.github.com/',
+    NULLBUILDER_GITHUB_WEB_URL: 'https://github.com/'
+  });
+
+  assert.equal(config.apiBaseUrl, 'https://api.github.com');
+  assert.equal(config.webBaseUrl, 'https://github.com');
 });
 
 test('readConfig parses booleans and integers from bounded explicit env values only', () => {
