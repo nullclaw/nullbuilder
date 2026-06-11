@@ -10,6 +10,20 @@ const failure_conclusion = "failure";
 const missing_status = "n/a";
 const success_conclusion = "success";
 const max_run_label_len = 64;
+const RunSlot = enum {
+    ci,
+    nightly,
+    release,
+
+    fn fieldName(self: RunSlot) []const u8 {
+        return switch (self) {
+            .ci => "ci",
+            .nightly => "nightly",
+            .release => "release",
+        };
+    }
+};
+const run_slots = [_]RunSlot{ .ci, .nightly, .release };
 const workflow_status_labels = [_][]const u8{
     completed_status,
     "queued",
@@ -34,6 +48,14 @@ pub const RunStatuses = struct {
     ci: []const u8,
     nightly: []const u8,
     release: []const u8,
+
+    fn fromLatest(latest_runs: JsonObject) RunStatuses {
+        return .{
+            .ci = runLabel(latest_runs, .ci),
+            .nightly = runLabel(latest_runs, .nightly),
+            .release = runLabel(latest_runs, .release),
+        };
+    }
 };
 
 pub fn repositoryRunStatuses(repository_status: []const u8, latest: ?JsonObject) RunStatuses {
@@ -42,18 +64,16 @@ pub fn repositoryRunStatuses(repository_status: []const u8, latest: ?JsonObject)
     }
 
     const latest_runs = latest orelse return repeatedStatus(missing_status);
-    return .{
-        .ci = runLabel(latest_runs, "ci"),
-        .nightly = runLabel(latest_runs, "nightly"),
-        .release = runLabel(latest_runs, "release"),
-    };
+    return RunStatuses.fromLatest(latest_runs);
 }
 
 pub fn repositoryHasFailure(latest: ?JsonObject) bool {
     const latest_runs = latest orelse return false;
-    return isFailedRun(latest_runs, "ci") or
-        isFailedRun(latest_runs, "nightly") or
-        isFailedRun(latest_runs, "release");
+    for (run_slots) |slot| {
+        if (isFailedRun(latest_runs, slot)) return true;
+    }
+
+    return false;
 }
 
 pub fn isSuccessLabel(label: []const u8) bool {
@@ -79,15 +99,15 @@ fn repeatedStatus(label: []const u8) RunStatuses {
     return .{ .ci = label, .nightly = label, .release = label };
 }
 
-fn isFailedRun(latest: JsonObject, field_name: []const u8) bool {
-    const run = dashboard_json.objectField(latest, field_name) orelse return false;
+fn isFailedRun(latest: JsonObject, slot: RunSlot) bool {
+    const run = dashboard_json.objectField(latest, slot.fieldName()) orelse return false;
     const status = runStatus(run);
     if (!std.mem.eql(u8, status, completed_status)) return false;
     return !std.mem.eql(u8, runConclusion(run, ""), success_conclusion);
 }
 
-fn runLabel(latest: JsonObject, field_name: []const u8) []const u8 {
-    const run = dashboard_json.objectField(latest, field_name) orelse return missing_status;
+fn runLabel(latest: JsonObject, slot: RunSlot) []const u8 {
+    const run = dashboard_json.objectField(latest, slot.fieldName()) orelse return missing_status;
     const status = runStatus(run);
     if (!std.mem.eql(u8, status, completed_status)) return status;
     return runConclusion(run, completed_status);
@@ -143,6 +163,13 @@ test "repositoryRunStatuses maps active completed missing and error runs" {
     try std.testing.expectEqualStrings(error_status, errored.ci);
     try std.testing.expectEqualStrings(error_status, errored.nightly);
     try std.testing.expectEqualStrings(error_status, errored.release);
+}
+
+test "workflow run slots define the dashboard JSON field contract" {
+    try std.testing.expectEqual(@as(usize, 3), run_slots.len);
+    try std.testing.expectEqualStrings("ci", run_slots[0].fieldName());
+    try std.testing.expectEqualStrings("nightly", run_slots[1].fieldName());
+    try std.testing.expectEqualStrings("release", run_slots[2].fieldName());
 }
 
 test "repositoryRunStatuses rejects oversized run labels" {
