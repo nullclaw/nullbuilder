@@ -19,6 +19,12 @@ pub const OutputLimits = struct {
     stderr: usize = default_stderr_limit,
 };
 
+pub const RunResult = struct {
+    term: std.process.Child.Term,
+    stdout: []u8,
+    stderr: []u8,
+};
+
 pub const ExitCodePolicy = enum {
     success_only,
     success_or_read_errors,
@@ -31,29 +37,35 @@ pub const ExitCodePolicy = enum {
     }
 };
 
-pub fn run(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8, limits: OutputLimits) !std.process.RunResult {
+pub fn run(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8, limits: OutputLimits) !RunResult {
     if (!isSafeChildArgv(argv)) return error.InvalidChildArguments;
     const bounded_limits = normalizeOutputLimits(limits);
 
-    return std.process.run(gpa, io, .{
+    const result = try std.process.run(gpa, io, .{
         .argv = argv,
         .stdout_limit = std.Io.Limit.limited(bounded_limits.stdout),
         .stderr_limit = std.Io.Limit.limited(bounded_limits.stderr),
     });
+
+    return .{
+        .term = result.term,
+        .stdout = result.stdout,
+        .stderr = result.stderr,
+    };
 }
 
-pub fn freeResult(gpa: std.mem.Allocator, result: std.process.RunResult) void {
+pub fn freeResult(gpa: std.mem.Allocator, result: RunResult) void {
     gpa.free(result.stdout);
     gpa.free(result.stderr);
 }
 
-pub fn writeCaptured(out: *std.Io.Writer, result: std.process.RunResult) !void {
+pub fn writeCaptured(out: *std.Io.Writer, result: RunResult) !void {
     try writeCapturedWithOrder(out, result, .stdout_first);
 }
 
 pub fn exitCodeForFailure(
     out: *std.Io.Writer,
-    result: std.process.RunResult,
+    result: RunResult,
     exit_policy: ExitCodePolicy,
 ) !?u8 {
     switch (result.term) {
@@ -78,7 +90,7 @@ const CapturedWriteOrder = enum {
     stderr_first,
 };
 
-fn writeCapturedWithOrder(out: *std.Io.Writer, result: std.process.RunResult, order: CapturedWriteOrder) !void {
+fn writeCapturedWithOrder(out: *std.Io.Writer, result: RunResult, order: CapturedWriteOrder) !void {
     var budget = terminal.OutputBudget{ .remaining = max_child_output_display_bytes };
     switch (order) {
         .stdout_first => {
