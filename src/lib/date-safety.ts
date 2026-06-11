@@ -3,7 +3,8 @@ import { readSafeTextInput } from './text-safety';
 
 const DEFAULT_MAX_UTC_TIMESTAMP_LENGTH = 64;
 const UTC_TIMESTAMP_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const numberIsFinite = Number.isFinite;
 
 export type UtcTimestampParseOptions = {
   maxLength?: unknown;
@@ -29,18 +30,16 @@ export function parseUtcTimestampMillis(
     return null;
   }
 
-  const match = UTC_TIMESTAMP_PATTERN.exec(safeValue);
-  if (!match) {
+  if (!UTC_TIMESTAMP_PATTERN.test(safeValue)) {
     return null;
   }
 
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = Number(match[6]);
-  const millisecond = Number((match[7] ?? '').padEnd(3, '0') || '0');
+  const timestampParts = parseUtcTimestampParts(safeValue);
+  if (timestampParts === null) {
+    return null;
+  }
+
+  const { year, month, day, hour, minute, second, millisecond } = timestampParts;
 
   const date = new Date(0);
   date.setUTCFullYear(year, month - 1, day);
@@ -59,7 +58,7 @@ export function parseUtcTimestampMillis(
   }
 
   const timestamp = date.getTime();
-  return Number.isFinite(timestamp) ? timestamp : null;
+  return numberIsFinite(timestamp) ? timestamp : null;
 }
 
 function normalizeMaxTimestampLength(value: unknown): number {
@@ -68,4 +67,93 @@ function normalizeMaxTimestampLength(value: unknown): number {
     DEFAULT_MAX_UTC_TIMESTAMP_LENGTH,
     DEFAULT_MAX_UTC_TIMESTAMP_LENGTH
   );
+}
+
+function parseUtcTimestampParts(value: string): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  millisecond: number;
+} | null {
+  const year = parseFixedWidthDecimal(value, 0, 4);
+  const month = parseFixedWidthDecimal(value, 5, 7);
+  const day = parseFixedWidthDecimal(value, 8, 10);
+  const hour = parseFixedWidthDecimal(value, 11, 13);
+  const minute = parseFixedWidthDecimal(value, 14, 16);
+  const second = parseFixedWidthDecimal(value, 17, 19);
+  const millisecond = parseUtcMillisecond(value);
+
+  if (
+    year === null ||
+    month === null ||
+    day === null ||
+    hour === null ||
+    minute === null ||
+    second === null ||
+    millisecond === null
+  ) {
+    return null;
+  }
+
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+    millisecond
+  };
+}
+
+function parseUtcMillisecond(value: string): number | null {
+  if (value[19] === 'Z') {
+    return 0;
+  }
+
+  if (value[19] !== '.') {
+    return null;
+  }
+
+  const end = value.length - 1;
+  const digits = end - 20;
+  if (digits < 1 || digits > 3 || value[end] !== 'Z') {
+    return null;
+  }
+
+  const parsed = parseFixedWidthDecimal(value, 20, end);
+  if (parsed === null) {
+    return null;
+  }
+
+  if (digits === 1) {
+    return parsed * 100;
+  }
+
+  if (digits === 2) {
+    return parsed * 10;
+  }
+
+  return parsed;
+}
+
+function parseFixedWidthDecimal(value: string, start: number, end: number): number | null {
+  if (end <= start || end > value.length) {
+    return null;
+  }
+
+  let parsed = 0;
+  for (let index = start; index < end; index += 1) {
+    const digit = value.charCodeAt(index) - 48;
+    if (digit < 0 || digit > 9) {
+      return null;
+    }
+
+    parsed = parsed * 10 + digit;
+  }
+
+  return parsed;
 }

@@ -2,8 +2,12 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { parseUtcTimestampMillis, safeUtcTimestampText } from './date-safety';
 
+const originalNumber = Number;
+
 test('parseUtcTimestampMillis accepts strict UTC timestamps', () => {
   assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56Z'), Date.UTC(2026, 5, 2, 12, 34, 56));
+  assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56.7Z'), Date.UTC(2026, 5, 2, 12, 34, 56, 700));
+  assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56.78Z'), Date.UTC(2026, 5, 2, 12, 34, 56, 780));
   assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56.789Z'), Date.UTC(2026, 5, 2, 12, 34, 56, 789));
   assert.equal(new Date(parseUtcTimestampMillis('0001-01-01T00:00:00Z') ?? Number.NaN).toISOString(), '0001-01-01T00:00:00.000Z');
 });
@@ -57,6 +61,25 @@ test('parseUtcTimestampMillis handles malformed runtime values and options safel
     parseUtcTimestampMillis('2026-06-02T12:34:56Z', { maxLength: Number.NaN }),
     Date.UTC(2026, 5, 2, 12, 34, 56)
   );
+});
+
+test('parseUtcTimestampMillis parses timestamp fields without Number coercion', () => {
+  const expected = Date.UTC(2026, 5, 2, 12, 34, 56, 789);
+  globalThis.Number = new Proxy(originalNumber, {
+    apply(): never {
+      throw new Error('Number constructor should not be called');
+    },
+    construct(): never {
+      throw new Error('Number constructor should not be called');
+    }
+  });
+
+  try {
+    assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56.789Z'), expected);
+    assert.equal(parseUtcTimestampMillis('2026-06-02T12:34:56Z'), Date.UTC(2026, 5, 2, 12, 34, 56));
+  } finally {
+    globalThis.Number = originalNumber;
+  }
 });
 
 test('safeUtcTimestampText returns only strict UTC timestamp text', () => {
