@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta http-equiv="content-security-policy" content="default-src 'self'; base-uri 'self'; connect-src 'self' https://api.github.com; font-src 'self'; form-action 'self'; frame-src 'none'; img-src 'self' data:; manifest-src 'self'; media-src 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-2/jppTOr9HfNjgJ7rhZggy4VEeuUZDLKHsdCoPzKga0=' 'sha256-IRprildjLL+3SuNhpxASNxA3FHtF9vaMbtB0cdufpr4=' 'sha256-Mo/RbipuleGiktl965fCPUsuqPGLnoJYWy7zaxn4nhc='; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" data-null-security-policy>
+		<meta name="referrer" content="strict-origin-when-cross-origin" data-null-security-policy>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#0c0a08" />
+		<script>
+			document.documentElement.classList.add('js');
+			// Resolve the shared theme mode before first paint.
+			(function () {
+				var key = 'nullmenu-theme';
+				var valid = function (value) {
+					return value === 'system' || value === 'light' || value === 'dark';
+				};
+				var cookieMode = null;
+				try {
+					var cookie = document.cookie
+						.split(';')
+						.map(function (part) { return part.trim(); })
+						.find(function (part) { return part.indexOf(key + '=') === 0; });
+					if (cookie) {
+						try { cookieMode = decodeURIComponent(cookie.slice(key.length + 1)); } catch (e) {}
+					}
+				} catch (e) {}
+				var localMode = null;
+				try { localMode = localStorage.getItem(key); } catch (e) {}
+				var mode = valid(cookieMode) ? cookieMode : valid(localMode) ? localMode : 'system';
+				var theme = mode === 'system'
+					? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+					: mode;
+				document.documentElement.dataset.themeMode = mode;
+				document.documentElement.dataset.theme = theme;
+				if (theme === 'light') {
+					document.querySelector('meta[name="theme-color"]').content = '#f2ead8';
+				}
+			})();
+		</script>
+		<link rel="icon" href="../../../favicon.svg" type="image/svg+xml" />
+		<link
+			rel="preload"
+			href="../../../fonts/InstrumentSerif-normal-400-latin.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+		<link
+			rel="preload"
+			href="../../../fonts/InstrumentSerif-italic-400-latin.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+		<link
+			rel="preload"
+			href="../../../fonts/Geist-normal-300_700-latin.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+		<link
+			rel="preload"
+			href="../../../fonts/GeistMono-normal-400_600-latin.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+		<link href="../../../_app/immutable/entry/start.Bz-q0eT_.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/udtWhk-_.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/Bneb2paa.js" rel="modulepreload">
+		<link href="../../../_app/immutable/entry/app.KE8OTgZV.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/HclGiUj8.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/xihTtKlq.js" rel="modulepreload">
+		<link href="../../../_app/immutable/nodes/0.CV5Y04Mg.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/DIs7c8UJ.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/Bv5QTMu1.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/DsBvvBRv.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/Bc0JvcBg.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/3dok05DY.js" rel="modulepreload">
+		<link href="../../../_app/immutable/nodes/2.BUIBQiDE.js" rel="modulepreload">
+		<link href="../../../_app/immutable/nodes/5.C27DuBA2.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/krIbDipE.js" rel="modulepreload">
+		<!--12qhfyh--><!----><style>:root:root{--spice:#9aa3ad;--spice-dim:#6a7079;}</style><!----> <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%2312100d%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%229%22%20stroke%3D%22%23ece5d8%22%20stroke-width%3D%223.4%22%20fill%3D%22none%22%2F%3E%3Cline%20x1%3D%228.5%22%20y1%3D%2225.5%22%20x2%3D%2223.5%22%20y2%3D%226.5%22%20stroke%3D%22%239aa3ad%22%20stroke-width%3D%223.6%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E" type="image/svg+xml"/><!----><!--gsrl61--><meta name="description" content="Inputs, permissions and behavior of the three reusable workflows."/> <link rel="canonical" href="https://builder.nullmenu.ai/docs/reference/workflows/"/> <meta property="og:type" content="article"/> <meta property="og:site_name" content="NullBuilder"/> <meta property="og:title" content="Workflows — NullBuilder docs"/> <meta property="og:description" content="Inputs, permissions and behavior of the three reusable workflows."/> <meta property="og:url" content="https://builder.nullmenu.ai/docs/reference/workflows/"/> <meta property="og:image" content="https://builder.nullmenu.ai/og/builder.png"/> <meta property="og:image:alt" content="Social preview for NullBuilder: Workflows — NullBuilder docs"/> <meta property="og:image:width" content="1200"/> <meta property="og:image:height" content="630"/> <meta name="twitter:card" content="summary_large_image"/> <meta name="twitter:title" content="Workflows — NullBuilder docs"/> <meta name="twitter:description" content="Inputs, permissions and behavior of the three reusable workflows."/> <meta name="twitter:image" content="https://builder.nullmenu.ai/og/builder.png"/> <meta name="twitter:image:alt" content="Social preview for NullBuilder: Workflows — NullBuilder docs"/> <!----><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://nullmenu.ai/#organization","name":"Null ecosystem","url":"https://nullmenu.ai/","sameAs":["https://github.com/nullclaw"]},{"@type":"TechArticle","@id":"https://builder.nullmenu.ai/docs/reference/workflows/#article","headline":"Workflows — NullBuilder docs","description":"Inputs, permissions and behavior of the three reusable workflows.","url":"https://builder.nullmenu.ai/docs/reference/workflows/","image":"https://builder.nullmenu.ai/og/builder.png","inLanguage":"en","articleSection":"Reference","dateModified":"2026-07-19","mainEntityOfPage":"https://builder.nullmenu.ai/docs/reference/workflows/","author":{"@id":"https://nullmenu.ai/#organization"},"publisher":{"@id":"https://nullmenu.ai/#organization"}},{"@type":"BreadcrumbList","@id":"https://builder.nullmenu.ai/docs/reference/workflows/#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"NullBuilder","item":"https://builder.nullmenu.ai/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://builder.nullmenu.ai/docs/"},{"@type":"ListItem","position":3,"name":"Workflows","item":"https://builder.nullmenu.ai/docs/reference/workflows/"}]}]}</script><!----><!----><title>Workflows — NullBuilder docs</title>
+		<link href="../../../_app/immutable/assets/0.b4SYXXpF.css" rel="stylesheet">
+		<link href="../../../_app/immutable/assets/2.D_3iEgFB.css" rel="stylesheet">
+		<link href="../../../_app/immutable/assets/5.s1K1snEQ.css" rel="stylesheet">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents"><!--[--><!--[0--><!--[--><a class="skip mono svelte-12qhfyh" href="#main">Skip to content</a> <span id="sr-status" class="sr-status" role="status" aria-live="polite"></span> <header class="svelte-1elxaub"><div class="inner container svelte-1elxaub"><div class="left svelte-1elxaub"><a class="brand svelte-1elxaub" href="/" aria-label="NullBuilder home"><svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="16" cy="16" r="10.5" stroke="currentColor" stroke-width="1.75"></circle><line class="slash" x1="7" y1="27" x2="25" y2="5" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round"></line></svg><!----> <span class="word mono svelte-1elxaub">null<span class="suffix serif-i svelte-1elxaub">·builder</span></span></a> <!--[-1--><!--]--></div> <nav class="desktop svelte-1elxaub" aria-label="Main"><!--[--><a href="/docs/" class="nav-link mono svelte-1elxaub active" aria-current="page">Docs<!--[-1--><!--]--></a><a href="https://nullmenu.ai" class="nav-link mono svelte-1elxaub">The menu<!--[-1--><!--]--></a><a href="https://github.com/nullclaw/nullbuilder" class="nav-link mono svelte-1elxaub" target="_blank" rel="noopener">GitHub<!--[0--><span class="ext svelte-1elxaub"><!----><svg class="functional-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="opens in a new tab"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8"></path><path d="M10 8h6v6"></path></g></svg><!----><!----></span><!--]--></a><!--]--> <button class="search-btn mono svelte-1elxaub" aria-label="Search docs"><!----><svg class="functional-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="5.75"></circle><path d="m14.8 14.8 4.7 4.7"></path></g></svg><!----><!----> <kbd class="svelte-1elxaub">Ctrl K</kbd></button> <button class="theme-toggle svelte-1elxaub" aria-label="Theme: system (dark). Switch to light theme" title="Theme: system (dark). Switch to light theme"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" class="svelte-1elxaub"><circle cx="9" cy="9" r="6.75" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path class="half" d="M9 2.25 a6.75 6.75 0 0 1 0 13.5 Z" fill="currentColor"></path></svg> <span class="theme-mode mono svelte-1elxaub" aria-hidden="true">system</span></button></nav> <button class="burger svelte-1elxaub" aria-expanded="false" aria-controls="mobile-navigation" aria-label="Open navigation"><span class="svelte-1elxaub"></span><span class="svelte-1elxaub"></span></button></div> <details class="nojs-navigation svelte-1elxaub" data-pagefind-ignore=""><summary class="mono svelte-1elxaub">Menu</summary> <nav aria-label="Main navigation" class="svelte-1elxaub"><!--[--><a href="/docs/" class="mono svelte-1elxaub">Docs<!--[-1--><!--]--></a><a href="https://nullmenu.ai" class="mono svelte-1elxaub">The menu<!--[-1--><!--]--></a><a href="https://github.com/nullclaw/nullbuilder" class="mono svelte-1elxaub" target="_blank" rel="noopener">GitHub<!--[0--><span class="ext svelte-1elxaub"><!----><svg class="functional-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="opens in a new tab"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8"></path><path d="M10 8h6v6"></path></g></svg><!----><!----></span><!--]--></a><!--]--></nav></details> <!--[-1--><!--]--></header><!----> <!--[-1--><!--]--><!----> <main id="main" class="svelte-12qhfyh"><!--[0--><!--[--><div class="docs container svelte-1bpnej"><button class="nav-toggle mono svelte-1bpnej" aria-expanded="false" aria-controls="docs-navigation">menu — docs</button> <details class="nojs-docs-navigation svelte-1bpnej" data-pagefind-ignore=""><summary class="mono svelte-1bpnej">Browse documentation</summary> <nav aria-label="Documentation navigation" class="svelte-1bpnej"><a href="/docs/" class="serif-i svelte-1bpnej">Docs home</a> <!--[--><div class="nojs-group svelte-1bpnej"><h2 class="label svelte-1bpnej">Start</h2> <!--[--><a href="/docs/start/overview/" class="svelte-1bpnej">Overview</a><!--]--></div><div class="nojs-group svelte-1bpnej"><h2 class="label svelte-1bpnej">Reference</h2> <!--[--><a href="/docs/reference/workflows/" class="svelte-1bpnej">Workflows</a><a href="/docs/reference/targets/" class="svelte-1bpnej">Targets</a><!--]--></div><!--]--> <!--[-1--><!--]--></nav></details> <!--[-1--><!--]--> <div id="docs-navigation" class="sidebar svelte-1bpnej" role="navigation" aria-label="Documentation"><div class="drawer-head mono svelte-1bpnej"><div class="svelte-1bpnej"><span class="drawer-kicker svelte-1bpnej">Browse</span> <span id="docs-navigation-title" class="drawer-title svelte-1bpnej">Documentation</span></div> <button class="drawer-close svelte-1bpnej"><span>close</span><!----><svg class="functional-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10"></path><path d="M17 7 7 17"></path></g></svg><!----><!----></button></div> <a href="/docs/" class="cookbook-link serif-i svelte-1bpnej">Docs home</a> <!--[--><div class="group svelte-1bpnej"><h2 class="label svelte-1bpnej">Start</h2> <ul class="svelte-1bpnej"><!--[--><li class="svelte-1bpnej"><a href="/docs/start/overview/" class="svelte-1bpnej">Overview</a></li><!--]--></ul></div><div class="group svelte-1bpnej"><h2 class="label svelte-1bpnej">Reference</h2> <ul class="svelte-1bpnej"><!--[--><li class="svelte-1bpnej"><a href="/docs/reference/workflows/" aria-current="page" class="svelte-1bpnej active">Workflows</a></li><li class="svelte-1bpnej"><a href="/docs/reference/targets/" class="svelte-1bpnej">Targets</a></li><!--]--></ul></div><!--]--> <!--[-1--><!--]--></div> <div class="content svelte-1bpnej"><!--[--><!----> <div class="page svelte-5oqt2y has-toc"><article data-pagefind-body=""><p class="label label--accent" data-pagefind-ignore="">Reference</p> <h1 class="serif svelte-5oqt2y">Workflows</h1> <div class="meta mono svelte-5oqt2y" data-pagefind-ignore=""><!--[-1--><!--]--> <button class="meta-link svelte-5oqt2y"><!--[-1-->copy as markdown<!--]--></button> <a class="meta-link svelte-5oqt2y" href="https://github.com/nullclaw/nullmenu/edit/main/content/builder/docs/reference/workflows.md" target="_blank" rel="noopener">edit on github <!----><svg class="functional-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="opens in a new tab"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8"></path><path d="M10 8h6v6"></path></g></svg><!----><!----></a></div> <!--[0--><details class="mobile-toc svelte-5oqt2y" data-pagefind-ignore=""><summary class="svelte-5oqt2y"><span class="label">On this page</span> <span class="toc-count mono svelte-5oqt2y">4 sections <!----><svg class="functional-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5v11"></path><path d="M6.5 12h11"></path></g></svg><!----><!----></span></summary> <nav aria-label="On this page" class="svelte-5oqt2y"><ul class="svelte-5oqt2y"><!--[--><li class="d2 svelte-5oqt2y"><a href="#zig-ciyml" class="svelte-5oqt2y">zig-ci.yml</a></li><li class="d2 svelte-5oqt2y"><a href="#zig-nightlyyml" class="svelte-5oqt2y">zig-nightly.yml</a></li><li class="d2 svelte-5oqt2y"><a href="#zig-releaseyml" class="svelte-5oqt2y">zig-release.yml</a></li><li class="d2 svelte-5oqt2y"><a href="#composite-actions" class="svelte-5oqt2y">Composite actions</a></li><!--]--></ul></nav></details><!--]--> <div class="prose"><!----><p>All configuration happens through <code>with:</code> inputs on the three <code>workflow_call</code> workflows. There are no config files, and the only environment contract for callers is <code>BUILD_VERSION</code>, exported to pre-build and source-prepare hooks. <code>binary_name</code> is required everywhere; every other input has a default.</p>
+<h2 id="zig-ciyml" aria-labelledby="heading-label-zig-ciyml"><span id="heading-label-zig-ciyml">zig-ci.yml</span><a class="heading-anchor" href="#zig-ciyml" aria-label="Permalink to zig-ci.yml" data-pagefind-ignore><span aria-hidden="true">#</span></a></h2>
+<p>Runs tests, then a ReleaseSmall cross-build per matrix target. Requires <code>permissions: contents: read</code>.</p>
+<div class="table-scroll" role="region" aria-label="Data table: Input, Default, Notes" tabindex="0"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>binary_name</code></td>
+<td>— (required)</td>
+<td>Binary produced under <code>zig-out/bin</code></td>
+</tr>
+<tr>
+<td><code>artifact_prefix</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Prefix for uploaded artifacts; falls back to <code>binary_name</code></td>
+</tr>
+<tr>
+<td><code>zig_version</code></td>
+<td><code>&quot;0.16.0&quot;</code></td>
+<td>Zig version to install</td>
+</tr>
+<tr>
+<td><code>targets_json</code></td>
+<td>3 targets</td>
+<td>JSON matrix; see <a href="/docs/reference/targets/">Targets</a></td>
+</tr>
+<tr>
+<td><code>node_version</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Optional Node.js to install before custom commands</td>
+</tr>
+<tr>
+<td><code>node_cache_dependency_path</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Enables npm caching in setup-node</td>
+</tr>
+<tr>
+<td><code>setup_command</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Runs after tool setup, before tests</td>
+</tr>
+<tr>
+<td><code>pre_test_command</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Runs immediately before tests</td>
+</tr>
+<tr>
+<td><code>test_command</code></td>
+<td><code>&quot;zig build test --summary all&quot;</code></td>
+<td>The test invocation</td>
+</tr>
+<tr>
+<td><code>pre_build_command</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Runs immediately before the ReleaseSmall build</td>
+</tr>
+<tr>
+<td><code>build_args</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Extra arguments appended to <code>zig build</code></td>
+</tr>
+<tr>
+<td><code>e2e_command</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Runs after the build, on one matrix target only</td>
+</tr>
+<tr>
+<td><code>e2e_target</code></td>
+<td><code>&quot;linux-x86_64&quot;</code></td>
+<td>Matrix <code>target</code> name that runs <code>e2e_command</code></td>
+</tr>
+<tr>
+<td><code>upload_artifacts</code></td>
+<td><code>true</code></td>
+<td>Upload host binaries as CI artifacts</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Hook order within each matrix job: <code>setup_command</code> → <code>pre_test_command</code> → tests → <code>pre_build_command</code> → build → <code>e2e_command</code> (matching target only). Each hook command reaches <code>bash -euo pipefail</code> through an environment variable, so its text is never templated into the workflow YAML. The build cache covers <code>.zig-cache</code> and <code>~/.cache/zig</code>, keyed on your Zig sources, <code>build.zig</code>, <code>build.zig.zon</code> and <code>vendor/</code>.</p>
+<p>Every job appends a summary table: tests passed, test MaxRSS, and ReleaseSmall binary size in MB and bytes.</p>
+<h2 id="zig-nightlyyml" aria-labelledby="heading-label-zig-nightlyyml"><span id="heading-label-zig-nightlyyml">zig-nightly.yml</span><a class="heading-anchor" href="#zig-nightlyyml" aria-label="Permalink to zig-nightly.yml" data-pagefind-ignore><span aria-hidden="true">#</span></a></h2>
+<p>Builds the full 12-target matrix on a schedule. Requires <code>permissions: actions: read</code> and <code>contents: read</code> (plus <code>contents: write</code> in the caller if <code>publish_release</code> is on).</p>
+<div class="table-scroll" role="region" aria-label="Data table: Input, Default, Notes" tabindex="0"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>binary_name</code></td>
+<td>— (required)</td>
+<td>Binary produced under <code>zig-out/bin</code></td>
+</tr>
+<tr>
+<td><code>artifact_prefix</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Falls back to <code>binary_name</code></td>
+</tr>
+<tr>
+<td><code>zig_version</code></td>
+<td><code>&quot;0.16.0&quot;</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>android_api_level</code></td>
+<td><code>&quot;24&quot;</code></td>
+<td>For Android targets</td>
+</tr>
+<tr>
+<td><code>android_ndk_version</code></td>
+<td><code>&quot;29.0.14206865&quot;</code></td>
+<td>For Android targets</td>
+</tr>
+<tr>
+<td><code>targets_json</code></td>
+<td>12 targets</td>
+<td>See <a href="/docs/reference/targets/">Targets</a></td>
+</tr>
+<tr>
+<td><code>node_version</code> / <code>node_cache_dependency_path</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>As in CI</td>
+</tr>
+<tr>
+<td><code>pre_build_command</code></td>
+<td><code>&quot;&quot;</code></td>
+<td><code>BUILD_VERSION</code> is available in its environment</td>
+</tr>
+<tr>
+<td><code>build_args</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Extra <code>zig build</code> arguments</td>
+</tr>
+<tr>
+<td><code>retention_days</code></td>
+<td><code>14</code></td>
+<td>Artifact retention</td>
+</tr>
+<tr>
+<td><code>force</code></td>
+<td><code>false</code></td>
+<td>Build even if this commit already has a successful nightly</td>
+</tr>
+<tr>
+<td><code>dedupe_workflow_name</code></td>
+<td><code>&quot;Nightly&quot;</code></td>
+<td>Caller workflow name used for the dedupe check</td>
+</tr>
+<tr>
+<td><code>publish_release</code></td>
+<td><code>false</code></td>
+<td>Maintain a rolling GitHub prerelease</td>
+</tr>
+<tr>
+<td><code>release_tag</code></td>
+<td><code>&quot;nightly&quot;</code></td>
+<td>Tag of the rolling prerelease</td>
+</tr>
+<tr>
+<td><code>release_title</code></td>
+<td><code>&quot;Nightly&quot;</code></td>
+<td>Title prefix of the rolling prerelease</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A preflight job fetches the repository&#39;s workflow runs from the GitHub API and hands them to a small Zig program that looks for a previous successful run of the same workflow (scheduled or manually dispatched) on the same commit; on a match the build is skipped unless <code>force</code> is set. Nightly versions look like <code>nightly-YYYYMMDD-&lt;short-sha&gt;</code> and are injected via <code>-Dversion</code>.</p>
+<p>Each nightly binary is packaged with a <code>.sha256</code> checksum file and a <code>manifest-&lt;target&gt;.json</code> recording <code>built_at</code>, <code>commit</code>, <code>run_id</code>, <code>run_url</code>, <code>target</code>, <code>zig_target</code> and <code>version</code>. With <code>publish_release: true</code>, the workflow replaces the assets of the rolling prerelease on each run and retargets its tag.</p>
+<h2 id="zig-releaseyml" aria-labelledby="heading-label-zig-releaseyml"><span id="heading-label-zig-releaseyml">zig-release.yml</span><a class="heading-anchor" href="#zig-releaseyml" aria-label="Permalink to zig-release.yml" data-pagefind-ignore><span aria-hidden="true">#</span></a></h2>
+<p>Triggers on <code>v*</code> tag pushes in the caller. Requires <code>permissions: contents: write</code>; add <code>packages: write</code> only when <code>publish_docker</code> is enabled. It does not require caller repository secrets.</p>
+<div class="table-scroll" role="region" aria-label="Data table: Input, Default, Notes" tabindex="0"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>binary_name</code></td>
+<td>— (required)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>artifact_prefix</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Falls back to <code>binary_name</code></td>
+</tr>
+<tr>
+<td><code>zig_version</code></td>
+<td><code>&quot;0.16.0&quot;</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>android_api_level</code> / <code>android_ndk_version</code></td>
+<td><code>&quot;24&quot;</code> / <code>&quot;29.0.14206865&quot;</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>targets_json</code></td>
+<td>12 targets</td>
+<td>Same default matrix as nightly</td>
+</tr>
+<tr>
+<td><code>node_version</code> / <code>node_cache_dependency_path</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>As in CI</td>
+</tr>
+<tr>
+<td><code>pre_build_command</code></td>
+<td><code>&quot;&quot;</code></td>
+<td><code>BUILD_VERSION</code> is available</td>
+</tr>
+<tr>
+<td><code>build_args</code></td>
+<td><code>&quot;&quot;</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>source_archive</code></td>
+<td><code>false</code></td>
+<td>Build and attach a source tarball</td>
+</tr>
+<tr>
+<td><code>source_prepare_command</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Runs before archiving; <code>BUILD_VERSION</code> available</td>
+</tr>
+<tr>
+<td><code>source_archive_name</code></td>
+<td><code>&quot;&quot;</code></td>
+<td>Defaults to <code>&lt;prefix&gt;-source-&lt;tag&gt;.tar.gz</code></td>
+</tr>
+<tr>
+<td><code>source_archive_excludes</code></td>
+<td><code>.git</code>, <code>.zig-cache</code>, <code>zig-out</code></td>
+<td>Newline-separated tar excludes</td>
+</tr>
+<tr>
+<td><code>generate_release_notes</code></td>
+<td><code>true</code></td>
+<td>GitHub-generated notes</td>
+</tr>
+<tr>
+<td><code>publish_docker</code></td>
+<td><code>false</code></td>
+<td>Push a multi-arch image to ghcr.io</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The version is taken from the tag with the <code>v</code> stripped and injected as <code>-Dversion</code>. Release assets are named <code>&lt;prefix&gt;-&lt;target&gt;.bin</code> (or <code>.exe</code> on Windows, which additionally gets a <code>.zip</code>). If a release for the tag already exists, its assets are updated instead of failing.</p>
+<p>With <code>publish_docker: true</code>, a follow-up job builds <code>linux/amd64</code> and <code>linux/arm64</code> images with buildx + QEMU, pushes to <code>ghcr.io/&lt;owner&gt;/&lt;repo&gt;</code> with the semver tag and <code>latest</code>, and uses GitHub Actions layer caching.</p>
+<h2 id="composite-actions" aria-labelledby="heading-label-composite-actions"><span id="heading-label-composite-actions">Composite actions</span><a class="heading-anchor" href="#composite-actions" aria-label="Permalink to Composite actions" data-pagefind-ignore><span aria-hidden="true">#</span></a></h2>
+<p>Three helpers live under <code>.github/actions/</code>. At the reviewed snapshot, the reusable workflows still reference them through the mutable <code>v1</code> branch; pinning the caller workflow alone therefore does not yet make the complete internal chain immutable:</p>
+<div class="table-scroll" role="region" aria-label="Data table: Action, Purpose" tabindex="0"><table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>setup-zig</code></td>
+<td>Runs the bundled <code>install-zig.sh</code>, which downloads version 0.16.0 by default and checks the archive against the SHA-256 value in ziglang.org metadata; the composite action itself is still loaded through mutable <code>v1</code></td>
+</tr>
+<tr>
+<td><code>nightly-decide</code></td>
+<td>Runs a Zig program over a workflow-runs API dump (<code>--runs-json</code>, <code>--current-run-id</code>, <code>--head-sha</code>, <code>--workflow-name</code>, <code>--force</code>) and prints <code>should_build=</code>, <code>reason=</code>, <code>matched_run_id=</code>, <code>matched_run_url=</code></td>
+</tr>
+<tr>
+<td><code>package-artifact</code></td>
+<td>Runs a Zig program (<code>--binary</code>, <code>--target</code>, <code>--zig-target</code>, <code>--version</code>, <code>--repository</code>, <code>--commit</code>, <code>--run-id</code>, <code>--server-url</code>, <code>--built-at</code>) that writes <code>&lt;binary&gt;.sha256</code> and <code>manifest-&lt;target&gt;.json</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code>nightly-decide</code> and <code>package-artifact</code> are written in Zig — seven <code>zig test</code> blocks between them — and tested in NullBuilder&#39;s own CI on every push and pull request.</p>
+<aside class="callout callout--note"><div class="callout-title">Note</div><p>Pre-1.0: inputs and defaults may change upstream. Public caller examples pin commit <code>2b9c2f2e7bb0ac085baea1c33b4f08beaf5c7fac</code>; review workflow inputs and internal action references before updating that SHA.</p>
+</aside>
+<!----></div> <nav class="pager svelte-5oqt2y" aria-label="Previous and next" data-pagefind-ignore=""><!--[0--><a class="pager-link prev svelte-5oqt2y" href="/docs/start/overview/"><span class="dir mono svelte-5oqt2y"><!----><svg class="functional-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 7-5 5 5 5"></path><path d="M6 12h12.5"></path></g></svg><!----><!----> previous</span> <span class="serif-i svelte-5oqt2y">Overview</span></a><!--]--> <!--[0--><a class="pager-link next svelte-5oqt2y" href="/docs/reference/targets/"><span class="dir mono svelte-5oqt2y">next <!----><svg class="functional-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m13.5 7 5 5-5 5"></path><path d="M18 12H5.5"></path></g></svg><!----><!----></span> <span class="serif-i svelte-5oqt2y">Targets</span></a><!--]--></nav></article> <!--[0--><aside class="toc svelte-5oqt2y" aria-label="On this page"><h2 class="label svelte-5oqt2y">On this page</h2> <ul class="svelte-5oqt2y"><!--[--><li class="d2 svelte-5oqt2y"><a href="#zig-ciyml" class="svelte-5oqt2y">zig-ci.yml</a></li><li class="d2 svelte-5oqt2y"><a href="#zig-nightlyyml" class="svelte-5oqt2y">zig-nightly.yml</a></li><li class="d2 svelte-5oqt2y"><a href="#zig-releaseyml" class="svelte-5oqt2y">zig-release.yml</a></li><li class="d2 svelte-5oqt2y"><a href="#composite-actions" class="svelte-5oqt2y">Composite actions</a></li><!--]--></ul></aside><!--]--></div><!--]--><!----></div></div><!--]--><!--]--><!----></main> <footer class="svelte-jz8lnl"><div class="container"><div class="signoff svelte-jz8lnl"><p class="serif-i big svelte-jz8lnl">Built for your hardware.</p> <p class="sub svelte-jz8lnl">Single-binary Zig tools for running and supervising AI agents locally.</p></div> <div class="cols svelte-jz8lnl"><div class="col svelte-jz8lnl"><h3 class="label svelte-jz8lnl">Products</h3> <ul class="svelte-jz8lnl"><!--[--><li><a href="https://hub.nullmenu.ai" class="mono svelte-jz8lnl">nullhub</a></li><li><a href="https://claw.nullmenu.ai" class="mono svelte-jz8lnl">nullclaw</a></li><li><a href="https://boiler.nullmenu.ai" class="mono svelte-jz8lnl">nullboiler</a></li><li><a href="https://tickets.nullmenu.ai" class="mono svelte-jz8lnl">nulltickets</a></li><li><a href="https://watch.nullmenu.ai" class="mono svelte-jz8lnl">nullwatch</a></li><li><a href="https://pantry.nullmenu.ai" class="mono svelte-jz8lnl">nullpantry</a></li><li><a href="https://clw.nullmenu.ai" class="mono svelte-jz8lnl">nllclw</a></li><li><a href="https://desk.nullmenu.ai" class="mono svelte-jz8lnl">nulldesk</a></li><li><a href="https://cap.nullmenu.ai" class="mono svelte-jz8lnl">nullcap</a></li><li><a href="https://builder.nullmenu.ai" class="mono svelte-jz8lnl">nullbuilder</a></li><!--]--></ul></div> <div class="col svelte-jz8lnl"><h3 class="label svelte-jz8lnl">Explore</h3> <ul class="svelte-jz8lnl"><li><a href="https://nullmenu.ai/products/" class="svelte-jz8lnl">All products</a></li> <li><a href="/docs/" class="svelte-jz8lnl">Documentation</a></li> <li><a href="/llms.txt" class="mono svelte-jz8lnl">llms.txt</a></li></ul></div> <div class="col svelte-jz8lnl"><h3 class="label svelte-jz8lnl">Source</h3> <ul class="svelte-jz8lnl"><li><a href="https://github.com/nullclaw/nullbuilder" target="_blank" rel="noopener" class="svelte-jz8lnl">GitHub <!----><svg class="functional-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="opens in a new tab"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8"></path><path d="M10 8h6v6"></path></g></svg><!----><!----></a></li> <li><a href="https://github.com/nullclaw" target="_blank" rel="noopener" class="svelte-jz8lnl">nullclaw org <!----><svg class="functional-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="opens in a new tab"><g stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8"></path><path d="M10 8h6v6"></path></g></svg><!----><!----></a></li> <!--[-1--><!--]--> <!--[-1--><!--]--></ul></div></div> <div class="bottom svelte-jz8lnl"><span class="mark svelte-jz8lnl"><svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="16" cy="16" r="10.5" stroke="currentColor" stroke-width="1.75"></circle><line class="slash" x1="7" y1="27" x2="25" y2="5" stroke="var(--accent)" stroke-width="1.75" stroke-linecap="round"></line></svg><!----></span> <span class="mono note svelte-jz8lnl">© 2026 the Null ecosystem</span> <span class="mono note svelte-jz8lnl">built with Zig 0.16</span> <span class="mono note svelte-jz8lnl">local-first · no cloud</span></div></div></footer><!----> <div class="grain svelte-2z0jyf" aria-hidden="true" style="background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;);"></div><!----><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+			
+			<script>
+				{
+					__sveltekit_jbowwm = {
+						base: new URL("../../..", location).pathname.slice(0, -1)
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("../../../_app/immutable/entry/start.Bz-q0eT_.js"),
+						import("../../../_app/immutable/entry/app.KE8OTgZV.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 2, 5],
+							data: [null,{type:"data",data:{tree:[{slug:"start",title:"Start",pages:[{siteId:"builder",section:"start",slug:"overview",path:"/content/builder/docs/start/overview.md",title:"Overview",description:"What NullBuilder is, who it serves, and how to wire it into a Zig repo.",order:1,verified:null}]},{slug:"reference",title:"Reference",pages:[{siteId:"builder",section:"reference",slug:"workflows",path:"/content/builder/docs/reference/workflows.md",title:"Workflows",description:"Inputs, permissions and behavior of the three reusable workflows.",order:1,verified:null},{siteId:"builder",section:"reference",slug:"targets",path:"/content/builder/docs/reference/targets.md",title:"Targets",description:"Default target matrices, custom matrices, and how Android builds work.",order:2,verified:null}]}]},uses:{}},{type:"data",data:{doc:{siteId:"builder",section:"reference",slug:"workflows",path:"/content/builder/docs/reference/workflows.md",title:"Workflows",description:"Inputs, permissions and behavior of the three reusable workflows.",order:1,verified:null,body:"\nAll configuration happens through `with:` inputs on the three `workflow_call` workflows. There are no config files, and the only environment contract for callers is `BUILD_VERSION`, exported to pre-build and source-prepare hooks. `binary_name` is required everywhere; every other input has a default.\n\n## zig-ci.yml\n\nRuns tests, then a ReleaseSmall cross-build per matrix target. Requires `permissions: contents: read`.\n\n| Input | Default | Notes |\n| --- | --- | --- |\n| `binary_name` | — (required) | Binary produced under `zig-out/bin` |\n| `artifact_prefix` | `\"\"` | Prefix for uploaded artifacts; falls back to `binary_name` |\n| `zig_version` | `\"0.16.0\"` | Zig version to install |\n| `targets_json` | 3 targets | JSON matrix; see [Targets](/docs/reference/targets/) |\n| `node_version` | `\"\"` | Optional Node.js to install before custom commands |\n| `node_cache_dependency_path` | `\"\"` | Enables npm caching in setup-node |\n| `setup_command` | `\"\"` | Runs after tool setup, before tests |\n| `pre_test_command` | `\"\"` | Runs immediately before tests |\n| `test_command` | `\"zig build test --summary all\"` | The test invocation |\n| `pre_build_command` | `\"\"` | Runs immediately before the ReleaseSmall build |\n| `build_args` | `\"\"` | Extra arguments appended to `zig build` |\n| `e2e_command` | `\"\"` | Runs after the build, on one matrix target only |\n| `e2e_target` | `\"linux-x86_64\"` | Matrix `target` name that runs `e2e_command` |\n| `upload_artifacts` | `true` | Upload host binaries as CI artifacts |\n\nHook order within each matrix job: `setup_command` → `pre_test_command` → tests → `pre_build_command` → build → `e2e_command` (matching target only). Each hook command reaches `bash -euo pipefail` through an environment variable, so its text is never templated into the workflow YAML. The build cache covers `.zig-cache` and `~/.cache/zig`, keyed on your Zig sources, `build.zig`, `build.zig.zon` and `vendor/`.\n\nEvery job appends a summary table: tests passed, test MaxRSS, and ReleaseSmall binary size in MB and bytes.\n\n## zig-nightly.yml\n\nBuilds the full 12-target matrix on a schedule. Requires `permissions: actions: read` and `contents: read` (plus `contents: write` in the caller if `publish_release` is on).\n\n| Input | Default | Notes |\n| --- | --- | --- |\n| `binary_name` | — (required) | Binary produced under `zig-out/bin` |\n| `artifact_prefix` | `\"\"` | Falls back to `binary_name` |\n| `zig_version` | `\"0.16.0\"` | |\n| `android_api_level` | `\"24\"` | For Android targets |\n| `android_ndk_version` | `\"29.0.14206865\"` | For Android targets |\n| `targets_json` | 12 targets | See [Targets](/docs/reference/targets/) |\n| `node_version` / `node_cache_dependency_path` | `\"\"` | As in CI |\n| `pre_build_command` | `\"\"` | `BUILD_VERSION` is available in its environment |\n| `build_args` | `\"\"` | Extra `zig build` arguments |\n| `retention_days` | `14` | Artifact retention |\n| `force` | `false` | Build even if this commit already has a successful nightly |\n| `dedupe_workflow_name` | `\"Nightly\"` | Caller workflow name used for the dedupe check |\n| `publish_release` | `false` | Maintain a rolling GitHub prerelease |\n| `release_tag` | `\"nightly\"` | Tag of the rolling prerelease |\n| `release_title` | `\"Nightly\"` | Title prefix of the rolling prerelease |\n\nA preflight job fetches the repository's workflow runs from the GitHub API and hands them to a small Zig program that looks for a previous successful run of the same workflow (scheduled or manually dispatched) on the same commit; on a match the build is skipped unless `force` is set. Nightly versions look like `nightly-YYYYMMDD-\u003Cshort-sha>` and are injected via `-Dversion`.\n\nEach nightly binary is packaged with a `.sha256` checksum file and a `manifest-\u003Ctarget>.json` recording `built_at`, `commit`, `run_id`, `run_url`, `target`, `zig_target` and `version`. With `publish_release: true`, the workflow replaces the assets of the rolling prerelease on each run and retargets its tag.\n\n## zig-release.yml\n\nTriggers on `v*` tag pushes in the caller. Requires `permissions: contents: write`; add `packages: write` only when `publish_docker` is enabled. It does not require caller repository secrets.\n\n| Input | Default | Notes |\n| --- | --- | --- |\n| `binary_name` | — (required) | |\n| `artifact_prefix` | `\"\"` | Falls back to `binary_name` |\n| `zig_version` | `\"0.16.0\"` | |\n| `android_api_level` / `android_ndk_version` | `\"24\"` / `\"29.0.14206865\"` | |\n| `targets_json` | 12 targets | Same default matrix as nightly |\n| `node_version` / `node_cache_dependency_path` | `\"\"` | As in CI |\n| `pre_build_command` | `\"\"` | `BUILD_VERSION` is available |\n| `build_args` | `\"\"` | |\n| `source_archive` | `false` | Build and attach a source tarball |\n| `source_prepare_command` | `\"\"` | Runs before archiving; `BUILD_VERSION` available |\n| `source_archive_name` | `\"\"` | Defaults to `\u003Cprefix>-source-\u003Ctag>.tar.gz` |\n| `source_archive_excludes` | `.git`, `.zig-cache`, `zig-out` | Newline-separated tar excludes |\n| `generate_release_notes` | `true` | GitHub-generated notes |\n| `publish_docker` | `false` | Push a multi-arch image to ghcr.io |\n\nThe version is taken from the tag with the `v` stripped and injected as `-Dversion`. Release assets are named `\u003Cprefix>-\u003Ctarget>.bin` (or `.exe` on Windows, which additionally gets a `.zip`). If a release for the tag already exists, its assets are updated instead of failing.\n\nWith `publish_docker: true`, a follow-up job builds `linux/amd64` and `linux/arm64` images with buildx + QEMU, pushes to `ghcr.io/\u003Cowner>/\u003Crepo>` with the semver tag and `latest`, and uses GitHub Actions layer caching.\n\n## Composite actions\n\nThree helpers live under `.github/actions/`. At the reviewed snapshot, the reusable workflows still reference them through the mutable `v1` branch; pinning the caller workflow alone therefore does not yet make the complete internal chain immutable:\n\n| Action | Purpose |\n| --- | --- |\n| `setup-zig` | Runs the bundled `install-zig.sh`, which downloads version 0.16.0 by default and checks the archive against the SHA-256 value in ziglang.org metadata; the composite action itself is still loaded through mutable `v1` |\n| `nightly-decide` | Runs a Zig program over a workflow-runs API dump (`--runs-json`, `--current-run-id`, `--head-sha`, `--workflow-name`, `--force`) and prints `should_build=`, `reason=`, `matched_run_id=`, `matched_run_url=` |\n| `package-artifact` | Runs a Zig program (`--binary`, `--target`, `--zig-target`, `--version`, `--repository`, `--commit`, `--run-id`, `--server-url`, `--built-at`) that writes `\u003Cbinary>.sha256` and `manifest-\u003Ctarget>.json` |\n\n`nightly-decide` and `package-artifact` are written in Zig — seven `zig test` blocks between them — and tested in NullBuilder's own CI on every push and pull request.\n\n> [!NOTE]\n> Pre-1.0: inputs and defaults may change upstream. Public caller examples pin commit `2b9c2f2e7bb0ac085baea1c33b4f08beaf5c7fac`; review workflow inputs and internal action references before updating that SHA.\n",html:"\u003Cp>All configuration happens through \u003Ccode>with:\u003C/code> inputs on the three \u003Ccode>workflow_call\u003C/code> workflows. There are no config files, and the only environment contract for callers is \u003Ccode>BUILD_VERSION\u003C/code>, exported to pre-build and source-prepare hooks. \u003Ccode>binary_name\u003C/code> is required everywhere; every other input has a default.\u003C/p>\n\u003Ch2 id=\"zig-ciyml\" aria-labelledby=\"heading-label-zig-ciyml\">\u003Cspan id=\"heading-label-zig-ciyml\">zig-ci.yml\u003C/span>\u003Ca class=\"heading-anchor\" href=\"#zig-ciyml\" aria-label=\"Permalink to zig-ci.yml\" data-pagefind-ignore>\u003Cspan aria-hidden=\"true\">#\u003C/span>\u003C/a>\u003C/h2>\n\u003Cp>Runs tests, then a ReleaseSmall cross-build per matrix target. Requires \u003Ccode>permissions: contents: read\u003C/code>.\u003C/p>\n\u003Cdiv class=\"table-scroll\" role=\"region\" aria-label=\"Data table: Input, Default, Notes\" tabindex=\"0\">\u003Ctable>\n\u003Cthead>\n\u003Ctr>\n\u003Cth>Input\u003C/th>\n\u003Cth>Default\u003C/th>\n\u003Cth>Notes\u003C/th>\n\u003C/tr>\n\u003C/thead>\n\u003Ctbody>\u003Ctr>\n\u003Ctd>\u003Ccode>binary_name\u003C/code>\u003C/td>\n\u003Ctd>— (required)\u003C/td>\n\u003Ctd>Binary produced under \u003Ccode>zig-out/bin\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>artifact_prefix\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Prefix for uploaded artifacts; falls back to \u003Ccode>binary_name\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>zig_version\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;0.16.0&quot;\u003C/code>\u003C/td>\n\u003Ctd>Zig version to install\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>targets_json\u003C/code>\u003C/td>\n\u003Ctd>3 targets\u003C/td>\n\u003Ctd>JSON matrix; see \u003Ca href=\"/docs/reference/targets/\">Targets\u003C/a>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>node_version\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Optional Node.js to install before custom commands\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>node_cache_dependency_path\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Enables npm caching in setup-node\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>setup_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Runs after tool setup, before tests\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>pre_test_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Runs immediately before tests\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>test_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;zig build test --summary all&quot;\u003C/code>\u003C/td>\n\u003Ctd>The test invocation\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>pre_build_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Runs immediately before the ReleaseSmall build\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>build_args\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Extra arguments appended to \u003Ccode>zig build\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>e2e_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Runs after the build, on one matrix target only\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>e2e_target\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;linux-x86_64&quot;\u003C/code>\u003C/td>\n\u003Ctd>Matrix \u003Ccode>target\u003C/code> name that runs \u003Ccode>e2e_command\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>upload_artifacts\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>true\u003C/code>\u003C/td>\n\u003Ctd>Upload host binaries as CI artifacts\u003C/td>\n\u003C/tr>\n\u003C/tbody>\n\u003C/table>\n\u003C/div>\n\u003Cp>Hook order within each matrix job: \u003Ccode>setup_command\u003C/code> → \u003Ccode>pre_test_command\u003C/code> → tests → \u003Ccode>pre_build_command\u003C/code> → build → \u003Ccode>e2e_command\u003C/code> (matching target only). Each hook command reaches \u003Ccode>bash -euo pipefail\u003C/code> through an environment variable, so its text is never templated into the workflow YAML. The build cache covers \u003Ccode>.zig-cache\u003C/code> and \u003Ccode>~/.cache/zig\u003C/code>, keyed on your Zig sources, \u003Ccode>build.zig\u003C/code>, \u003Ccode>build.zig.zon\u003C/code> and \u003Ccode>vendor/\u003C/code>.\u003C/p>\n\u003Cp>Every job appends a summary table: tests passed, test MaxRSS, and ReleaseSmall binary size in MB and bytes.\u003C/p>\n\u003Ch2 id=\"zig-nightlyyml\" aria-labelledby=\"heading-label-zig-nightlyyml\">\u003Cspan id=\"heading-label-zig-nightlyyml\">zig-nightly.yml\u003C/span>\u003Ca class=\"heading-anchor\" href=\"#zig-nightlyyml\" aria-label=\"Permalink to zig-nightly.yml\" data-pagefind-ignore>\u003Cspan aria-hidden=\"true\">#\u003C/span>\u003C/a>\u003C/h2>\n\u003Cp>Builds the full 12-target matrix on a schedule. Requires \u003Ccode>permissions: actions: read\u003C/code> and \u003Ccode>contents: read\u003C/code> (plus \u003Ccode>contents: write\u003C/code> in the caller if \u003Ccode>publish_release\u003C/code> is on).\u003C/p>\n\u003Cdiv class=\"table-scroll\" role=\"region\" aria-label=\"Data table: Input, Default, Notes\" tabindex=\"0\">\u003Ctable>\n\u003Cthead>\n\u003Ctr>\n\u003Cth>Input\u003C/th>\n\u003Cth>Default\u003C/th>\n\u003Cth>Notes\u003C/th>\n\u003C/tr>\n\u003C/thead>\n\u003Ctbody>\u003Ctr>\n\u003Ctd>\u003Ccode>binary_name\u003C/code>\u003C/td>\n\u003Ctd>— (required)\u003C/td>\n\u003Ctd>Binary produced under \u003Ccode>zig-out/bin\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>artifact_prefix\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Falls back to \u003Ccode>binary_name\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>zig_version\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;0.16.0&quot;\u003C/code>\u003C/td>\n\u003Ctd>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>android_api_level\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;24&quot;\u003C/code>\u003C/td>\n\u003Ctd>For Android targets\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>android_ndk_version\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;29.0.14206865&quot;\u003C/code>\u003C/td>\n\u003Ctd>For Android targets\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>targets_json\u003C/code>\u003C/td>\n\u003Ctd>12 targets\u003C/td>\n\u003Ctd>See \u003Ca href=\"/docs/reference/targets/\">Targets\u003C/a>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>node_version\u003C/code> / \u003Ccode>node_cache_dependency_path\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>As in CI\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>pre_build_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>BUILD_VERSION\u003C/code> is available in its environment\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>build_args\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Extra \u003Ccode>zig build\u003C/code> arguments\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>retention_days\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>14\u003C/code>\u003C/td>\n\u003Ctd>Artifact retention\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>force\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>false\u003C/code>\u003C/td>\n\u003Ctd>Build even if this commit already has a successful nightly\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>dedupe_workflow_name\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;Nightly&quot;\u003C/code>\u003C/td>\n\u003Ctd>Caller workflow name used for the dedupe check\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>publish_release\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>false\u003C/code>\u003C/td>\n\u003Ctd>Maintain a rolling GitHub prerelease\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>release_tag\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;nightly&quot;\u003C/code>\u003C/td>\n\u003Ctd>Tag of the rolling prerelease\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>release_title\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;Nightly&quot;\u003C/code>\u003C/td>\n\u003Ctd>Title prefix of the rolling prerelease\u003C/td>\n\u003C/tr>\n\u003C/tbody>\n\u003C/table>\n\u003C/div>\n\u003Cp>A preflight job fetches the repository&#39;s workflow runs from the GitHub API and hands them to a small Zig program that looks for a previous successful run of the same workflow (scheduled or manually dispatched) on the same commit; on a match the build is skipped unless \u003Ccode>force\u003C/code> is set. Nightly versions look like \u003Ccode>nightly-YYYYMMDD-&lt;short-sha&gt;\u003C/code> and are injected via \u003Ccode>-Dversion\u003C/code>.\u003C/p>\n\u003Cp>Each nightly binary is packaged with a \u003Ccode>.sha256\u003C/code> checksum file and a \u003Ccode>manifest-&lt;target&gt;.json\u003C/code> recording \u003Ccode>built_at\u003C/code>, \u003Ccode>commit\u003C/code>, \u003Ccode>run_id\u003C/code>, \u003Ccode>run_url\u003C/code>, \u003Ccode>target\u003C/code>, \u003Ccode>zig_target\u003C/code> and \u003Ccode>version\u003C/code>. With \u003Ccode>publish_release: true\u003C/code>, the workflow replaces the assets of the rolling prerelease on each run and retargets its tag.\u003C/p>\n\u003Ch2 id=\"zig-releaseyml\" aria-labelledby=\"heading-label-zig-releaseyml\">\u003Cspan id=\"heading-label-zig-releaseyml\">zig-release.yml\u003C/span>\u003Ca class=\"heading-anchor\" href=\"#zig-releaseyml\" aria-label=\"Permalink to zig-release.yml\" data-pagefind-ignore>\u003Cspan aria-hidden=\"true\">#\u003C/span>\u003C/a>\u003C/h2>\n\u003Cp>Triggers on \u003Ccode>v*\u003C/code> tag pushes in the caller. Requires \u003Ccode>permissions: contents: write\u003C/code>; add \u003Ccode>packages: write\u003C/code> only when \u003Ccode>publish_docker\u003C/code> is enabled. It does not require caller repository secrets.\u003C/p>\n\u003Cdiv class=\"table-scroll\" role=\"region\" aria-label=\"Data table: Input, Default, Notes\" tabindex=\"0\">\u003Ctable>\n\u003Cthead>\n\u003Ctr>\n\u003Cth>Input\u003C/th>\n\u003Cth>Default\u003C/th>\n\u003Cth>Notes\u003C/th>\n\u003C/tr>\n\u003C/thead>\n\u003Ctbody>\u003Ctr>\n\u003Ctd>\u003Ccode>binary_name\u003C/code>\u003C/td>\n\u003Ctd>— (required)\u003C/td>\n\u003Ctd>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>artifact_prefix\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Falls back to \u003Ccode>binary_name\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>zig_version\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;0.16.0&quot;\u003C/code>\u003C/td>\n\u003Ctd>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>android_api_level\u003C/code> / \u003Ccode>android_ndk_version\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;24&quot;\u003C/code> / \u003Ccode>&quot;29.0.14206865&quot;\u003C/code>\u003C/td>\n\u003Ctd>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>targets_json\u003C/code>\u003C/td>\n\u003Ctd>12 targets\u003C/td>\n\u003Ctd>Same default matrix as nightly\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>node_version\u003C/code> / \u003Ccode>node_cache_dependency_path\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>As in CI\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>pre_build_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>BUILD_VERSION\u003C/code> is available\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>build_args\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>source_archive\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>false\u003C/code>\u003C/td>\n\u003Ctd>Build and attach a source tarball\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>source_prepare_command\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Runs before archiving; \u003Ccode>BUILD_VERSION\u003C/code> available\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>source_archive_name\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>&quot;&quot;\u003C/code>\u003C/td>\n\u003Ctd>Defaults to \u003Ccode>&lt;prefix&gt;-source-&lt;tag&gt;.tar.gz\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>source_archive_excludes\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>.git\u003C/code>, \u003Ccode>.zig-cache\u003C/code>, \u003Ccode>zig-out\u003C/code>\u003C/td>\n\u003Ctd>Newline-separated tar excludes\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>generate_release_notes\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>true\u003C/code>\u003C/td>\n\u003Ctd>GitHub-generated notes\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>publish_docker\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>false\u003C/code>\u003C/td>\n\u003Ctd>Push a multi-arch image to ghcr.io\u003C/td>\n\u003C/tr>\n\u003C/tbody>\n\u003C/table>\n\u003C/div>\n\u003Cp>The version is taken from the tag with the \u003Ccode>v\u003C/code> stripped and injected as \u003Ccode>-Dversion\u003C/code>. Release assets are named \u003Ccode>&lt;prefix&gt;-&lt;target&gt;.bin\u003C/code> (or \u003Ccode>.exe\u003C/code> on Windows, which additionally gets a \u003Ccode>.zip\u003C/code>). If a release for the tag already exists, its assets are updated instead of failing.\u003C/p>\n\u003Cp>With \u003Ccode>publish_docker: true\u003C/code>, a follow-up job builds \u003Ccode>linux/amd64\u003C/code> and \u003Ccode>linux/arm64\u003C/code> images with buildx + QEMU, pushes to \u003Ccode>ghcr.io/&lt;owner&gt;/&lt;repo&gt;\u003C/code> with the semver tag and \u003Ccode>latest\u003C/code>, and uses GitHub Actions layer caching.\u003C/p>\n\u003Ch2 id=\"composite-actions\" aria-labelledby=\"heading-label-composite-actions\">\u003Cspan id=\"heading-label-composite-actions\">Composite actions\u003C/span>\u003Ca class=\"heading-anchor\" href=\"#composite-actions\" aria-label=\"Permalink to Composite actions\" data-pagefind-ignore>\u003Cspan aria-hidden=\"true\">#\u003C/span>\u003C/a>\u003C/h2>\n\u003Cp>Three helpers live under \u003Ccode>.github/actions/\u003C/code>. At the reviewed snapshot, the reusable workflows still reference them through the mutable \u003Ccode>v1\u003C/code> branch; pinning the caller workflow alone therefore does not yet make the complete internal chain immutable:\u003C/p>\n\u003Cdiv class=\"table-scroll\" role=\"region\" aria-label=\"Data table: Action, Purpose\" tabindex=\"0\">\u003Ctable>\n\u003Cthead>\n\u003Ctr>\n\u003Cth>Action\u003C/th>\n\u003Cth>Purpose\u003C/th>\n\u003C/tr>\n\u003C/thead>\n\u003Ctbody>\u003Ctr>\n\u003Ctd>\u003Ccode>setup-zig\u003C/code>\u003C/td>\n\u003Ctd>Runs the bundled \u003Ccode>install-zig.sh\u003C/code>, which downloads version 0.16.0 by default and checks the archive against the SHA-256 value in ziglang.org metadata; the composite action itself is still loaded through mutable \u003Ccode>v1\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>nightly-decide\u003C/code>\u003C/td>\n\u003Ctd>Runs a Zig program over a workflow-runs API dump (\u003Ccode>--runs-json\u003C/code>, \u003Ccode>--current-run-id\u003C/code>, \u003Ccode>--head-sha\u003C/code>, \u003Ccode>--workflow-name\u003C/code>, \u003Ccode>--force\u003C/code>) and prints \u003Ccode>should_build=\u003C/code>, \u003Ccode>reason=\u003C/code>, \u003Ccode>matched_run_id=\u003C/code>, \u003Ccode>matched_run_url=\u003C/code>\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>package-artifact\u003C/code>\u003C/td>\n\u003Ctd>Runs a Zig program (\u003Ccode>--binary\u003C/code>, \u003Ccode>--target\u003C/code>, \u003Ccode>--zig-target\u003C/code>, \u003Ccode>--version\u003C/code>, \u003Ccode>--repository\u003C/code>, \u003Ccode>--commit\u003C/code>, \u003Ccode>--run-id\u003C/code>, \u003Ccode>--server-url\u003C/code>, \u003Ccode>--built-at\u003C/code>) that writes \u003Ccode>&lt;binary&gt;.sha256\u003C/code> and \u003Ccode>manifest-&lt;target&gt;.json\u003C/code>\u003C/td>\n\u003C/tr>\n\u003C/tbody>\n\u003C/table>\n\u003C/div>\n\u003Cp>\u003Ccode>nightly-decide\u003C/code> and \u003Ccode>package-artifact\u003C/code> are written in Zig — seven \u003Ccode>zig test\u003C/code> blocks between them — and tested in NullBuilder&#39;s own CI on every push and pull request.\u003C/p>\n\u003Caside class=\"callout callout--note\">\u003Cdiv class=\"callout-title\">Note\u003C/div>\u003Cp>Pre-1.0: inputs and defaults may change upstream. Public caller examples pin commit \u003Ccode>2b9c2f2e7bb0ac085baea1c33b4f08beaf5c7fac\u003C/code>; review workflow inputs and internal action references before updating that SHA.\u003C/p>\n\u003C/aside>\n",toc:[{id:"zig-ciyml",text:"zig-ci.yml",depth:2},{id:"zig-nightlyyml",text:"zig-nightly.yml",depth:2},{id:"zig-releaseyml",text:"zig-release.yml",depth:2},{id:"composite-actions",text:"Composite actions",depth:2}]},raw:"\nAll configuration happens through `with:` inputs on the three `workflow_call` workflows. There are no config files, and the only environment contract for callers is `BUILD_VERSION`, exported to pre-build and source-prepare hooks. `binary_name` is required everywhere; every other input has a default.\n\n## zig-ci.yml\n\nRuns tests, then a ReleaseSmall cross-build per matrix target. Requires `permissions: contents: read`.\n\n| Input | Default | Notes |\n| --- | --- | --- |\n| `binary_name` | — (required) | Binary produced under `zig-out/bin` |\n| `artifact_prefix` | `\"\"` | Prefix for uploaded artifacts; falls back to `binary_name` |\n| `zig_version` | `\"0.16.0\"` | Zig version to install |\n| `targets_json` | 3 targets | JSON matrix; see [Targets](/docs/reference/targets/) |\n| `node_version` | `\"\"` | Optional Node.js to install before custom commands |\n| `node_cache_dependency_path` | `\"\"` | Enables npm caching in setup-node |\n| `setup_command` | `\"\"` | Runs after tool setup, before tests |\n| `pre_test_command` | `\"\"` | Runs immediately before tests |\n| `test_command` | `\"zig build test --summary all\"` | The test invocation |\n| `pre_build_command` | `\"\"` | Runs immediately before the ReleaseSmall build |\n| `build_args` | `\"\"` | Extra arguments appended to `zig build` |\n| `e2e_command` | `\"\"` | Runs after the build, on one matrix target only |\n| `e2e_target` | `\"linux-x86_64\"` | Matrix `target` name that runs `e2e_command` |\n| `upload_artifacts` | `true` | Upload host binaries as CI artifacts |\n\nHook order within each matrix job: `setup_command` → `pre_test_command` → tests → `pre_build_command` → build → `e2e_command` (matching target only). Each hook command reaches `bash -euo pipefail` through an environment variable, so its text is never templated into the workflow YAML. The build cache covers `.zig-cache` and `~/.cache/zig`, keyed on your Zig sources, `build.zig`, `build.zig.zon` and `vendor/`.\n\nEvery job appends a summary table: tests passed, test MaxRSS, and ReleaseSmall binary size in MB and bytes.\n\n## zig-nightly.yml\n\nBuilds the full 12-target matrix on a schedule. Requires `permissions: actions: read` and `contents: read` (plus `contents: write` in the caller if `publish_release` is on).\n\n| Input | Default | Notes |\n| --- | --- | --- |\n| `binary_name` | — (required) | Binary produced under `zig-out/bin` |\n| `artifact_prefix` | `\"\"` | Falls back to `binary_name` |\n| `zig_version` | `\"0.16.0\"` | |\n| `android_api_level` | `\"24\"` | For Android targets |\n| `android_ndk_version` | `\"29.0.14206865\"` | For Android targets |\n| `targets_json` | 12 targets | See [Targets](/docs/reference/targets/) |\n| `node_version` / `node_cache_dependency_path` | `\"\"` | As in CI |\n| `pre_build_command` | `\"\"` | `BUILD_VERSION` is available in its environment |\n| `build_args` | `\"\"` | Extra `zig build` arguments |\n| `retention_days` | `14` | Artifact retention |\n| `force` | `false` | Build even if this commit already has a successful nightly |\n| `dedupe_workflow_name` | `\"Nightly\"` | Caller workflow name used for the dedupe check |\n| `publish_release` | `false` | Maintain a rolling GitHub prerelease |\n| `release_tag` | `\"nightly\"` | Tag of the rolling prerelease |\n| `release_title` | `\"Nightly\"` | Title prefix of the rolling prerelease |\n\nA preflight job fetches the repository's workflow runs from the GitHub API and hands them to a small Zig program that looks for a previous successful run of the same workflow (scheduled or manually dispatched) on the same commit; on a match the build is skipped unless `force` is set. Nightly versions look like `nightly-YYYYMMDD-\u003Cshort-sha>` and are injected via `-Dversion`.\n\nEach nightly binary is packaged with a `.sha256` checksum file and a `manifest-\u003Ctarget>.json` recording `built_at`, `commit`, `run_id`, `run_url`, `target`, `zig_target` and `version`. With `publish_release: true`, the workflow replaces the assets of the rolling prerelease on each run and retargets its tag.\n\n## zig-release.yml\n\nTriggers on `v*` tag pushes in the caller. Requires `permissions: contents: write`; add `packages: write` only when `publish_docker` is enabled. It does not require caller repository secrets.\n\n| Input | Default | Notes |\n| --- | --- | --- |\n| `binary_name` | — (required) | |\n| `artifact_prefix` | `\"\"` | Falls back to `binary_name` |\n| `zig_version` | `\"0.16.0\"` | |\n| `android_api_level` / `android_ndk_version` | `\"24\"` / `\"29.0.14206865\"` | |\n| `targets_json` | 12 targets | Same default matrix as nightly |\n| `node_version` / `node_cache_dependency_path` | `\"\"` | As in CI |\n| `pre_build_command` | `\"\"` | `BUILD_VERSION` is available |\n| `build_args` | `\"\"` | |\n| `source_archive` | `false` | Build and attach a source tarball |\n| `source_prepare_command` | `\"\"` | Runs before archiving; `BUILD_VERSION` available |\n| `source_archive_name` | `\"\"` | Defaults to `\u003Cprefix>-source-\u003Ctag>.tar.gz` |\n| `source_archive_excludes` | `.git`, `.zig-cache`, `zig-out` | Newline-separated tar excludes |\n| `generate_release_notes` | `true` | GitHub-generated notes |\n| `publish_docker` | `false` | Push a multi-arch image to ghcr.io |\n\nThe version is taken from the tag with the `v` stripped and injected as `-Dversion`. Release assets are named `\u003Cprefix>-\u003Ctarget>.bin` (or `.exe` on Windows, which additionally gets a `.zip`). If a release for the tag already exists, its assets are updated instead of failing.\n\nWith `publish_docker: true`, a follow-up job builds `linux/amd64` and `linux/arm64` images with buildx + QEMU, pushes to `ghcr.io/\u003Cowner>/\u003Crepo>` with the semver tag and `latest`, and uses GitHub Actions layer caching.\n\n## Composite actions\n\nThree helpers live under `.github/actions/`. At the reviewed snapshot, the reusable workflows still reference them through the mutable `v1` branch; pinning the caller workflow alone therefore does not yet make the complete internal chain immutable:\n\n| Action | Purpose |\n| --- | --- |\n| `setup-zig` | Runs the bundled `install-zig.sh`, which downloads version 0.16.0 by default and checks the archive against the SHA-256 value in ziglang.org metadata; the composite action itself is still loaded through mutable `v1` |\n| `nightly-decide` | Runs a Zig program over a workflow-runs API dump (`--runs-json`, `--current-run-id`, `--head-sha`, `--workflow-name`, `--force`) and prints `should_build=`, `reason=`, `matched_run_id=`, `matched_run_url=` |\n| `package-artifact` | Runs a Zig program (`--binary`, `--target`, `--zig-target`, `--version`, `--repository`, `--commit`, `--run-id`, `--server-url`, `--built-at`) that writes `\u003Cbinary>.sha256` and `manifest-\u003Ctarget>.json` |\n\n`nightly-decide` and `package-artifact` are written in Zig — seven `zig test` blocks between them — and tested in NullBuilder's own CI on every push and pull request.\n\n> [!NOTE]\n> Pre-1.0: inputs and defaults may change upstream. Public caller examples pin commit `2b9c2f2e7bb0ac085baea1c33b4f08beaf5c7fac`; review workflow inputs and internal action references before updating that SHA.\n",dateModified:"2026-07-19",sectionTitle:"Reference",prev:{siteId:"builder",section:"start",slug:"overview",path:"/content/builder/docs/start/overview.md",title:"Overview",description:"What NullBuilder is, who it serves, and how to wire it into a Zig repo.",order:1,verified:null,sectionTitle:"Start"},next:{siteId:"builder",section:"reference",slug:"targets",path:"/content/builder/docs/reference/targets.md",title:"Targets",description:"Default target matrices, custom matrices, and how Android builds work.",order:2,verified:null,sectionTitle:"Reference"}},uses:{params:["section","slug"]}}],
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+	</body>
+</html>

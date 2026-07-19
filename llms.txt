@@ -1,0 +1,18 @@
+# NullBuilder
+
+> Add shared Zig CI, deduplicated nightlies and 12-target releases with reusable GitHub Actions workflows. Maintainer infrastructure; nothing to install.
+
+Part of the Null ecosystem (https://nullmenu.ai) — single-binary Zig tools for running AI agents on your own hardware. All components are pre-1.0 with CalVer releases. The links below point to canonical documentation pages.
+
+## Start
+
+- [Overview](https://builder.nullmenu.ai/docs/start/overview/): What NullBuilder is, who it serves, and how to wire it into a Zig repo.
+
+## Reference
+
+- [Workflows](https://builder.nullmenu.ai/docs/reference/workflows/): Inputs, permissions and behavior of the three reusable workflows.
+- [Targets](https://builder.nullmenu.ai/docs/reference/targets/): Default target matrices, custom matrices, and how Android builds work.
+
+## Source
+
+- [GitHub](https://github.com/nullclaw/nullbuilder)
