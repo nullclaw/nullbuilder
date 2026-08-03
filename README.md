@@ -48,6 +48,30 @@ jobs:
         ]
 ```
 
+Use `targets_json` when a project needs to replace the default matrix. Use
+`extra_targets_json` to keep every default target and append only the targets
+specific to that project:
+
+```yaml
+jobs:
+  zig:
+    uses: nullclaw/nullbuilder/.github/workflows/zig-ci.yml@v1
+    permissions:
+      contents: read
+    with:
+      binary_name: nullclaw
+      artifact_prefix: nullclaw
+      extra_targets_json: >-
+        [
+          {"os":"ubuntu-latest","target":"linux-mipsel-musl","zig_target":"mipsel-linux-musleabi","build_args":"-Dembedded_wasm3=false"}
+        ]
+```
+
+`extra_targets_json` is available in the CI, nightly, and release workflows.
+Target names must remain unique after the two arrays are merged. An optional
+per-target `build_args` string is appended after the workflow-level build
+arguments and is useful when one architecture needs a feature override.
+
 ### Nightly
 
 ```yaml

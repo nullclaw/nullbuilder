@@ -27,6 +27,11 @@ on:
             {"os":"macos-latest","target":"macos-aarch64","zig_target":"aarch64-macos"},
             {"os":"windows-latest","target":"windows-x86_64","zig_target":"x86_64-windows"}
           ]
+      extra_targets_json:
+        description: JSON array of project-specific target entries appended to targets_json.
+        required: false
+        type: string
+        default: "[]"
       node_version:
         description: Optional Node.js version to install before custom commands.
         required: false
@@ -82,8 +87,34 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  targets:
+    name: Resolve target matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.merge.outputs.matrix }}
+
+    steps:
+      - name: Merge target matrices
+        id: merge
+        env:
+          TARGETS_JSON: ${{ inputs.targets_json }}
+          EXTRA_TARGETS_JSON: ${{ inputs.extra_targets_json }}
+        run: |
+          merged="$(jq -cn \
+            --argjson targets "${TARGETS_JSON}" \
+            --argjson extra "${EXTRA_TARGETS_JSON}" \
+            '$targets + $extra')"
+          jq -e 'type == "array" and length > 0 and all(.[]; type == "object" and has("os") and has("target") and has("zig_target") and ((has("build_args") | not) or (.build_args | type == "string")))' \
+            <<< "${merged}" >/dev/null
+          if [ "$(jq '[.[].target] | length' <<< "${merged}")" -ne "$(jq '[.[].target] | unique | length' <<< "${merged}")" ]; then
+            echo "target names must be unique across targets_json and extra_targets_json" >&2
+            exit 1
+          fi
+          echo "matrix=${merged}" >> "$GITHUB_OUTPUT"
+
   test:
     name: ${{ matrix.target }}
+    needs: targets
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -91,7 +122,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.targets_json) }}
+        include: ${{ fromJson(needs.targets.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -159,15 +190,18 @@ jobs:
       - name: Build ReleaseSmall
         env:
           EXTRA_BUILD_ARGS: ${{ inputs.build_args }}
+          TARGET_BUILD_ARGS: ${{ matrix.build_args }}
         run: |
           zig_args=(
             -Dtarget=${{ matrix.zig_target }}
             -Doptimize=ReleaseSmall
           )
-          if [ -n "${EXTRA_BUILD_ARGS}" ]; then
-            read -r -a extra_args <<< "${EXTRA_BUILD_ARGS}"
-            zig_args+=("${extra_args[@]}")
-          fi
+          for build_args in "${EXTRA_BUILD_ARGS}" "${TARGET_BUILD_ARGS}"; do
+            if [ -n "${build_args}" ]; then
+              read -r -a extra_args <<< "${build_args}"
+              zig_args+=("${extra_args[@]}")
+            fi
+          done
           zig build "${zig_args[@]}"
 
       - name: Run E2E command
