@@ -438,6 +438,34 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Verify the image before anything reaches ghcr. #1017 shipped a broken
+      # image (root-owned /nullclaw-data, gateway exited AccessDenied for uid
+      # 65534) because nothing checked what had been built. See
+      # nullclaw/nullclaw#1036 layer 2.
+      - name: Build for verification
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: nullclaw:verify
+          build-args: |
+            VERSION=${{ steps.docker_meta.outputs.version }}
+            ZIG_VERSION=${{ inputs.zig_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Optional per-caller check: keeps this shared workflow generic, since
+      # only some repos ship an image test.
+      - name: Verify image
+        run: |
+          if [ -f .github/scripts/test-docker-home.sh ]; then
+            sh .github/scripts/test-docker-home.sh nullclaw:verify
+          else
+            echo "caller ships no image check (.github/scripts/test-docker-home.sh) — skipping"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
